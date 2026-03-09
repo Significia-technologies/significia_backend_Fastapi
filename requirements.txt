@@ -1,0 +1,39 @@
+# Web Framework
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+
+# ORM
+SQLAlchemy>=2.0.29
+
+# Database driver
+psycopg[binary]>=3.1.18
+
+# Migrations
+alembic>=1.13.1
+
+# Task queue
+celery>=5.3.6
+
+# Redis client
+redis>=5.0.4
+
+# Data validation
+pydantic>=2.7.1
+
+# Environment variables
+python-dotenv>=1.0.1
+
+# Settings management
+pydantic-settings>=2.2.1
+
+# Password hashing
+passlib[bcrypt]>=1.7.4
+
+# JWT authentication
+python-jose[cryptography]>=3.3.0
+
+# HTTP client
+httpx>=0.27.0
+
+# Logging
+loguru>=0.7.2

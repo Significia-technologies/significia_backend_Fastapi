@@ -1,0 +1,104 @@
+name: significia-backend
+
+services:
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: significia-api
+    restart: unless-stopped
+    command: /entrypoint.sh api
+    volumes:
+      - ..:/app
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - significia-network
+
+
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.worker
+    container_name: significia-worker
+    restart: unless-stopped
+    command: /entrypoint.sh worker
+    volumes:
+      - ..:/app
+    env_file:
+      - ../.env
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - significia-network
+
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: significia-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: significia
+      POSTGRES_USER: significia
+      POSTGRES_PASSWORD: significia
+    ports:
+      - "5432:5432"
+    volumes:
+      - significia_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U significia"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - significia-network
+
+
+  redis:
+    image: redis:7-alpine
+    container_name: significia-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - significia_redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - significia-network
+
+
+  flower:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.worker
+    container_name: significia-flower
+    restart: unless-stopped
+    command: celery -A app.tasks.celery_app flower --port=5555
+    env_file:
+      - ../.env
+    ports:
+      - "5555:5555"
+    depends_on:
+      - redis
+      - worker
+    networks:
+      - significia-network
+
+
+volumes:
+  significia_postgres_data:
+  significia_redis_data:
+
+
+networks:
+  significia-network:
+    driver: bridge

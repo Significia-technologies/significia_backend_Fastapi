@@ -1,0 +1,120 @@
+# Virtual environment
+# ==============================
+# Python
+# ==============================
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Bytecode
+*.pyo
+*.pyd
+*.pyc
+
+# ==============================
+# Virtual Environment
+# ==============================
+
+venv/
+env/
+.venv/
+
+# ==============================
+# Environment Variables
+# ==============================
+
+.env
+.env.*
+!.env.example
+
+# ==============================
+# Logs
+# ==============================
+
+*.log
+logs/
+celerybeat-schedule
+
+# ==============================
+# Pytest
+# ==============================
+
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# ==============================
+# Alembic
+# ==============================
+
+# keep migrations but ignore compiled files
+alembic/versions/__pycache__/
+
+# ==============================
+# Docker
+# ==============================
+
+docker-compose.override.yml
+*.pid
+
+# ==============================
+# VSCode
+# ==============================
+
+.vscode/
+
+# ==============================
+# JetBrains
+# ==============================
+
+.idea/
+
+# ==============================
+# OS files
+# ==============================
+
+.DS_Store
+Thumbs.db
+
+# ==============================
+# Cache
+# ==============================
+
+.cache/
+.mypy_cache/
+.ruff_cache/
+
+# ==============================
+# Temporary files
+# ==============================
+
+*.tmp
+*.swp
+
+# ==============================
+# Database files (if local)
+# ==============================
+
+*.sqlite3
+*.db
+
+# ==============================
+# Node (if frontend added later)
+# ==============================
+
+node_modules/
+
+# ==============================
+# Docker volumes (local)
+# ==============================
+
+postgres_data/
+redis_data/
