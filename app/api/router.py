@@ -1,6 +1,9 @@
 from fastapi import APIRouter
+from app.api.v1 import auth_routes
 
 api_router = APIRouter()
+
+api_router.include_router(auth_routes.router, prefix="/auth", tags=["Authentication"])
 
 @api_router.get("/health", status_code=200)
 def health_check() -> dict:

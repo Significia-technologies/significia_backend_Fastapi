@@ -31,7 +31,7 @@ class User(Base):
     failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0)
     
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    last_login_ip = mapped_column(INET, nullable=True) # INET doesn't have a direct standard python map, using mapped_column without type hint for ease
+    last_login_ip = mapped_column(INET, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
