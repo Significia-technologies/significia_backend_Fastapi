@@ -38,7 +38,6 @@ def main():
         request_data = UserRegisterRequest(
             email=args.email,
             password=args.password,
-            full_name=args.name,
             company_name=args.company
         )
 
@@ -46,7 +45,7 @@ def main():
         user = auth_service.register_user(db, request_data)
         
         print(f"[*] User object built! Triggering role override commit...")
-        user.role = "owner"
+        user.role = "super_admin"
         db.commit()
 
         print(f"[+] Successfully created admin user!")
