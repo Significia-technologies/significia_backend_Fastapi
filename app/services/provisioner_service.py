@@ -73,16 +73,61 @@ class ProvisionerService:
         """
         engine.execute_query(create_customers)
         
-        # Create Audit Log Table (Generic)
+        # Create IA Master Table
+        create_ia_master = """
+        CREATE TABLE IF NOT EXISTS significia_core.ia_master (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            name_of_ia VARCHAR(255) NOT NULL,
+            nature_of_entity VARCHAR(50) NOT NULL,
+            name_of_entity VARCHAR(255),
+            ia_registration_number VARCHAR(100) UNIQUE NOT NULL,
+            date_of_registration DATE,
+            date_of_registration_expiry DATE,
+            registered_address TEXT,
+            registered_contact_number VARCHAR(20),
+            office_contact_number VARCHAR(20),
+            registered_email_id VARCHAR(255),
+            cin_number VARCHAR(100),
+            bank_account_number VARCHAR(50),
+            bank_name VARCHAR(255),
+            bank_branch VARCHAR(255),
+            ifsc_code VARCHAR(20),
+            ia_certificate_path VARCHAR(512),
+            ia_signature_path VARCHAR(512),
+            ia_logo_path VARCHAR(512),
+            created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+        engine.execute_query(create_ia_master)
+
+        # Create Employee Details Table
+        create_employee_details = """
+        CREATE TABLE IF NOT EXISTS significia_core.employee_details (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            ia_master_id UUID NOT NULL REFERENCES significia_core.ia_master(id) ON DELETE CASCADE,
+            name_of_employee VARCHAR(255) NOT NULL,
+            designation VARCHAR(100),
+            ia_registration_number VARCHAR(100) NOT NULL,
+            date_of_registration DATE,
+            date_of_registration_expiry DATE,
+            certificate_path VARCHAR(512),
+            created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+        engine.execute_query(create_employee_details)
+
+        # Create Audit Trail Table
         create_audit = """
-        CREATE TABLE IF NOT EXISTS significia_core.audit_logs (
-            id SERIAL PRIMARY KEY,
-            table_name VARCHAR(100),
-            record_id UUID,
-            action VARCHAR(50),
-            old_value JSONB,
-            new_value JSONB,
-            changed_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        CREATE TABLE IF NOT EXISTS significia_core.audit_trail (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            action_type VARCHAR(50) NOT NULL,
+            table_name VARCHAR(100) NOT NULL,
+            record_id VARCHAR(100) NOT NULL,
+            changes TEXT,
+            user_ip VARCHAR(45),
+            user_agent TEXT,
+            created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
         );
         """
         engine.execute_query(create_audit)

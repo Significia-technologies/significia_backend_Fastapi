@@ -22,12 +22,19 @@ class PostgreSQLConnector(BaseConnector):
 
     def execute_query(self, query: str, params: tuple = None) -> List[Dict[str, Any]]:
         conn = self.connect()
-        with conn.cursor() as cur:
-            cur.execute(query, params)
-            if cur.description:
-                columns = [desc[0] for desc in cur.description]
-                return [dict(zip(columns, row)) for row in cur.fetchall()]
-            return []
+        try:
+            with conn.cursor() as cur:
+                cur.execute(query, params)
+                if cur.description:
+                    columns = [desc[0] for desc in cur.description]
+                    result = [dict(zip(columns, row)) for row in cur.fetchall()]
+                    conn.commit()
+                    return result
+                conn.commit()
+                return []
+        except Exception as e:
+            conn.rollback()
+            raise e
 
     def test_connection(self) -> bool:
         try:
