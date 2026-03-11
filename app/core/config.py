@@ -1,19 +1,24 @@
-from typing import Any, Dict, Optional
-from pydantic import PostgresDsn, validator
+from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
+import os
+
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Significia API"
     API_V1_STR: str = "/api/v1"
-    
+
+    # Docker/local defaults
     POSTGRES_SERVER: str = "postgres"
     POSTGRES_USER: str = "significia"
     POSTGRES_PASSWORD: str = "significia"
     POSTGRES_DB: str = "significia"
     POSTGRES_PORT: str = "5432"
-    
+
     REDIS_HOST: str = "redis"
     REDIS_PORT: str = "6379"
+
+    # Production override
+    DATABASE_URL: Optional[str] = None
 
     SECRET_KEY: str = "your-super-secret-key-change-in-production"
     ENCRYPTION_KEY: str = "change-this-to-a-secure-32-byte-base64-key-in-production"
@@ -23,16 +28,26 @@ class Settings(BaseSettings):
 
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> str:
-        return f"postgresql+psycopg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        # If DATABASE_URL exists (Render), use it
+        if self.DATABASE_URL:
+            return self.DATABASE_URL
+
+        # Otherwise build from local Docker settings
+        return (
+            f"postgresql+psycopg://{self.POSTGRES_USER}:"
+            f"{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:"
+            f"{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        )
 
     @property
     def CELERY_BROKER_URL(self) -> str:
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/0"
-        
+
     model_config = SettingsConfigDict(
         case_sensitive=True,
         env_file=".env",
         extra="ignore"
     )
+
 
 settings = Settings()
