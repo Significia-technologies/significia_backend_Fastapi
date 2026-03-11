@@ -51,9 +51,9 @@ async def create_ia_entry(
     bank_branch: str = Form(...),
     ifsc_code: str = Form(...),
     employees_json: str = Form("[]"),
-    ia_certificate: UploadFile = File(...),
-    ia_signature: UploadFile = File(...),
-    ia_logo: UploadFile = File(...),
+    ia_certificate: Optional[UploadFile] = File(None),
+    ia_signature: Optional[UploadFile] = File(None),
+    ia_logo: Optional[UploadFile] = File(None),
     employee_certificates: List[UploadFile] = File([]),
     db: Session = Depends(get_remote_session),
     current_user: User = Depends(get_current_user)
@@ -87,9 +87,13 @@ async def create_ia_entry(
             ia_sig=ia_signature,
             ia_logo=ia_logo,
             employee_certs=employee_certificates,
+            tenant_id=current_user.tenant_id,
             user_ip=None, 
             user_agent=None
         )
+        
+        # Sign URLs for immediate frontend use
+        await ia_service.sign_file_urls(db_ia, db)
         return db_ia
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -99,10 +103,11 @@ async def create_ia_entry(
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 
 @router.get("/latest", response_model=Optional[IAMasterRead])
-def get_latest_ia(
-    db: Session = Depends(get_remote_session)
+async def get_latest_ia(
+    db: Session = Depends(get_remote_session),
+    current_user: User = Depends(get_current_user)
 ):
-    return ia_service.get_latest_ia(db)
+    return await ia_service.get_latest_ia(db)
 
 @router.get("/{ia_id}/pdf")
 def download_ia_pdf(

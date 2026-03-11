@@ -1,39 +1,52 @@
 import os
 import uuid
 from datetime import datetime
-import shutil
-import anyio
 from pathlib import Path
 from fastapi import UploadFile
+from sqlalchemy.orm import Session
 from werkzeug.utils import secure_filename
 
-UPLOAD_DIR = "uploads/ia_documents"
+from app.services.storage_service import StorageService
 
-async def save_upload_file(upload_file: UploadFile, nature_of_entity: str, prefix: str) -> str:
+async def save_upload_file(
+    upload_file: UploadFile, 
+    nature_of_entity: str, 
+    prefix: str,
+    db: Session = None,
+    tenant_id: uuid.UUID = None
+) -> str:
     """
-    Saves a FastAPI UploadFile to the local filesystem.
-    Returns the relative path to the saved file.
+    Saves a FastAPI UploadFile. 
+    If a database session and tenant ID are provided, it attempts to save to cloud storage.
+    Otherwise, it falls back to the local filesystem.
+    Returns the final path or cloud key.
     """
-    # Create directory structure
+    # 1. Generate filename
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ext = os.path.splitext(upload_file.filename)[1]
+    base_name = f"{prefix}_{timestamp}_{uuid.uuid4().hex[:8]}"
+    filename = secure_filename(f"{base_name}{ext}")
+
+    # 2. Check for Cloud Storage
+    if db:
+        storage_driver = StorageService.get_tenant_storage(db)
+        if storage_driver:
+            # Cloud Path: docs/entity_type/filename
+            cloud_key = f"docs/{nature_of_entity}/{filename}"
+            await storage_driver.upload_file(upload_file, cloud_key)
+            return cloud_key
+
+    # 3. Fallback to Local Storage
+    UPLOAD_DIR = "uploads/ia_documents"
     target_dir = os.path.join(UPLOAD_DIR, nature_of_entity)
     os.makedirs(target_dir, exist_ok=True)
     
-    # Generate secure filename
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    ext = os.path.splitext(upload_file.filename)[1]
-    # We want to keep the original extension and sanitize the rest
-    base_name = f"{prefix}_{timestamp}_{uuid.uuid4().hex[:8]}"
-    filename = secure_filename(f"{base_name}{ext}")
-    
-    # Physical path
     file_path = os.path.join(target_dir, filename)
     
-    # Write the file asynchronously
+    import anyio
     async with await anyio.open_file(file_path, "wb") as f:
-        while content := await upload_file.read(1024 * 1024): # 1MB chunks
+        while content := await upload_file.read(1024 * 1024):
             await f.write(content)
             
-    # Reset file pointer just in case it's needed elsewhere
     await upload_file.seek(0)
-        
     return file_path

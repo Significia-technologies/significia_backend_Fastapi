@@ -117,6 +117,27 @@ class ProvisionerService:
         """
         engine.execute_query(create_employee_details)
 
+        # Create Storage Connectors Table
+        create_storage = """
+        CREATE TABLE IF NOT EXISTS significia_core.storage_connectors (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tenant_id UUID,
+            name VARCHAR(255) NOT NULL,
+            provider VARCHAR(50) NOT NULL DEFAULT 'S3',
+            bucket_name VARCHAR(255) NOT NULL,
+            region VARCHAR(100),
+            endpoint_url VARCHAR(255),
+            access_key_id VARCHAR(255),
+            encrypted_secret_key TEXT,
+            is_active BOOLEAN DEFAULT TRUE,
+            status VARCHAR(50) DEFAULT 'PENDING',
+            verified_at TIMESTAMP WITHOUT TIME ZONE,
+            created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+        engine.execute_query(create_storage)
+
         # Create Audit Trail Table
         create_audit = """
         CREATE TABLE IF NOT EXISTS significia_core.audit_trail (
