@@ -10,6 +10,16 @@ from app.core.security import get_password_hash
 
 class ClientService:
     @staticmethod
+    def _log_audit(db: Session, client_id: uuid.UUID, action: str, changes: Optional[dict] = None):
+        from app.models.client import ClientAuditTrail
+        audit = ClientAuditTrail(
+            client_id=client_id,
+            action_type=action,
+            changes=changes
+        )
+        db.add(audit)
+
+    @staticmethod
     def create_client(db: Session, client_in: ClientCreate) -> ClientProfile:
         # Check IA Master Limit
         ia_master = db.query(IAMaster).order_by(IAMaster.created_at.desc()).first()
@@ -18,7 +28,7 @@ class ClientService:
         
         if ia_master.current_client_count >= ia_master.max_client_permit:
             raise ValueError(f"Maximum client permit ({ia_master.max_client_permit}) reached.")
-
+ 
         # Check existing
         existing = db.query(ClientProfile).filter(
             (ClientProfile.email_normalized == client_in.email.lower()) | 
@@ -26,6 +36,10 @@ class ClientService:
         ).first()
 
         if existing:
+            if existing.deleted_at:
+                # Reactivate soft-deleted client if same email/PAN?
+                # For now just block as per standard logic, but could be handled.
+                raise ValueError("A deactivated client with this email or PAN already exists.")
             raise ValueError("Client with this email or PAN already exists.")
 
         create_data = client_in.model_dump()
@@ -44,15 +58,22 @@ class ClientService:
         
         db.commit()
         db.refresh(db_client)
+        
+        ClientService._log_audit(db, db_client.id, "CREATE")
+        db.commit()
+        
         return db_client
 
     @staticmethod
     def get_client(db: Session, client_id: uuid.UUID) -> Optional[ClientProfile]:
-        return db.query(ClientProfile).filter(ClientProfile.id == client_id).first()
+        return db.query(ClientProfile).filter(
+            ClientProfile.id == client_id,
+            ClientProfile.deleted_at == None
+        ).first()
 
     @staticmethod
     def list_clients(db: Session) -> List[ClientProfile]:
-        return db.query(ClientProfile).all()
+        return db.query(ClientProfile).filter(ClientProfile.deleted_at == None).all()
 
     @staticmethod
     def update_client(db: Session, client_id: uuid.UUID, client_in: ClientUpdate) -> Optional[ClientProfile]:
@@ -61,11 +82,18 @@ class ClientService:
             return None
         
         update_data = client_in.model_dump(exclude_unset=True)
+        changes = {}
         for key, value in update_data.items():
-            setattr(db_client, key, value)
+            old_val = getattr(db_client, key)
+            if old_val != value:
+                changes[key] = {"old": str(old_val), "new": str(value)}
+                setattr(db_client, key, value)
             
-        db.commit()
-        db.refresh(db_client)
+        if changes:
+            ClientService._log_audit(db, db_client.id, "UPDATE", changes)
+            db.commit()
+            db.refresh(db_client)
+            
         return db_client
 
     @staticmethod
@@ -78,6 +106,10 @@ class ClientService:
         if ia_master and ia_master.current_client_count > 0:
             ia_master.current_client_count -= 1
             
-        db.delete(db_client)
+        # Soft delete
+        db_client.is_active = False
+        db_client.deleted_at = datetime.utcnow()
+        
+        ClientService._log_audit(db, db_client.id, "DELETE")
         db.commit()
         return True

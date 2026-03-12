@@ -20,6 +20,7 @@ class ClientProfile(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0)
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     # Personal Information
     client_code: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)

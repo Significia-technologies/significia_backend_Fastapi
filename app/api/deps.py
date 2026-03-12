@@ -71,7 +71,7 @@ def get_client_db(
 ) -> Generator[Session, None, None]:
     connector = db.query(Connector).filter(
         Connector.tenant_id == tenant.id,
-        Connector.provider == "PostgreSQL",
+        Connector.type == "postgresql",
         Connector.is_active == True
     ).first()
     

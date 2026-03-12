@@ -41,6 +41,9 @@ class ProvisionerService:
                 # 3. Create Tables
                 ProvisionerService._create_master_tables(engine)
                 
+                # 4. Patch existing tables (Migration)
+                ProvisionerService._patch_database(engine)
+                
                 connector_record.initialization_status = "READY"
                 connector_record.initialized_at = datetime.utcnow()
                 db.commit()
@@ -52,6 +55,17 @@ class ProvisionerService:
             connector_record.initialization_status = "FAILED"
             db.commit()
             return False
+
+    @staticmethod
+    def _patch_database(engine: PostgreSQLConnector):
+        """
+        Add any missing columns to existing tables for backward compatibility.
+        """
+        try:
+            # Add deleted_at to clients if missing
+            engine.execute_query("ALTER TABLE significia_core.clients ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITHOUT TIME ZONE;")
+        except Exception as e:
+            print(f"Migration patching failed: {e}")
 
     @staticmethod
     def _create_master_tables(engine: PostgreSQLConnector):
@@ -68,6 +82,7 @@ class ProvisionerService:
             is_active BOOLEAN DEFAULT TRUE,
             failed_login_attempts INTEGER DEFAULT 0,
             last_login_at TIMESTAMP WITHOUT TIME ZONE,
+            deleted_at TIMESTAMP WITHOUT TIME ZONE,
             
             client_code VARCHAR(50) UNIQUE NOT NULL,
             client_name VARCHAR(255) NOT NULL,
