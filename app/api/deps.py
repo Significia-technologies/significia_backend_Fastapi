@@ -8,7 +8,12 @@ from app.repositories.user_repository import UserRepository
 from app.models.user import User
 from app.core.jwt import decode_token
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"/api/v1/auth/login")
+from fastapi.security.api_key import APIKeyHeader
+from app.models.api_key import ApiKey
+import hashlib
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"/api/v1/auth/login", auto_error=False)
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 def get_db() -> Generator:
     try:
@@ -18,14 +23,20 @@ def get_db() -> Generator:
         db.close()
 
 def get_current_user(
-    db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)
+    db: Session = Depends(get_db), token: str | None = Depends(oauth2_scheme)
 ) -> User:
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     try:
         payload = decode_token(token)
         user_id: str = payload.get("sub")
         if user_id is None:
             raise HTTPException(status_code=401, detail="Could not validate credentials")
-    except ValueError:
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
@@ -55,15 +66,26 @@ from sqlalchemy.orm import sessionmaker
 from app.models.client import ClientProfile
 
 def get_tenant_by_slug(
-    x_tenant_slug: str = Header(..., alias="X-Tenant-Slug"),
+    x_tenant_slug: str | None = Header(None, alias="X-Tenant-Slug"),
+    x_api_key: str | None = Depends(api_key_header),
     db: Session = Depends(get_db)
 ) -> Tenant:
-    tenant = db.query(Tenant).filter(Tenant.subdomain == x_tenant_slug).first()
+    tenant = None
+    if x_api_key:
+        hashed = hashlib.sha256(x_api_key.encode()).hexdigest()
+        api_key_obj = db.query(ApiKey).filter(ApiKey.hashed_key == hashed, ApiKey.is_active == True).first()
+        if not api_key_obj:
+            raise HTTPException(status_code=401, detail="Invalid API Key")
+        tenant = db.query(Tenant).filter(Tenant.id == api_key_obj.tenant_id).first()
+    elif x_tenant_slug:
+        tenant = db.query(Tenant).filter(Tenant.subdomain == x_tenant_slug).first()
+        
     if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+        raise HTTPException(status_code=401, detail="Missing X-Tenant-Slug or X-API-Key header")
     if not tenant.is_active:
         raise HTTPException(status_code=403, detail="Tenant is inactive")
     return tenant
+
 
 def get_client_db(
     tenant: Tenant = Depends(get_tenant_by_slug),

@@ -3,23 +3,40 @@ from typing import Generator
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
 from fastapi import Depends, HTTPException
-from app.api.deps import get_db, get_current_user
+from app.api.deps import get_db, get_current_user, api_key_header, oauth2_scheme
 from app.models.connector import Connector
 from app.models.user import User
+from app.models.api_key import ApiKey
 from app.utils.encryption import decrypt_string
+import hashlib
 
 def get_remote_session(
     connector_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    token: str | None = Depends(oauth2_scheme),
+    x_api_key: str | None = Depends(api_key_header)
 ) -> Generator[Session, None, None]:
     """
     Dependency that provides a SQLAlchemy session specifically bound to a 
-    tenant's private database connector.
+    tenant's private database connector. Supports JWT or X-API-Key auth.
     """
+    tenant_id = None
+    if x_api_key:
+        hashed = hashlib.sha256(x_api_key.encode()).hexdigest()
+        api_key_obj = db.query(ApiKey).filter(ApiKey.hashed_key == hashed, ApiKey.is_active == True).first()
+        if not api_key_obj:
+            raise HTTPException(status_code=401, detail="Invalid API Key")
+        tenant_id = api_key_obj.tenant_id
+    elif token:
+        user = get_current_user(db=db, token=token)
+        tenant_id = user.tenant_id
+        
+    if not tenant_id:
+        raise HTTPException(status_code=401, detail="Authentication required (JWT or X-API-Key)")
+
     connector = db.query(Connector).filter(
         Connector.id == connector_id,
-        Connector.tenant_id == current_user.tenant_id
+        Connector.tenant_id == tenant_id
     ).first()
 
     if not connector:
