@@ -9,3 +9,5 @@ from app.models.mfa_secret import MFASecret
 from app.models.connector import Connector
 from app.models.storage_connector import StorageConnector
 from app.models.ia_master import IAMaster, EmployeeDetails, AuditTrail
+from app.models.api_key import ApiKey
+from app.models.client import ClientProfile, ClientDocument, ClientAuditTrail

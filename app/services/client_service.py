@@ -1,32 +1,44 @@
 import uuid
 from typing import List, Optional
-from sqlalchemy import Column, String, DateTime, Text, JSON
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Session
 from datetime import datetime
+
 from app.schemas.client_schema import ClientCreate, ClientUpdate
 from app.models.ia_master import IAMaster
-
-# We define a separate Base for remote tables to avoid mixing with local metadata
-RemoteBase = declarative_base()
-
-class RemoteClient(RemoteBase):
-    __tablename__ = "clients"
-    __table_args__ = {"schema": "significia_core"}
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name = Column(String(255), nullable=False)
-    email = Column(String(255))
-    phone = Column(String(50))
-    address = Column(Text)
-    status = Column(String(50), default="active")
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+from app.models.client import ClientProfile
+from app.core.security import get_password_hash
 
 class ClientService:
     @staticmethod
-    def create_client(db: Session, client_in: ClientCreate) -> RemoteClient:
+    def _log_audit(db: Session, client_id: uuid.UUID, action: str, changes: Optional[dict] = None):
+        from app.models.client import ClientAuditTrail
+        audit = ClientAuditTrail(
+            client_id=client_id,
+            action_type=action,
+            changes=changes
+        )
+        db.add(audit)
+
+    @staticmethod
+    def generate_next_client_code(db: Session) -> str:
+        # Fetch the latest client code manually
+        # Expected format: C0000000001
+        last_client = db.query(ClientProfile).filter(
+            ClientProfile.client_code.like("C%")
+        ).order_by(ClientProfile.client_code.desc()).first()
+        
+        if not last_client:
+            return "C0000000001"
+            
+        try:
+            current_num = int(last_client.client_code[1:])
+            next_num = current_num + 1
+            return f"C{next_num:010d}"
+        except (ValueError, TypeError):
+            return "C0000000001"
+
+    @staticmethod
+    def create_client(db: Session, client_in: ClientCreate) -> ClientProfile:
         # Check IA Master Limit
         ia_master = db.query(IAMaster).order_by(IAMaster.created_at.desc()).first()
         if not ia_master:
@@ -34,8 +46,31 @@ class ClientService:
         
         if ia_master.current_client_count >= ia_master.max_client_permit:
             raise ValueError(f"Maximum client permit ({ia_master.max_client_permit}) reached.")
+ 
+        # Check existing
+        existing = db.query(ClientProfile).filter(
+            (ClientProfile.email_normalized == client_in.email.lower()) | 
+            (ClientProfile.pan_number == client_in.pan_number)
+        ).first()
 
-        db_client = RemoteClient(**client_in.model_dump())
+        if existing:
+            if existing.deleted_at:
+                raise ValueError("A deactivated client with this email or PAN already exists.")
+            raise ValueError("Client with this email or PAN already exists.")
+
+        create_data = client_in.model_dump()
+        raw_password = create_data.pop("password")
+        
+        # Generate Client Code
+        generated_code = ClientService.generate_next_client_code(db)
+        
+        db_client = ClientProfile(
+            **create_data,
+            client_code=generated_code,
+            password_hash=get_password_hash(raw_password),
+            email_normalized=client_in.email.lower()
+        )
+        
         db.add(db_client)
         
         # Increment client count
@@ -43,28 +78,42 @@ class ClientService:
         
         db.commit()
         db.refresh(db_client)
+        
+        ClientService._log_audit(db, db_client.id, "CREATE")
+        db.commit()
+        
         return db_client
 
     @staticmethod
-    def get_client(db: Session, client_id: uuid.UUID) -> Optional[RemoteClient]:
-        return db.query(RemoteClient).filter(RemoteClient.id == client_id).first()
+    def get_client(db: Session, client_id: uuid.UUID) -> Optional[ClientProfile]:
+        return db.query(ClientProfile).filter(
+            ClientProfile.id == client_id,
+            ClientProfile.deleted_at == None
+        ).first()
 
     @staticmethod
-    def list_clients(db: Session) -> List[RemoteClient]:
-        return db.query(RemoteClient).all()
+    def list_clients(db: Session) -> List[ClientProfile]:
+        return db.query(ClientProfile).filter(ClientProfile.deleted_at == None).all()
 
     @staticmethod
-    def update_client(db: Session, client_id: uuid.UUID, client_in: ClientUpdate) -> Optional[RemoteClient]:
+    def update_client(db: Session, client_id: uuid.UUID, client_in: ClientUpdate) -> Optional[ClientProfile]:
         db_client = ClientService.get_client(db, client_id)
         if not db_client:
             return None
         
         update_data = client_in.model_dump(exclude_unset=True)
+        changes = {}
         for key, value in update_data.items():
-            setattr(db_client, key, value)
+            old_val = getattr(db_client, key)
+            if old_val != value:
+                changes[key] = {"old": str(old_val), "new": str(value)}
+                setattr(db_client, key, value)
             
-        db.commit()
-        db.refresh(db_client)
+        if changes:
+            ClientService._log_audit(db, db_client.id, "UPDATE", changes)
+            db.commit()
+            db.refresh(db_client)
+            
         return db_client
 
     @staticmethod
@@ -77,6 +126,32 @@ class ClientService:
         if ia_master and ia_master.current_client_count > 0:
             ia_master.current_client_count -= 1
             
-        db.delete(db_client)
+        # Soft delete
+        db_client.is_active = False
+        db_client.deleted_at = datetime.utcnow()
+        
+    @staticmethod
+    def generate_pdf(db: Session, client_id: uuid.UUID) -> tuple[bytes, str]:
+        from app.utils.pdf_generator import ClientPDFGenerator
+        db_client = ClientService.get_client(db, client_id)
+        if not db_client:
+            raise ValueError("Client not found")
+
+        # Convert to dict for generator
+        client_dict = {c.name: getattr(db_client, c.name) for c in db_client.__table__.columns}
+        
+        # Ensure numeric fields are actually numbers and not None
+        numeric_fields = ["annual_income", "net_worth", "existing_portfolio_value"]
+        for field in numeric_fields:
+            if client_dict.get(field) is None:
+                client_dict[field] = 0.0
+            else:
+                client_dict[field] = float(client_dict[field])
+
+        pdf_bytes = ClientPDFGenerator.generate_client_report(client_dict)
+        filename = f"Client_Report_{db_client.client_code}_{db_client.client_name.replace(' ', '_')}.pdf"
+        
+        ClientService._log_audit(db, db_client.id, "PDF_EXPORT")
         db.commit()
-        return True
+        
+        return pdf_bytes, filename
