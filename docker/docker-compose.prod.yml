@@ -8,6 +8,8 @@ services:
     container_name: significia-api-prod
     restart: unless-stopped
     command: /entrypoint.sh api
+    ports:
+      - "8000:8000"
     environment:
       - RELOAD=false
     env_file:
