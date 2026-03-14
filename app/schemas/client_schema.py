@@ -142,6 +142,7 @@ class ClientUpdate(BaseModel):
     referral_source: Optional[str] = None
     declaration_signed: Optional[bool] = None
     declaration_date: Optional[date] = None
+    is_active: Optional[bool] = None
     assigned_employee_id: Optional[uuid.UUID] = None
 
 class ClientResponse(ClientBase):

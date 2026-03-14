@@ -129,6 +129,8 @@ class ClientService:
         # Soft delete
         db_client.is_active = False
         db_client.deleted_at = datetime.utcnow()
+        db.commit()
+        return True
         
     @staticmethod
     def generate_pdf(db: Session, client_id: uuid.UUID) -> tuple[bytes, str]:
