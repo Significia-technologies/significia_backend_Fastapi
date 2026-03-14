@@ -79,5 +79,18 @@ def download_client_report(
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+@router.get("/{connector_id}/report")
+def download_master_report(
+    connector_id: uuid.UUID,
+    remote_db: Session = Depends(get_remote_session)
+):
+    try:
+        pdf_bytes, filename = ClientService.generate_master_report(remote_db)
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

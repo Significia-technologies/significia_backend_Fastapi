@@ -155,5 +155,28 @@ class ClientService:
         
         ClientService._log_audit(db, db_client.id, "PDF_EXPORT")
         db.commit()
+        return pdf_bytes, filename
+
+    @staticmethod
+    def generate_master_report(db: Session) -> tuple[bytes, str]:
+        from app.models.ia_master import EmployeeDetails
         
+        # Join query to get client data and assigned employee name
+        results = db.query(
+            ClientProfile,
+            EmployeeDetails.name_of_employee.label("employee_name")
+        ).outerjoin(
+            EmployeeDetails, ClientProfile.assigned_employee_id == EmployeeDetails.id
+        ).filter(ClientProfile.deleted_at == None).all()
+        
+        clients_data = []
+        for client, employee_name in results:
+            data = {c.name: getattr(client, c.name) for c in client.__table__.columns}
+            data["employee_name"] = employee_name
+            clients_data.append(data)
+            
+        from app.utils.pdf_generator import ClientPDFGenerator
+        pdf_bytes = ClientPDFGenerator.generate_client_master_report(clients_data)
+        
+        filename = f"Client_Master_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
         return pdf_bytes, filename

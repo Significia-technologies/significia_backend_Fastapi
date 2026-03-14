@@ -1,5 +1,5 @@
 import io
-from datetime import datetime
+from datetime import datetime, date
 from fpdf import FPDF
 from typing import List
 
@@ -8,9 +8,6 @@ class IAPDFGenerator:
     def generate_ia_report(ia_data: dict, employees: List[dict]) -> bytes:
         pdf = FPDF()
         pdf.add_page()
-        
-        # Add Logo if exists (simulated for now with text box if path exists)
-        # In a real scenario, we'd use pdf.image(ia_data['ia_logo_path'], ...)
         
         # Set font
         pdf.set_font("helvetica", "B", 20)
@@ -23,12 +20,11 @@ class IAPDFGenerator:
         pdf.cell(0, 10, f"Generated on: {current_date}", ln=True, align="R")
         pdf.ln(5)
 
-        # Draw a horizontal line using a thin cell
+        # Draw a horizontal line matching premium aesthetics
         pdf.set_fill_color(0, 123, 255) # Primary blue
         pdf.cell(0, 1, "", ln=True, fill=True)
         pdf.ln(10)
         
-        # Section Header helper
         def section_header(title):
             pdf.set_font("helvetica", "B", 14)
             pdf.set_text_color(0, 123, 255)
@@ -74,12 +70,10 @@ class IAPDFGenerator:
             pdf.set_font("helvetica", "", 10)
             pdf.cell(0, 8, str(value), 0, ln=True)
         
-        # Employee Details Section
         if employees:
             pdf.ln(10)
             section_header("Registered Professionals (Employees)")
             
-            # Table Header
             pdf.set_fill_color(248, 249, 250)
             pdf.set_font("helvetica", "B", 9)
             pdf.cell(50, 10, "Name", 1, 0, 'C', fill=True)
@@ -89,7 +83,6 @@ class IAPDFGenerator:
             
             pdf.set_font("helvetica", "", 9)
             for emp in employees:
-                # Use multi_cell for name if it's too long, or just truncate for now to keep table clean
                 name = emp.get('name_of_employee', '')[:25]
                 designation = emp.get('designation', '')[:25]
                 reg_no = emp.get('ia_registration_number', '')
@@ -100,17 +93,15 @@ class IAPDFGenerator:
                 pdf.cell(40, 10, reg_no, 1, 0, 'C')
                 pdf.cell(50, 10, expiry, 1, 1, 'C')
 
-        # Return the PDF bytes
         return bytes(pdf.output())
 
 class ClientPDFGenerator:
     @staticmethod
     def generate_client_report(client_data: dict) -> bytes:
         pdf = FPDF()
-        pdf.set_auto_page_break(auto=True, margin=5) # Reduced margin to prevent early breakage
+        pdf.set_auto_page_break(auto=True, margin=5)
         pdf.add_page()
         
-        # Color Palette
         accent_grey = (248, 249, 250)
         border_grey = (210, 215, 220)
         text_black = (10, 10, 10)
@@ -118,7 +109,6 @@ class ClientPDFGenerator:
         primary_blue = (0, 70, 160)
         margin = 10
 
-        # Header - Ultra compact
         pdf.set_font("helvetica", "B", 20)
         pdf.set_text_color(*text_black)
         pdf.cell(0, 10, "CLIENT REGISTRATION REPORT", ln=True, align="L")
@@ -138,7 +128,6 @@ class ClientPDFGenerator:
             temp_fields = [f for f in fields if f[1] is not None]
             if not temp_fields: return
 
-            # Section Title
             pdf.set_x(margin)
             pdf.set_font("helvetica", "B", 10.5)
             pdf.set_text_color(*primary_blue)
@@ -158,22 +147,10 @@ class ClientPDFGenerator:
 
                 pdf.set_fill_color(255, 255, 255) if (i // 2) % 2 == 0 else pdf.set_fill_color(254, 254, 254)
 
-                # Store starting position for full-width rows to handle label height matching
                 start_y = pdf.get_y()
                 val1 = str(field1[1]) if str(field1[1]).strip() != "" else "N/A"
 
                 if is_full1:
-                    # Render value first to get height, but we need to render label too.
-                    # We'll calculate height of multi_cell first
-                    pdf.set_font("helvetica", "", 10)
-                    # We use a temp calculation or just render label and then multi_cell
-                    # Labels for full width are taller
-                    pdf.set_font("helvetica", "B", 9)
-                    pdf.set_text_color(*text_muted)
-                    pdf.set_draw_color(*border_grey)
-                    
-                    # For full width, we render the value with multi_cell and then 
-                    # go back to draw the label with the same height
                     pdf.set_x(margin + 40)
                     pdf.set_font("helvetica", "", 10)
                     pdf.set_text_color(*text_black)
@@ -181,7 +158,6 @@ class ClientPDFGenerator:
                     end_y = pdf.get_y()
                     final_h = end_y - start_y
                     
-                    # Go back and draw label
                     pdf.set_xy(margin, start_y)
                     pdf.set_font("helvetica", "B", 9)
                     pdf.set_text_color(*text_muted)
@@ -189,7 +165,6 @@ class ClientPDFGenerator:
                     pdf.set_y(end_y)
                     i += 1
                 elif field2:
-                    # Side by Side
                     pdf.set_font("helvetica", "B", 9)
                     pdf.set_text_color(*text_muted)
                     pdf.set_draw_color(*border_grey)
@@ -199,7 +174,6 @@ class ClientPDFGenerator:
                     pdf.set_text_color(*text_black)
                     pdf.cell(55, row_h, f" {val1}", border='BR', fill=True)
                     
-                    # Col 2
                     pdf.set_font("helvetica", "B", 9)
                     pdf.set_text_color(*text_muted)
                     pdf.cell(40, row_h, f" {field2[0]}", border='BR', fill=True)
@@ -210,7 +184,6 @@ class ClientPDFGenerator:
                     pdf.cell(55, row_h, f" {val2}", border='RBR', fill=True, ln=True)
                     i += 2
                 else:
-                    # Single but not full width
                     pdf.set_font("helvetica", "B", 9)
                     pdf.set_text_color(*text_muted)
                     pdf.cell(40, row_h, f" {field1[0]}", border='LBR', fill=True)
@@ -272,7 +245,6 @@ class ClientPDFGenerator:
             is_last = (i == len(sections) - 1)
             render_compact_section(title, fields, is_last=is_last)
 
-        # Footer - Positioned strictly from bottom
         pdf.set_y(-12)
         pdf.set_x(margin)
         pdf.set_draw_color(*primary_blue)
@@ -285,3 +257,75 @@ class ClientPDFGenerator:
 
         return bytes(pdf.output())
 
+    @staticmethod
+    def generate_client_master_report(clients: List[dict]) -> bytes:
+        pdf = FPDF(orientation="L") 
+        pdf.set_auto_page_break(auto=True, margin=10)
+        pdf.add_page()
+        
+        accent_grey = (248, 249, 250)
+        border_grey = (210, 215, 220)
+        text_black = (10, 10, 10)
+        text_muted = (80, 80, 80)
+        primary_blue = (0, 70, 160)
+        
+        pdf.set_font("helvetica", "B", 18)
+        pdf.set_text_color(*text_black)
+        current_date_str = datetime.now().strftime('%d-%m-%Y')
+        pdf.cell(0, 10, f"ACTIVE CLIENT CODE MASTER UPDATE STATUS AS ON {current_date_str}", ln=True, align="C")
+        pdf.ln(10)
+        
+        headers = [
+            ("Client Code", 25),
+            ("Client Name", 45),
+            ("PAN Number", 30),
+            ("DOB", 25),
+            ("Reg No", 35),
+            ("Advisor Name", 40),
+            ("Relation", 15),
+            ("Assigned Employee", 40),
+            ("Created At", 25)
+        ]
+        
+        pdf.set_font("helvetica", "B", 9)
+        pdf.set_fill_color(*primary_blue)
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_draw_color(*border_grey)
+        
+        for header, width in headers:
+            pdf.cell(width, 10, header, border=1, align="C", fill=True)
+        pdf.ln()
+        
+        pdf.set_font("helvetica", "", 8)
+        pdf.set_text_color(*text_black)
+        
+        alternate = False
+        for client in clients:
+            if alternate:
+                pdf.set_fill_color(*accent_grey)
+            else:
+                pdf.set_fill_color(255, 255, 255)
+            
+            def fmt_date(d):
+                if isinstance(d, (datetime, date)):
+                    return d.strftime('%d-%m-%Y')
+                return str(d) if d else ""
+
+            row_data = [
+                (client.get("client_code", ""), 25),
+                (client.get("client_name", "")[:25], 45),
+                (client.get("pan_number", "").upper(), 30),
+                (fmt_date(client.get("date_of_birth")), 25),
+                (client.get("advisor_registration_number", ""), 35),
+                (client.get("advisor_name", "")[:20], 40),
+                (client.get("relation", "self"), 15),
+                (client.get("employee_name", "Unassigned")[:20], 40),
+                (fmt_date(client.get("created_at")), 25)
+            ]
+            
+            for val, width in row_data:
+                pdf.cell(width, 8, str(val), border=1, align="C", fill=True)
+            pdf.ln()
+            alternate = not alternate
+            
+        return bytes(pdf.output())
