@@ -18,6 +18,8 @@ os.makedirs("uploads/ia_documents", exist_ok=True)
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "https://significia.com",
+    "https://www.significia.com",
 ]
 
 from app.database.session import SessionLocal
