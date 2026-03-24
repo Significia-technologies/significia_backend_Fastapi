@@ -17,19 +17,19 @@ def create_superuser(email: str, password: str):
     tenant_repo = TenantRepository()
     
     try:
-        # 1. Ensure System Admin Tenant exists
-        tenant_name = "System Admin"
-        tenant_subdomain = "admin"
+        # 1. Ensure Global Master Tenant exists
+        tenant_name = "Significia Master"
+        tenant_subdomain = "master"
         
         tenant = db.query(Tenant).filter(Tenant.subdomain == tenant_subdomain).first()
         if not tenant:
-            print(f"[*] Creating '{tenant_name}' tenant...")
+            print(f"[*] Creating '{tenant_name}' global tenant in Master DB...")
             tenant = tenant_repo.create(db, name=tenant_name, subdomain=tenant_subdomain)
             print(f"[+] Tenant created with ID: {tenant.id}")
         else:
-            print(f"[*] Found existing tenant: {tenant.name} ({tenant.subdomain})")
+            print(f"[*] Found existing global tenant: {tenant.name} ({tenant.subdomain})")
 
-        # 2. Create or Update User
+        # 2. Create or Update Super User
         user = user_repo.get_by_email(db, email)
         if user:
             print(f"[*] User {email} already exists. Updating role and password...")
@@ -55,7 +55,7 @@ def create_superuser(email: str, password: str):
 
         print("\n[!] Super User Details:")
         print(f"    - Email: {email}")
-        print(f"    - Tenant: {tenant.name}")
+        print(f"    - Tenant: {tenant.name} (Global)")
         print(f"    - Role: {user.role}")
         print(f"    - Status: {user.status}")
 

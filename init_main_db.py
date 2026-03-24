@@ -15,8 +15,17 @@ from app.models.verification_token import VerificationToken
 
 def init():
     print("Initializing main database (Master Orchestrator)...")
-    # Only the imported models above will be created in the bind engine (Master DB)
-    Base.metadata.create_all(bind=engine)
+    
+    # Explicitly list only the tables we want in the Master DB
+    # This prevents 'leakage' if other scripts import business models.
+    master_tables = [
+        User.__table__, Tenant.__table__, Connector.__table__,
+        ApiKey.__table__, RefreshToken.__table__, UserSession.__table__,
+        LoginAttempt.__table__, MFASecret.__table__, PasswordResetToken.__table__,
+        VerificationToken.__table__
+    ]
+    
+    Base.metadata.create_all(bind=engine, tables=master_tables)
     print("Master tables created successfully.")
     
     with engine.connect() as conn:
@@ -26,3 +35,4 @@ def init():
 
 if __name__ == "__main__":
     init()
+

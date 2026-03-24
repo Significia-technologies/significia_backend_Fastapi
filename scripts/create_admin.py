@@ -11,11 +11,11 @@ from app.schemas.auth_schema import UserRegisterRequest
 from app.repositories.user_repository import UserRepository
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Create a primary admin user.")
-    parser.add_argument("--email", required=True, help="Admin Email")
-    parser.add_argument("--password", required=True, help="Admin Password")
-    parser.add_argument("--company", required=True, help="Admin Company/Tenant Name")
-    parser.add_argument("--name", default="Admin", help="Admin Full Name")
+    parser = argparse.ArgumentParser(description="Create an IA Master (Tenant Owner) user.")
+    parser.add_argument("--email", required=True, help="Owner Email")
+    parser.add_argument("--password", required=True, help="Owner Password")
+    parser.add_argument("--company", required=True, help="Company/Tenant Name")
+    parser.add_argument("--subdomain", required=True, help="Tenant Subdomain")
     return parser.parse_args()
 
 def main():
@@ -38,17 +38,18 @@ def main():
         request_data = UserRegisterRequest(
             email=args.email,
             password=args.password,
-            company_name=args.company
+            company_name=args.company,
+            subdomain=args.subdomain
         )
 
         print(f"[*] Calling auth_service.register_user...")
         user = auth_service.register_user(db, request_data)
         
-        print(f"[*] User object built! Triggering role override commit...")
-        user.role = "super_admin"
+        # Make sure role is set to owner (AuthService does this by default now)
+        user.role = "owner"
         db.commit()
 
-        print(f"[+] Successfully created admin user!")
+        print(f"[+] Successfully created IA Master (Owner) user!")
         print(f"    - Email: {user.email}")
         print(f"    - Tenant ID: {user.tenant_id}")
         print(f"    - Role: {user.role}")
