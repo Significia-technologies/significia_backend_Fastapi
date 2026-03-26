@@ -21,6 +21,8 @@ def get_remote_session(
     tenant's private database connector. Supports JWT or X-API-Key auth.
     """
     tenant_id = None
+    is_super_admin = False
+    
     if x_api_key:
         hashed = hashlib.sha256(x_api_key.encode()).hexdigest()
         api_key_obj = db.query(ApiKey).filter(ApiKey.hashed_key == hashed, ApiKey.is_active == True).first()
@@ -30,14 +32,18 @@ def get_remote_session(
     elif token:
         user = get_current_user(db=db, token=token)
         tenant_id = user.tenant_id
+        is_super_admin = user.role == "super_admin"
         
     if not tenant_id:
         raise HTTPException(status_code=401, detail="Authentication required (JWT or X-API-Key)")
 
-    connector = db.query(Connector).filter(
-        Connector.id == connector_id,
-        Connector.tenant_id == tenant_id
-    ).first()
+    if is_super_admin:
+        connector = db.query(Connector).filter(Connector.id == connector_id).first()
+    else:
+        connector = db.query(Connector).filter(
+            Connector.id == connector_id,
+            Connector.tenant_id == tenant_id
+        ).first()
 
     if not connector:
         raise HTTPException(status_code=404, detail="Connector not found")

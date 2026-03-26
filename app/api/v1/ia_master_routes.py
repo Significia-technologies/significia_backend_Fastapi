@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_current_user
 from app.database.remote_session import get_remote_session
-from app.schemas.ia_master import IAMasterRead, IANumberValidationResponse, IAMasterPermitUpdate
+from app.schemas.ia_master import IAMasterRead, IANumberValidationResponse, IAMasterPermitUpdate, IAMasterListResponse
 from app.services.ia_master_service import IAMasterService
 from app.models.user import User
 
@@ -108,6 +108,16 @@ async def get_latest_ia(
     current_user: User = Depends(get_current_user)
 ):
     return await ia_service.get_latest_ia(db)
+
+@router.get("/list", response_model=IAMasterListResponse)
+async def get_all_ias(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_remote_session),
+    current_user: User = Depends(get_current_user)
+):
+    # In a real app we might check if user is super admin here.
+    return await ia_service.get_all_ias(db, skip=skip, limit=limit)
 
 @router.patch("/{ia_id}/client-permit", response_model=IAMasterRead)
 async def update_client_permit(

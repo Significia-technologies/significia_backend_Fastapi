@@ -132,6 +132,21 @@ class IAMasterService:
             await self.sign_file_urls(db_ia, db)
         return db_ia
 
+    async def get_all_ias(self, db: Session, skip: int = 0, limit: int = 100) -> dict:
+        total_count = self.ia_repo.get_count(db)
+        ias = self.ia_repo.get_all(db, skip=skip, limit=limit)
+        
+        # Sign URLs for each item
+        for ia in ias:
+            await self.sign_file_urls(ia, db)
+            
+        self.audit_repo.log_event(db, "VIEW", "ia_master", "ALL", f"Viewed IA Master list (skip={skip}, limit={limit})")
+        
+        return {
+            "items": ias,
+            "total_count": total_count
+        }
+
     def update_client_permit(self, db: Session, ia_id: uuid.UUID, max_permit: int):
         db_ia = self.ia_repo.get_by_id(db, ia_id)
         if not db_ia:
