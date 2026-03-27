@@ -8,6 +8,12 @@ class IAMasterRepository:
     def get_by_id(self, db: Session, ia_id: uuid.UUID) -> Optional[IAMaster]:
         return db.query(IAMaster).filter(IAMaster.id == ia_id).first()
 
+    def get_all(self, db: Session, skip: int = 0, limit: int = 100) -> List[IAMaster]:
+        return db.query(IAMaster).order_by(IAMaster.created_at.desc()).offset(skip).limit(limit).all()
+
+    def get_count(self, db: Session) -> int:
+        return db.query(IAMaster).count()
+
     def get_latest(self, db: Session) -> Optional[IAMaster]:
         return db.query(IAMaster).order_by(IAMaster.id.desc()).first()
 

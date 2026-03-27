@@ -28,7 +28,9 @@ class ConnectorService:
         ).first()
 
     @staticmethod
-    def list_connectors(db: Session, tenant_id: uuid.UUID) -> List[Connector]:
+    def list_connectors(db: Session, tenant_id: uuid.UUID, is_super_admin: bool = False) -> List[Connector]:
+        if is_super_admin:
+            return db.query(Connector).all()
         return db.query(Connector).filter(Connector.tenant_id == tenant_id).all()
 
     @staticmethod

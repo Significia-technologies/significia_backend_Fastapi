@@ -6,6 +6,9 @@ from sqlalchemy.orm import Session
 from app.database.remote_session import get_remote_session
 from app.schemas.client_schema import ClientCreate, ClientUpdate, ClientResponse
 from app.services.client_service import ClientService
+from app.utils.reports.client_blank_form import generate_client_blank_form
+from app.utils.file_utils import resolve_logo_to_local_path
+from app.models.ia_master import IAMaster
 
 router = APIRouter()
 
@@ -37,6 +40,17 @@ def get_client(
     remote_db: Session = Depends(get_remote_session)
 ):
     client = ClientService.get_client(remote_db, client_id)
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return client
+
+@router.get("/{connector_id}/clients/pan/{pan}", response_model=ClientResponse)
+def get_client_by_pan(
+    connector_id: uuid.UUID,
+    pan: str,
+    remote_db: Session = Depends(get_remote_session)
+):
+    client = ClientService.get_client_by_pan(remote_db, pan)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
     return client
@@ -89,6 +103,30 @@ def download_master_report(
         pdf_bytes, filename = ClientService.generate_master_report(remote_db)
         return Response(
             content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{connector_id}/blank-form")
+async def download_client_blank_form(
+    connector_id: uuid.UUID,
+    remote_db: Session = Depends(get_remote_session),
+):
+    """Download a blank client registration form as PDF."""
+    try:
+        # Get IA Logo if available
+        ia_logo_path = None
+        ia_master = remote_db.query(IAMaster).first()
+        if ia_master:
+            ia_logo_path = await resolve_logo_to_local_path(ia_master.ia_logo_path, remote_db)
+
+        pdf_stream = generate_client_blank_form(ia_logo_path=ia_logo_path)
+        
+        filename = "Client_Registration_Form.pdf"
+        return Response(
+            content=pdf_stream.getvalue(),
             media_type="application/pdf",
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )

@@ -25,3 +25,8 @@ class BaseStorage(ABC):
     async def test_connection(self) -> bool:
         """Test if the storage connection is valid."""
         pass
+
+    @abstractmethod
+    async def download_file(self, remote_path: str) -> Optional[bytes]:
+        """Download a file from the storage provider and return bytes."""
+        pass

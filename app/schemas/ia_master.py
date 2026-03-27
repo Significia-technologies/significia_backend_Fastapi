@@ -81,6 +81,10 @@ class IAMasterRead(IAMasterBase):
     employees: List[EmployeeRead] = []
     model_config = ConfigDict(from_attributes=True)
 
+class IAMasterListResponse(BaseModel):
+    items: List[IAMasterRead]
+    total_count: int
+
 # Audit Trail Schemas
 class AuditTrailBase(BaseModel):
     action_type: str

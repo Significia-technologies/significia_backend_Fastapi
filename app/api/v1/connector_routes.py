@@ -23,7 +23,8 @@ def list_connectors(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return ConnectorService.list_connectors(db, current_user.tenant_id)
+    is_super_admin = current_user.role == "super_admin"
+    return ConnectorService.list_connectors(db, current_user.tenant_id, is_super_admin=is_super_admin)
 
 @router.get("/{connector_id}", response_model=ConnectorResponse)
 def get_connector(
