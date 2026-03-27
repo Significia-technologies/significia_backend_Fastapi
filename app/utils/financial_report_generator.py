@@ -39,10 +39,16 @@ try:
             canvas.Canvas.save(self)
 
         def draw_page_number(self, page_count):
+            # Footer: Page numbers
             self.setFont("Helvetica", 9)
             current_page = self._pageNumber
             text = f"Page {current_page} of {page_count}"
             self.drawCentredString(300, 20, text)
+            # Header: STRICTLY CONFIDENTIAL (top-right, every page)
+            self.setFont("Helvetica-Oblique", 7)
+            self.setFillColor(colors.grey)
+            self.drawRightString(570, 820, "STRICTLY CONFIDENTIAL")
+            self.setFillColor(colors.black)
 
 except ImportError:
     PDF_AVAILABLE = False
@@ -74,6 +80,30 @@ def format_number(val: float) -> str:
         return "0"
     return f"{val:,.0f}"
 
+def resolve_logo_path(logo_path: Optional[str]) -> Optional[str]:
+    """Try multiple strategies to find the logo file on disk."""
+    if not logo_path:
+        return None
+    # Strategy 1: Absolute path as-is
+    if os.path.isabs(logo_path) and os.path.exists(logo_path):
+        return logo_path
+    # Strategy 2: Relative to CWD (default abspath)
+    abs_path = os.path.abspath(logo_path)
+    if os.path.exists(abs_path):
+        return abs_path
+    # Strategy 3: Relative to this file's directory (app/utils/)
+    file_dir = os.path.dirname(os.path.abspath(__file__))
+    backend_root = os.path.abspath(os.path.join(file_dir, '..', '..'))
+    joined_path = os.path.join(backend_root, logo_path)
+    if os.path.exists(joined_path):
+        return joined_path
+    # Strategy 4: Try prepending 'uploads/' if not already there
+    if not logo_path.startswith('uploads'):
+        uploads_path = os.path.join(backend_root, 'uploads', logo_path)
+        if os.path.exists(uploads_path):
+            return uploads_path
+    return None
+
 
 class FinancialReportGenerator:
     """
@@ -99,37 +129,43 @@ class FinancialReportGenerator:
         normal_style = ParagraphStyle('CustomNormal', parent=styles['Normal'], fontSize=10, spaceAfter=6)
         bold_style = ParagraphStyle('CustomBold', parent=styles['Normal'], fontSize=10, spaceAfter=6, fontName='Helvetica-Bold')
 
-        # Header with Logo
-        if ia_logo_path and os.path.exists(ia_logo_path):
+        # --- PREMIUM COVER PAGE ---
+        elements.append(Spacer(1, 2*inch))
+        
+        # Centered Logo on Cover (Robust Path Resolution)
+        resolved_logo = resolve_logo_path(ia_logo_path)
+        if resolved_logo:
             try:
-                header_data = [[
-                    Image(ia_logo_path, width=1.2*inch, height=1.2*inch, hAlign='LEFT'),
-                    Paragraph('COMPREHENSIVE FINANCIAL ANALYSIS REPORT', title_style)
-                ]]
-                header_table = Table(header_data, colWidths=[1.5*inch, 5*inch])
-                header_table.setStyle(TableStyle([
-                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                    ('LEFTPADDING', (0, 0), (0, 0), 0),
-                    ('RIGHTPADDING', (0, 0), (0, 0), 10),
-                ]))
-                elements.append(header_table)
+                logo = Image(resolved_logo, width=2.5*inch, height=2.5*inch)
+                elements.append(logo)
+                elements.append(Spacer(1, 0.4*inch))
             except:
-                elements.append(Paragraph("COMPREHENSIVE FINANCIAL ANALYSIS REPORT", title_style))
-        else:
-            elements.append(Paragraph("COMPREHENSIVE FINANCIAL ANALYSIS REPORT", title_style))
+                pass
 
-        elements.append(Paragraph(f"Client: {client_name}", subtitle_style))
-
-        # IA Info
+        # Premium Cover Title (Dark Blue)
+        premium_title_style = ParagraphStyle('PremiumTitle', parent=title_style, textColor=colors.HexColor('#0369a1'), fontSize=28)
+        elements.append(Paragraph("COMPREHENSIVE FINANCIAL ANALYSIS REPORT", premium_title_style))
+        elements.append(Spacer(1, 1.2*inch))
+        
+        # Details Table (Professional Layout)
+        cover_details = [
+            [Paragraph(f"<b>CLIENT NAME:</b> {client_name.upper()}", normal_style)],
+            [Paragraph(f"<b>PREPARED BY:</b> {profile.client.advisor_name or 'INVESTMENT ADVISOR'}", normal_style)],
+            [Paragraph(f"<b>REPORT DATE:</b> {datetime.now().strftime('%d %B, %Y').upper()}", normal_style)]
+        ]
         if profile.client.client_code:
-            elements.append(Paragraph(f"Client Code: {profile.client.client_code}", normal_style))
-        if profile.client.advisor_name:
-            elements.append(Paragraph(f"Investment Advisor: {profile.client.advisor_name}", normal_style))
-            if profile.client.advisor_registration_number:
-                elements.append(Paragraph(f"IA Registration Number: {profile.client.advisor_registration_number}", normal_style))
-
-        elements.append(Paragraph(f"Report Date: {datetime.now().strftime('%d %B, %Y')}", normal_style))
-        elements.append(Spacer(1, 20))
+            cover_details.insert(1, [Paragraph(f"<b>CLIENT CODE:</b> {profile.client.client_code}", normal_style)])
+            
+        t_cover = Table(cover_details, colWidths=[4.5*inch])
+        t_cover.setStyle(TableStyle([
+            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 12),
+        ]))
+        elements.append(t_cover)
+        
+        elements.append(PageBreak())
+        # --- END PREMIUM COVER PAGE ---
 
         # 1. CLIENT INFORMATION
         elements.append(Paragraph('1. Client Information', section_style))
@@ -573,9 +609,45 @@ class FinancialReportGenerator:
             raise ImportError("python-docx is not installed.")
 
         doc = Document()
-        doc.add_heading("COMPREHENSIVE FINANCIAL ANALYSIS REPORT", 0)
-        doc.add_paragraph(f"Client: {client_name}")
-        doc.add_paragraph(f"Date: {datetime.now().strftime('%d %B, %Y')}")
+        # Add Header: STRICTLY CONFIDENTIAL
+        section = doc.sections[0]
+        header = section.header
+        htab = header.paragraphs[0]
+        htab.text = "STRICTLY CONFIDENTIAL"
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        htab.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        # --- PREMIUM COVER PAGE ---
+        for _ in range(5): doc.add_paragraph()
+        
+        # Center the logo if available (Robust Path Resolution)
+        resolved_logo = resolve_logo_path(ia_logo_path)
+        if resolved_logo:
+            try:
+                doc.add_picture(resolved_logo, width=Inches(2.5))
+                last_paragraph = doc.paragraphs[-1]
+                last_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            except:
+                pass
+        
+        for _ in range(2): doc.add_paragraph()
+        
+        title = doc.add_heading("COMPREHENSIVE FINANCIAL ANALYSIS REPORT", 0)
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        # Dark Blue Title in Word (closest style for Headings if possible)
+        
+        for _ in range(4): doc.add_paragraph()
+        
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = p.add_run(f"CLIENT NAME: {client_name.upper()}\n")
+        run.bold = True
+        if profile.client.client_code:
+            p.add_run(f"CLIENT CODE: {profile.client.client_code}\n")
+        p.add_run(f"PREPARED BY: {profile.client.advisor_name or 'INVESTMENT ADVISOR'}\n")
+        p.add_run(f"REPORT DATE: {datetime.now().strftime('%d %B, %Y').upper()}")
+        
+        doc.add_page_break()
+        # --- END PREMIUM COVER PAGE ---
 
         def add_table(title, data):
             doc.add_heading(title, level=1)
