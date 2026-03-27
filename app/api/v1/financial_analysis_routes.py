@@ -240,6 +240,59 @@ def get_calculation_details(
     return details
 
 
+@router.get("/{connector_id}/form")
+async def download_blank_form(
+    connector_id: uuid.UUID,
+    remote_db: Session = Depends(get_remote_session),
+):
+    """Download a blank financial analysis data entry form as PDF."""
+    # Get IA Logo if available (similar logic to download_pdf)
+    ia_logo_path = None
+    ia_master = remote_db.query(IAMaster).first()
+    if ia_master and ia_master.ia_logo_path:
+        logo_db_path = ia_master.ia_logo_path
+        if logo_db_path.startswith(("http://", "https://")):
+            import httpx
+            try:
+                async with httpx.AsyncClient() as client_http:
+                    resp = await client_http.get(logo_db_path)
+                    if resp.status_code == 200:
+                        ext = os.path.splitext(logo_db_path.split('?')[0])[1] or '.png'
+                        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+                        tmp.write(resp.content)
+                        tmp.close()
+                        ia_logo_path = tmp.name
+            except Exception:
+                pass
+        elif logo_db_path.startswith("docs/"):
+            from app.services.storage_service import StorageService
+            driver = StorageService.get_tenant_storage(remote_db)
+            if driver:
+                try:
+                    file_bytes = await driver.download_file(logo_db_path)
+                    if file_bytes:
+                        ext = os.path.splitext(logo_db_path)[1] or '.png'
+                        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+                        tmp.write(file_bytes)
+                        tmp.close()
+                        ia_logo_path = tmp.name
+                except Exception:
+                    pass
+        else:
+            abs_path = os.path.abspath(logo_db_path)
+            if os.path.exists(abs_path):
+                ia_logo_path = abs_path
+
+    pdf_stream = FinancialReportGenerator.generate_blank_form(ia_logo_path=ia_logo_path)
+    
+    filename = "Financial_Analysis_Data_Entry_Form.pdf"
+    return Response(
+        content=pdf_stream.getvalue(),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
 @router.get("/{connector_id}/analysis/client/{client_id}", response_model=FinancialAnalysisResponse)
 def get_latest_analysis_for_client(
     connector_id: uuid.UUID,

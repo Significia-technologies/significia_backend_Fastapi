@@ -603,6 +603,237 @@ class FinancialReportGenerator:
         return buffer
 
     @staticmethod
+    def generate_blank_form(ia_logo_path: Optional[str] = None) -> io.BytesIO:
+        """Generate a professionally styled, grid-based blank Financial Analysis Form."""
+        if not PDF_AVAILABLE:
+            raise ImportError("reportlab is not installed.")
+
+        buffer = io.BytesIO()
+        # Compact margins for maximum writing space
+        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+        elements = []
+        styles = getSampleStyleSheet()
+
+        # Custom Styles
+        title_style = ParagraphStyle('FormTitle', parent=styles['Heading1'], fontSize=18, alignment=1, spaceAfter=8, textColor=colors.HexColor('#1e293b'), fontName='Helvetica-Bold')
+        section_style = ParagraphStyle('FormSection', parent=styles['Normal'], fontSize=11, textColor=colors.white, fontName='Helvetica-Bold')
+        label_style = ParagraphStyle('FormLabel', parent=styles['Normal'], fontSize=9, fontName='Helvetica-Bold', leading=10)
+        footer_style = ParagraphStyle('Footer', parent=styles['Normal'], fontSize=7, textColor=colors.grey, alignment=1)
+
+        def add_section_header(text):
+            data = [[Paragraph(text.upper(), section_style)]]
+            t = Table(data, colWidths=[535]) # Full width minus 30*2 margins
+            t.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#1e293b')),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+                ('TOPPADDING', (0,0), (-1,-1), 6),
+                ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+            ]))
+            elements.append(t)
+            elements.append(Spacer(1, 2))
+
+        # --- HEADER ---
+        header_data = []
+        resolved_logo = resolve_logo_path(ia_logo_path)
+        if resolved_logo:
+            try:
+                logo = Image(resolved_logo, width=0.8*inch, height=0.8*inch)
+                header_data.append([logo, Paragraph("FINANCIAL ANALYSIS DATA ENTRY FORM", title_style), ""])
+            except:
+                header_data.append(["", Paragraph("FINANCIAL ANALYSIS DATA ENTRY FORM", title_style), ""])
+        else:
+            header_data.append(["", Paragraph("FINANCIAL ANALYSIS DATA ENTRY FORM", title_style), ""])
+        
+        t_header = Table(header_data, colWidths=[80, 375, 80])
+        t_header.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('ALIGN', (1,0), (1,0), 'CENTER')]))
+        elements.append(t_header)
+        elements.append(Spacer(1, 10))
+
+        # Advisor Info Grid
+        info_data = [
+            [Paragraph("Advisor Name", label_style), "____________________________", Paragraph("Advisor ID", label_style), "________________"],
+            [Paragraph("Client Name", label_style), "____________________________", Paragraph("Date", label_style), datetime.now().strftime('%d/%m/%Y')],
+            [Paragraph("Client Code", label_style), "____________________________", "", ""]
+        ]
+        t_info = Table(info_data, colWidths=[110, 230, 90, 105], rowHeights=25)
+        t_info.setStyle(TableStyle([
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.white),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 5)
+        ]))
+        elements.append(t_info)
+        elements.append(Spacer(1, 10))
+
+        # 1. PERSONAL INFORMATION
+        add_section_header("1. Personal & Family Profile")
+        personal_data = [
+            [Paragraph("Full Name (Client)", label_style), "________________________________________", Paragraph("DOB", label_style), "___________"],
+            [Paragraph("Occupation", label_style), "________________________________________", Paragraph("PAN", label_style), "___________"],
+            [Paragraph("Email ID", label_style), "________________________________________", Paragraph("Contact", label_style), "___________"],
+            [Paragraph("Annual Income", label_style), "Rs. ____________________", "", ""],
+            [Paragraph("Full Name (Spouse)", label_style), "________________________________________", Paragraph("DOB", label_style), "___________"],
+            [Paragraph("Occupation", label_style), "________________________________________", "", ""]
+        ]
+        t_personal = Table(personal_data, colWidths=[120, 255, 50, 110], rowHeights=28)
+        t_personal.setStyle(TableStyle([
+            ('GRID', (0,0), (-1,-1), 0.5, colors.lightgrey),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('SPAN', (1,0), (1,0)), ('SPAN', (1,1), (1,1)), ('SPAN', (1,2), (1,2)),
+            ('SPAN', (1,4), (1,4)), ('SPAN', (1,5), (3,5)),
+            ('PADDING', (0,0), (-1,-1), 6)
+        ]))
+        elements.append(t_personal)
+        elements.append(Spacer(1, 10))
+
+        # 2. CHILDREN
+        add_section_header("2. Children Details")
+        child_data = [
+            [Paragraph("No.", label_style), Paragraph("Child Full Name", label_style), Paragraph("Date of Birth", label_style), Paragraph("Occupation / Status", label_style)],
+            ["1", "________________________________________", "________________", "________________________"],
+            ["2", "________________________________________", "________________", "________________________"],
+            ["3", "________________________________________", "________________", "________________________"],
+        ]
+        t_child = Table(child_data, colWidths=[40, 240, 100, 155], rowHeights=30)
+        t_child.setStyle(TableStyle([
+            ('GRID', (0,0), (-1,-1), 0.5, colors.black),
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f1f5f9')),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('ALIGN', (0,0), (0,-1), 'CENTER'),
+            ('PADDING', (0,0), (-1,-1), 8)
+        ]))
+        elements.append(t_child)
+        elements.append(Spacer(1, 10))
+
+        # 3. ANNUAL EXPENSES
+        add_section_header("3. Annual Expenses (Estimated Rs.)")
+        exp_list = [
+            ['Household / Groceries', 'Education & Children'],
+            ['Medical & Healthcare', 'Travel & Transport'],
+            ['Electricity & Water', 'Telephone & Internet'],
+            ['Maid & Domestic Help', 'EMI (Loans)'],
+            ['Leisure & Entertainment', 'Insurance Premiums'],
+            ['Rent / Maintenance', 'Others Outgo']
+        ]
+        exp_rows = []
+        for pair in exp_list:
+            row = []
+            for item in pair:
+                row.append(Paragraph(item, label_style))
+                row.append("Rs. __________")
+            exp_rows.append(row)
+        
+        t_exp = Table(exp_rows, colWidths=[160, 107.5, 160, 107.5], rowHeights=30)
+        t_exp.setStyle(TableStyle([
+            ('GRID', (0,0), (-1,-1), 0.5, colors.lightgrey),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('PADDING', (0,0), (-1,-1), 8)
+        ]))
+        elements.append(t_exp)
+
+        # 4. ASSETS & 5. LIABILITIES
+        elements.append(PageBreak())
+        add_section_header("4. Assets & 5. Liabilities (Rs.)")
+        al_data = [
+            [Paragraph("<b>ASSET DESCRIPTION</b>", label_style), Paragraph("<b>VALUE (Rs.)</b>", label_style), Paragraph("<b>LIABILITY DESCRIPTION</b>", label_style), Paragraph("<b>OUTSTANDING (Rs.)</b>", label_style)],
+            ["Real Estate (Res)", "___________", "Home / Housing Loan", "___________"],
+            ["Real Estate (Other)", "___________", "Personal / Top-up Loan", "___________"],
+            ["Mutual Funds / Equity", "___________", "Credit Card Dues", "___________"],
+            ["Fixed Dep / Bank Bal", "___________", "Vehicle Loan", "___________"],
+            ["Retirement (PF/PPF)", "___________", "Others LIAB", "___________"],
+            ["Others ASSETS", "___________", "", ""],
+        ]
+        t_al = Table(al_data, colWidths=[175, 92.5, 175, 92.5], rowHeights=32)
+        t_al.setStyle(TableStyle([
+            ('GRID', (0,0), (-1,-1), 0.5, colors.black),
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f1f5f9')),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('PADDING', (0,0), (-1,-1), 8)
+        ]))
+        elements.append(t_al)
+        elements.append(Spacer(1, 10))
+
+        # 6. INSURANCE
+        add_section_header("6. Insurance Information")
+        ins_data = [
+            [Paragraph("Insurance Type", label_style), Paragraph("Sum Assured / Cover", label_style), Paragraph("Annual Premium Paid", label_style)],
+            ["Life Insurance (Term/Endow)", "Rs. ________________", "Rs. ________________"],
+            ["Health Insurance (Mediclaim)", "Rs. ________________", "Rs. ________________"],
+            ["Critical Illness / PA", "Rs. ________________", "Rs. ________________"],
+            ["Motor / Asset Insurance", "Rs. ________________", "Rs. ________________"],
+        ]
+        t_ins = Table(ins_data, colWidths=[185, 175, 175], rowHeights=32)
+        t_ins.setStyle(TableStyle([
+            ('GRID', (0,0), (-1,-1), 0.5, colors.black),
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f1f5f9')),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('PADDING', (0,0), (-1,-1), 8)
+        ]))
+        elements.append(t_ins)
+        
+        elements.append(Spacer(1, 5))
+        mb_data = [[Paragraph("<b>Medical Bonus Years:</b> ____", label_style), Paragraph("<b>Avg. Bonus Percentage (%):</b> ____", label_style)]]
+        t_mb = Table(mb_data, colWidths=[267.5, 267.5], rowHeights=28)
+        t_mb.setStyle(TableStyle([('GRID', (0,0), (-1,-1), 0.5, colors.lightgrey), ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('PADDING', (0,0), (-1,-1), 6)]))
+        elements.append(t_mb)
+        elements.append(Spacer(1, 10))
+
+        # 7. ASSUMPTIONS & GOALS
+        add_section_header("7. Financial Assumptions & Major Goals")
+        ass_data = [
+            [Paragraph("Retirement Age", label_style), "_________", Paragraph("Inflation Rate (%)", label_style), "_________"],
+            [Paragraph("Life Exp (Client)", label_style), "_________", Paragraph("Life Exp (Spouse)", label_style), "_________"],
+            [Paragraph("Med. Inflation (%)", label_style), "_________", Paragraph("Pre-Ret Return (%)", label_style), "_________"],
+            [Paragraph("Income Increment (%)", label_style), "_________", Paragraph("Post-Ret Return (%)", label_style), "_________"],
+            [Paragraph("SOL for HLV (%)", label_style), "_________", Paragraph("SOL for Retire (%)", label_style), "_________"],
+        ]
+        t_ass = Table(ass_data, colWidths=[160, 107.5, 160, 107.5], rowHeights=28)
+        t_ass.setStyle(TableStyle([
+            ('GRID', (0,0), (-1,-1), 0.5, colors.lightgrey),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('PADDING', (0,0), (-1,-1), 6)
+        ]))
+        elements.append(t_ass)
+        elements.append(Spacer(1, 10))
+
+        goal_data = [
+            ["", Paragraph("<b>Education Goal (Children)</b>", label_style), Paragraph("<b>Marriage Goal (Children)</b>", label_style)],
+            [Paragraph("Corpus Needed", label_style), "Rs. ____________________", "Rs. ____________________"],
+            [Paragraph("Years to Goal", label_style), "________________________", "________________________"],
+            [Paragraph("Allocation (%)", label_style), "________________________", "________________________"],
+        ]
+        t_goals = Table(goal_data, colWidths=[145, 195, 195], rowHeights=[25, 32, 32, 32])
+        t_goals.setStyle(TableStyle([
+            ('GRID', (0,0), (-1,-1), 0.5, colors.black),
+            ('BACKGROUND', (1,0), (2,0), colors.HexColor('#f1f5f9')),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('PADDING', (0,0), (-1,-1), 8)
+        ]))
+        elements.append(t_goals)
+
+        # 8. NOTES & SIGNATURES
+        elements.append(Spacer(1, 15))
+        add_section_header("8. Discussion Notes & Signatures")
+        notes_data = [[Paragraph("Detailed Discussion Remarks / Client Requests:", label_style)], ["\n\n\n\n\n\n\n\n\n\n"]]
+        t_notes = Table(notes_data, colWidths=[535], rowHeights=[25, 300])
+        t_notes.setStyle(TableStyle([('GRID', (0,0), (-1,-1), 0.5, colors.black), ('VALIGN', (0,0), (-1,-1), 'TOP'), ('PADDING', (0,0), (-1,-1), 8)]))
+        elements.append(t_notes)
+        elements.append(Spacer(1, 30))
+
+        sig_data = [
+            ["_________________________", "_________________________"],
+            [Paragraph("<b>Client Signature</b>", label_style), Paragraph("<b>Advisor Signature</b>", label_style)],
+            ["Name: __________________", "Name: __________________"],
+            ["Date: ____ / ____ / 202____", "Date: ____ / ____ / 202____"]
+        ]
+        t_sig = Table(sig_data, colWidths=[2.8*inch, 2.8*inch], rowHeights=[30, 20, 30, 30])
+        t_sig.setStyle(TableStyle([('ALIGN', (0,0), (-1,-1), 'CENTER'), ('VALIGN', (0,0), (-1,-1), 'MIDDLE')]))
+        elements.append(t_sig)
+
+        doc.build(elements, canvasmaker=NumberedCanvas)
+        buffer.seek(0)
+        return buffer
+
+    @staticmethod
     def generate_docx(result: Any, profile: Any, client_name: str, ia_logo_path: Optional[str] = None) -> io.BytesIO:
         """Generate Word report as a byte stream with 15 sections."""
         if not WORD_AVAILABLE:
