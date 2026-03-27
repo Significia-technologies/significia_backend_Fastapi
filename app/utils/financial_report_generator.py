@@ -84,24 +84,28 @@ def resolve_logo_path(logo_path: Optional[str]) -> Optional[str]:
     """Try multiple strategies to find the logo file on disk."""
     if not logo_path:
         return None
-    # Strategy 1: Absolute path as-is
+        
+    # Strategy 1: Absolute path (most likely from resolve_logo_to_local_path utility)
     if os.path.isabs(logo_path) and os.path.exists(logo_path):
         return logo_path
-    # Strategy 2: Relative to CWD (default abspath)
-    abs_path = os.path.abspath(logo_path)
-    if os.path.exists(abs_path):
-        return abs_path
-    # Strategy 3: Relative to this file's directory (app/utils/)
+        
+    # Strategy 2: Relative to CWD
+    if os.path.exists(logo_path):
+        return os.path.abspath(logo_path)
+
+    # Strategy 3: Relative to backend root
     file_dir = os.path.dirname(os.path.abspath(__file__))
     backend_root = os.path.abspath(os.path.join(file_dir, '..', '..'))
     joined_path = os.path.join(backend_root, logo_path)
     if os.path.exists(joined_path):
         return joined_path
-    # Strategy 4: Try prepending 'uploads/' if not already there
-    if not logo_path.startswith('uploads'):
+
+    # Strategy 4: Try prepending 'uploads/' if it's a relative path starting with 'ia_documents'
+    if not logo_path.startswith('uploads/') and 'ia_documents' in logo_path:
         uploads_path = os.path.join(backend_root, 'uploads', logo_path)
         if os.path.exists(uploads_path):
             return uploads_path
+
     return None
 
 
@@ -139,8 +143,9 @@ class FinancialReportGenerator:
                 logo = Image(resolved_logo, width=2.5*inch, height=2.5*inch)
                 elements.append(logo)
                 elements.append(Spacer(1, 0.4*inch))
-            except:
-                pass
+            except Exception as e:
+                print(f"Error rendering logo in PDF cover: {e}")
+                elements.append(Paragraph(f"[Logo Error: {e}]", normal_style))
 
         # Premium Cover Title (Dark Blue)
         premium_title_style = ParagraphStyle('PremiumTitle', parent=title_style, textColor=colors.HexColor('#0369a1'), fontSize=28)
@@ -639,7 +644,8 @@ class FinancialReportGenerator:
             try:
                 logo = Image(resolved_logo, width=0.8*inch, height=0.8*inch)
                 header_data.append([logo, Paragraph("FINANCIAL ANALYSIS DATA ENTRY FORM", title_style), ""])
-            except:
+            except Exception as e:
+                print(f"Error rendering logo in Blank Form: {e}")
                 header_data.append(["", Paragraph("FINANCIAL ANALYSIS DATA ENTRY FORM", title_style), ""])
         else:
             header_data.append(["", Paragraph("FINANCIAL ANALYSIS DATA ENTRY FORM", title_style), ""])
@@ -857,8 +863,8 @@ class FinancialReportGenerator:
                 doc.add_picture(resolved_logo, width=Inches(2.5))
                 last_paragraph = doc.paragraphs[-1]
                 last_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            except:
-                pass
+            except Exception as e:
+                print(f"Error rendering logo in Word report: {e}")
         
         for _ in range(2): doc.add_paragraph()
         

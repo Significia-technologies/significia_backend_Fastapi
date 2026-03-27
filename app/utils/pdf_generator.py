@@ -1,18 +1,31 @@
 import io
+import os
 from datetime import datetime, date
 from fpdf import FPDF
-from typing import List
+from typing import List, Optional
 
 class IAPDFGenerator:
     @staticmethod
-    def generate_ia_report(ia_data: dict, employees: List[dict]) -> bytes:
+    def generate_ia_report(ia_data: dict, employees: List[dict], logo_path: Optional[str] = None) -> bytes:
         pdf = FPDF()
         pdf.add_page()
         
         # Set font
         pdf.set_font("helvetica", "B", 20)
         pdf.set_text_color(33, 37, 41) # Dark grey
-        pdf.cell(0, 15, "INVESTMENT ADVISOR MASTER REPORT", ln=True, align="C")
+        
+        # Add Logo if available
+        if logo_path and os.path.exists(logo_path):
+            try:
+                # Add logo at top left
+                pdf.image(logo_path, 10, 8, 33)
+                pdf.set_x(50) # Move text to the right of logo
+                pdf.cell(0, 15, "INVESTMENT ADVISOR MASTER REPORT", ln=True, align="L")
+            except Exception as e:
+                print(f"Error rendering logo in IA Master Report: {e}")
+                pdf.cell(0, 15, "INVESTMENT ADVISOR MASTER REPORT", ln=True, align="C")
+        else:
+            pdf.cell(0, 15, "INVESTMENT ADVISOR MASTER REPORT", ln=True, align="C")
         
         pdf.set_font("helvetica", "I", 10)
         pdf.set_text_color(108, 117, 125) # Muted grey

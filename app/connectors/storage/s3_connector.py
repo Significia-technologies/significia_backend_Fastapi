@@ -92,3 +92,13 @@ class S3Storage(BaseStorage):
         except Exception as e:
             print(f"S3 connection test failed: {e}")
             return False
+
+    async def download_file(self, remote_path: str) -> Optional[bytes]:
+        try:
+            import io
+            buffer = io.BytesIO()
+            self.s3_client.download_fileobj(self.bucket_name, remote_path, buffer)
+            return buffer.getvalue()
+        except ClientError as e:
+            print(f"S3 Download failed: {e}")
+            return None

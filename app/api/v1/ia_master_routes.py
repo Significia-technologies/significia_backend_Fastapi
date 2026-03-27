@@ -134,12 +134,12 @@ async def update_client_permit(
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.get("/{ia_id}/pdf")
-def download_ia_pdf(
+async def download_ia_pdf(
     ia_id: uuid.UUID,
     db: Session = Depends(get_remote_session)
 ):
     try:
-        pdf_bytes, filename = ia_service.generate_pdf(db, ia_id)
+        pdf_bytes, filename = await ia_service.generate_pdf(db, ia_id)
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",

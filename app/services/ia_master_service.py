@@ -7,6 +7,7 @@ from fastapi import UploadFile
 from app.repositories.ia_master_repository import IAMasterRepository
 from app.repositories.audit_trail_repository import AuditTrailRepository
 from app.utils.file_storage import save_upload_file
+from app.utils.file_utils import resolve_logo_to_local_path
 from app.utils.pdf_generator import IAPDFGenerator
 from app.schemas.ia_master import IAMasterCreate, EmployeeCreate
 from app.services.storage_service import StorageService
@@ -166,7 +167,7 @@ class IAMasterService:
         )
         return db_ia
 
-    def generate_pdf(self, db: Session, ia_id: uuid.UUID) -> Tuple[bytes, str]:
+    async def generate_pdf(self, db: Session, ia_id: uuid.UUID) -> Tuple[bytes, str]:
         db_ia = self.ia_repo.get_by_id(db, ia_id)
         if not db_ia:
             raise ValueError("IA record not found")
@@ -177,7 +178,10 @@ class IAMasterService:
         ia_dict = {c.name: getattr(db_ia, c.name) for c in db_ia.__table__.columns}
         emp_list = [{c.name: getattr(emp, c.name) for c in emp.__table__.columns} for emp in employees]
         
-        pdf_bytes = IAPDFGenerator.generate_ia_report(ia_dict, emp_list)
+        # Resolve Logo to local path for rendering
+        logo_path = await resolve_logo_to_local_path(db_ia.ia_logo_path, db)
+        
+        pdf_bytes = IAPDFGenerator.generate_ia_report(ia_dict, emp_list, logo_path=logo_path)
         
         filename = f"IA_Master_Entry_{db_ia.ia_registration_number}.pdf"
         

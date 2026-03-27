@@ -18,6 +18,7 @@ from app.schemas.financial_analysis_schema import (
 )
 from app.services.financial_analysis_service import FinancialAnalysisService
 from app.utils.financial_report_generator import FinancialReportGenerator
+from app.utils.file_utils import resolve_logo_to_local_path
 from app.models.ia_master import IAMaster
 from app.models.client import ClientProfile
 from app.models.financial_analysis import FinancialAnalysisProfile
@@ -43,43 +44,9 @@ async def download_pdf(
     
     # Get IA Logo if available
     ia_logo_path = None
-    ia_master = remote_db.query(IAMaster).first() # Usually one per tenant
-    if ia_master and ia_master.ia_logo_path:
-        logo_db_path = ia_master.ia_logo_path
-        if logo_db_path.startswith(("http://", "https://")):
-            # Full URL: download using httpx
-            import httpx
-            try:
-                async with httpx.AsyncClient() as client_http:
-                    resp = await client_http.get(logo_db_path)
-                    if resp.status_code == 200:
-                        ext = os.path.splitext(logo_db_path.split('?')[0])[1] or '.png'
-                        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
-                        tmp.write(resp.content)
-                        tmp.close()
-                        ia_logo_path = tmp.name
-            except Exception:
-                pass
-        elif logo_db_path.startswith("docs/"):
-            # Cloud Storage Key: download via storage driver
-            from app.services.storage_service import StorageService
-            driver = StorageService.get_tenant_storage(remote_db)
-            if driver:
-                try:
-                    file_bytes = await driver.download_file(logo_db_path)
-                    if file_bytes:
-                        ext = os.path.splitext(logo_db_path)[1] or '.png'
-                        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
-                        tmp.write(file_bytes)
-                        tmp.close()
-                        ia_logo_path = tmp.name
-                except Exception:
-                    pass
-        else:
-            # Local Storage Path
-            abs_path = os.path.abspath(logo_db_path)
-            if os.path.exists(abs_path):
-                ia_logo_path = abs_path
+    ia_master = remote_db.query(IAMaster).first()
+    if ia_master:
+        ia_logo_path = await resolve_logo_to_local_path(ia_master.ia_logo_path, remote_db)
 
     pdf_stream = FinancialReportGenerator.generate_pdf(
         result=result,
@@ -115,42 +82,8 @@ async def download_word(
     # Get IA Logo if available
     ia_logo_path = None
     ia_master = remote_db.query(IAMaster).first()
-    if ia_master and ia_master.ia_logo_path:
-        logo_db_path = ia_master.ia_logo_path
-        if logo_db_path.startswith(("http://", "https://")):
-            # Full URL: download using httpx
-            import httpx
-            try:
-                async with httpx.AsyncClient() as client_http:
-                    resp = await client_http.get(logo_db_path)
-                    if resp.status_code == 200:
-                        ext = os.path.splitext(logo_db_path.split('?')[0])[1] or '.png'
-                        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
-                        tmp.write(resp.content)
-                        tmp.close()
-                        ia_logo_path = tmp.name
-            except Exception:
-                pass
-        elif logo_db_path.startswith("docs/"):
-            # Cloud Storage Key: download via storage driver
-            from app.services.storage_service import StorageService
-            driver = StorageService.get_tenant_storage(remote_db)
-            if driver:
-                try:
-                    file_bytes = await driver.download_file(logo_db_path)
-                    if file_bytes:
-                        ext = os.path.splitext(logo_db_path)[1] or '.png'
-                        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
-                        tmp.write(file_bytes)
-                        tmp.close()
-                        ia_logo_path = tmp.name
-                except Exception:
-                    pass
-        else:
-            # Local Storage Path
-            abs_path = os.path.abspath(logo_db_path)
-            if os.path.exists(abs_path):
-                ia_logo_path = abs_path
+    if ia_master:
+        ia_logo_path = await resolve_logo_to_local_path(ia_master.ia_logo_path, remote_db)
 
     doc_stream = FinancialReportGenerator.generate_docx(
         result=result,
@@ -246,42 +179,11 @@ async def download_blank_form(
     remote_db: Session = Depends(get_remote_session),
 ):
     """Download a blank financial analysis data entry form as PDF."""
-    # Get IA Logo if available (similar logic to download_pdf)
+    # Get IA Logo if available
     ia_logo_path = None
     ia_master = remote_db.query(IAMaster).first()
-    if ia_master and ia_master.ia_logo_path:
-        logo_db_path = ia_master.ia_logo_path
-        if logo_db_path.startswith(("http://", "https://")):
-            import httpx
-            try:
-                async with httpx.AsyncClient() as client_http:
-                    resp = await client_http.get(logo_db_path)
-                    if resp.status_code == 200:
-                        ext = os.path.splitext(logo_db_path.split('?')[0])[1] or '.png'
-                        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
-                        tmp.write(resp.content)
-                        tmp.close()
-                        ia_logo_path = tmp.name
-            except Exception:
-                pass
-        elif logo_db_path.startswith("docs/"):
-            from app.services.storage_service import StorageService
-            driver = StorageService.get_tenant_storage(remote_db)
-            if driver:
-                try:
-                    file_bytes = await driver.download_file(logo_db_path)
-                    if file_bytes:
-                        ext = os.path.splitext(logo_db_path)[1] or '.png'
-                        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
-                        tmp.write(file_bytes)
-                        tmp.close()
-                        ia_logo_path = tmp.name
-                except Exception:
-                    pass
-        else:
-            abs_path = os.path.abspath(logo_db_path)
-            if os.path.exists(abs_path):
-                ia_logo_path = abs_path
+    if ia_master:
+        ia_logo_path = await resolve_logo_to_local_path(ia_master.ia_logo_path, remote_db)
 
     pdf_stream = FinancialReportGenerator.generate_blank_form(ia_logo_path=ia_logo_path)
     
