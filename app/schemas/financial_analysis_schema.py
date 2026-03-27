@@ -158,6 +158,8 @@ class FinancialAnalysisSummary(BaseModel):
     id: uuid.UUID
     client_id: uuid.UUID
     client_name: Optional[str] = None
+    calculations: Optional[dict] = None
+    hlv_data: Optional[dict] = None
     financial_health_score: int = 0
     created_at: datetime
 

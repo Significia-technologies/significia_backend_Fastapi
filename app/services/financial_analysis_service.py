@@ -179,6 +179,8 @@ class FinancialAnalysisService:
             FinancialAnalysisResult.client_id,
             FinancialAnalysisResult.financial_health_score,
             FinancialAnalysisResult.created_at,
+            FinancialAnalysisResult.calculations,
+            FinancialAnalysisResult.hlv_data,
             ClientProfile.client_name,
         ).join(
             ClientProfile, FinancialAnalysisResult.client_id == ClientProfile.id
@@ -194,6 +196,8 @@ class FinancialAnalysisService:
                 'id': r.id,
                 'client_id': r.client_id,
                 'client_name': r.client_name,
+                'calculations': r.calculations,
+                'hlv_data': r.hlv_data,
                 'financial_health_score': r.financial_health_score,
                 'created_at': r.created_at,
             }
