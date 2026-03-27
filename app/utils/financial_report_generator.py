@@ -823,7 +823,7 @@ class FinancialReportGenerator:
             ["_________________________", "_________________________"],
             [Paragraph("<b>Client Signature</b>", label_style), Paragraph("<b>Advisor Signature</b>", label_style)],
             ["Name: __________________", "Name: __________________"],
-            ["Date: ____ / ____ / 202____", "Date: ____ / ____ / 202____"]
+            ["Date: ____ / ____ / 20____", "Date: ____ / ____ / 20____"]
         ]
         t_sig = Table(sig_data, colWidths=[2.8*inch, 2.8*inch], rowHeights=[30, 20, 30, 30])
         t_sig.setStyle(TableStyle([('ALIGN', (0,0), (-1,-1), 'CENTER'), ('VALIGN', (0,0), (-1,-1), 'MIDDLE')]))
