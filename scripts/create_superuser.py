@@ -68,7 +68,7 @@ def create_superuser(email: str, password: str):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Create a Significia Super User")
-    parser.add_argument("--email", help="Email for the super user", default="alamtanbir@gmail.com")
+    parser.add_argument("--email", help="Email for the super user", default="alamtanbir328@gmail.com")
     parser.add_argument("--password", help="Password for the super user", default="T@nbir#2026")
     
     args = parser.parse_args()
