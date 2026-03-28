@@ -6,10 +6,10 @@ from sqlalchemy import String, Boolean, DateTime, Float, ForeignKey, Text, Date,
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 
-from app.database.base import Base
+from app.database.base import SiloBase
 
 
-class FinancialAnalysisProfile(Base):
+class FinancialAnalysisProfile(SiloBase):
     """
     Captures a snapshot of client financial data at the time of analysis.
     Each analysis run creates a new profile record.
@@ -69,7 +69,7 @@ class FinancialAnalysisProfile(Base):
     )
 
 
-class FinancialAnalysisResult(Base):
+class FinancialAnalysisResult(SiloBase):
     """
     Stores the output of financial calculations and AI commentary.
     One result per profile (1:1 in practice, but modeled as 1:N for flexibility).

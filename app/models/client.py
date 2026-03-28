@@ -6,9 +6,9 @@ from sqlalchemy import String, Boolean, DateTime, Float, ForeignKey, Text, Date,
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 
-from app.database.base import Base
+from app.database.base import SiloBase
 
-class ClientProfile(Base):
+class ClientProfile(SiloBase):
     __tablename__ = "clients"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -96,7 +96,7 @@ class ClientProfile(Base):
         "ClientAuditTrail", back_populates="client", cascade="all, delete-orphan"
     )
 
-class ClientDocument(Base):
+class ClientDocument(SiloBase):
     __tablename__ = "client_documents"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -108,7 +108,7 @@ class ClientDocument(Base):
     # Relationships
     client: Mapped["ClientProfile"] = relationship("ClientProfile", back_populates="documents")
 
-class ClientAuditTrail(Base):
+class ClientAuditTrail(SiloBase):
     __tablename__ = "client_audit_trail"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

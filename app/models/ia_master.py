@@ -5,9 +5,9 @@ from sqlalchemy import String, DateTime, ForeignKey, Text, Date
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 
-from app.database.base import Base
+from app.database.base import SiloBase
 
-class IAMaster(Base):
+class IAMaster(SiloBase):
     __tablename__ = "ia_master"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -44,7 +44,7 @@ class IAMaster(Base):
         "EmployeeDetails", back_populates="ia_master", cascade="all, delete-orphan"
     )
 
-class EmployeeDetails(Base):
+class EmployeeDetails(SiloBase):
     __tablename__ = "employee_details"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -62,7 +62,7 @@ class EmployeeDetails(Base):
     # Relationships
     ia_master: Mapped["IAMaster"] = relationship("IAMaster", back_populates="employees")
 
-class AuditTrail(Base):
+class AuditTrail(SiloBase):
     __tablename__ = "audit_trail"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

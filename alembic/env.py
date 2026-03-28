@@ -16,6 +16,7 @@ from app.database.base import Base
 from app.models.user import User
 from app.models.tenant import Tenant
 from app.models.connector import Connector
+from app.models.storage_connector import StorageConnector
 from app.models.api_key import ApiKey
 from app.models.refresh_token import RefreshToken
 from app.models.user_session import UserSession
@@ -38,6 +39,16 @@ config.set_main_option("sqlalchemy.url", settings.SQLALCHEMY_DATABASE_URI)
 # target_metadata
 target_metadata = Base.metadata
 
+def include_object(object, name, type_, reflected, compare_to):
+    """
+    Ensure we only migrate tables that belong to the Master Orchestrator.
+    Business layer tables (silos) are managed separately.
+    """
+    if type_ == "table":
+        # Only include tables present in the global Base metadata
+        return name in target_metadata.tables
+    return True
+
 def run_migrations_offline() -> None:
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
@@ -45,6 +56,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        include_object=include_object,
     )
 
     with context.begin_transaction():
@@ -59,7 +71,9 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection, 
+            target_metadata=target_metadata,
+            include_object=include_object,
         )
 
         with context.begin_transaction():
