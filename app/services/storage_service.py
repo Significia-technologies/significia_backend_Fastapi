@@ -84,11 +84,13 @@ class StorageService:
             db.commit()
             return False
 
-        if driver and await driver.test_connection():
-            from datetime import datetime
-            connector_record.status = "READY"
-            connector_record.verified_at = datetime.utcnow()
-            return True
+        if driver:
+            from fastapi.concurrency import run_in_threadpool
+            if await run_in_threadpool(driver.test_connection):
+                from datetime import datetime
+                connector_record.status = "READY"
+                connector_record.verified_at = datetime.utcnow()
+                return True
         
         connector_record.status = "FAILED"
         return False

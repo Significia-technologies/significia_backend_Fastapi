@@ -27,11 +27,22 @@ class S3Storage(BaseStorage):
         if not endpoint_url or endpoint_url.strip() == "":
             endpoint_url = None
             
-        # Force Signature Version 4 for pre-signed URLs in newer regions (like Mumbai)
+        # Forced Boto3 Config for generic S3-compatible support
         from botocore.config import Config
+        
+        # 1. Detect Addressing Style:
+        # Most S3-compatibles (Minio, R2, DO) use path style. 
+        # Standard AWS default (blank endpoint) uses virtual host.
+        addressing_style = 'virtual'
+        if endpoint_url:
+            addressing_style = 'path'
+            
         s3_config = Config(
             signature_version='s3v4',
-            s3={'addressing_style': 'virtual'}
+            s3={'addressing_style': addressing_style},
+            connect_timeout=5,  # 5s to connect
+            read_timeout=10,    # 10s to read
+            retries={'max_attempts': 0} # No retries for connection tests to fail fast
         )
 
         self.s3_client = boto3.client(
@@ -84,7 +95,7 @@ class S3Storage(BaseStorage):
             print(f"S3 Delete failed: {e}")
             return False
 
-    async def test_connection(self) -> bool:
+    def test_connection(self) -> bool:
         try:
             # Try to list objects (with limit 1) to verify credentials and bucket existence
             self.s3_client.list_objects_v2(Bucket=self.bucket_name, MaxKeys=1)
