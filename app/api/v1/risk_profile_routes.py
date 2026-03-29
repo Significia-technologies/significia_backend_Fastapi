@@ -14,6 +14,8 @@ from app.schemas.risk_profile_schema import (
 from app.services.risk_profile_service import RiskProfileService
 from app.models.risk_profile import RiskAssessment
 from app.models.client import ClientProfile
+from app.models.ia_master import IAMaster
+from app.utils.file_utils import resolve_logo_to_local_path
 from sqlalchemy import select
 
 router = APIRouter()
@@ -103,7 +105,7 @@ def get_latest_risk_assessment(
     return assessment[0]
 
 @router.get("/{connector_id}/assessment/{assessment_id}/pdf")
-def download_risk_profile_pdf(
+async def download_risk_profile_pdf(
     connector_id: uuid.UUID,
     assessment_id: uuid.UUID,
     remote_db: Session = Depends(get_remote_session)
@@ -115,7 +117,14 @@ def download_risk_profile_pdf(
         from app.services.report_service import ReportService
         from fastapi.responses import StreamingResponse
         
-        pdf_buffer = ReportService.generate_risk_profile_pdf(remote_db, assessment_id)
+        # Resolve IA logo path if available
+        ia_logo_path = None
+        ia_master = remote_db.execute(select(IAMaster)).first()
+        if ia_master:
+            ia_master = ia_master[0]
+            ia_logo_path = await resolve_logo_to_local_path(ia_master.ia_logo_path, remote_db)
+        
+        pdf_buffer = ReportService.generate_risk_profile_pdf(remote_db, assessment_id, ia_logo_path)
         
         return StreamingResponse(
             pdf_buffer,
@@ -128,7 +137,7 @@ def download_risk_profile_pdf(
         raise HTTPException(status_code=500, detail=f"Failed to generate PDF: {str(e)}")
 
 @router.get("/{connector_id}/assessment/{assessment_id}/docx")
-def download_risk_profile_docx(
+async def download_risk_profile_docx(
     connector_id: uuid.UUID,
     assessment_id: uuid.UUID,
     remote_db: Session = Depends(get_remote_session)
@@ -140,7 +149,14 @@ def download_risk_profile_docx(
         from app.services.report_service import ReportService
         from fastapi.responses import StreamingResponse
         
-        docx_buffer = ReportService.generate_risk_profile_docx(remote_db, assessment_id)
+        # Resolve IA logo path if available
+        ia_logo_path = None
+        ia_master = remote_db.execute(select(IAMaster)).first()
+        if ia_master:
+            ia_master = ia_master[0]
+            ia_logo_path = await resolve_logo_to_local_path(ia_master.ia_logo_path, remote_db)
+            
+        docx_buffer = ReportService.generate_risk_profile_docx(remote_db, assessment_id, ia_logo_path)
         
         return StreamingResponse(
             docx_buffer,

@@ -5,12 +5,13 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Preformatted
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Preformatted, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 from reportlab.platypus import Image
+from reportlab.lib.enums import TA_CENTER
 
 from app.models.risk_profile import RiskAssessment
 from app.models.client import ClientProfile
@@ -22,6 +23,35 @@ from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement, ns
 from app.services.questionnaire_constants import QUESTIONNAIRE_DATA
+
+def resolve_logo_path(logo_path: Optional[str]) -> Optional[str]:
+    """Try multiple strategies to find the logo file on disk, matching financial_report_generator.py logic."""
+    if not logo_path:
+        return None
+        
+    # Strategy 1: Absolute path
+    if os.path.isabs(logo_path) and os.path.exists(logo_path):
+        return logo_path
+        
+    # Strategy 2: Relative to CWD
+    if os.path.exists(logo_path):
+        return os.path.abspath(logo_path)
+
+    # Strategy 3: Relative to backend root
+    file_dir = os.path.dirname(os.path.abspath(__file__))
+    # report_service.py is in app/services/, so backend_root is 2 levels up
+    backend_root = os.path.abspath(os.path.join(file_dir, '..', '..'))
+    joined_path = os.path.join(backend_root, logo_path)
+    if os.path.exists(joined_path):
+        return joined_path
+
+    # Strategy 4: Try prepending 'uploads/'
+    if not logo_path.startswith('uploads/'):
+        uploads_path = os.path.join(backend_root, 'uploads', logo_path)
+        if os.path.exists(uploads_path):
+            return uploads_path
+
+    return None
 
 class ReportService:
     @staticmethod
@@ -53,7 +83,7 @@ class ReportService:
         run._r.append(fldChar)
 
     @staticmethod
-    def generate_risk_profile_pdf(db: Session, assessment_id: uuid.UUID) -> BytesIO:
+    def generate_risk_profile_pdf(db: Session, assessment_id: uuid.UUID, ia_logo_override: str = None) -> BytesIO:
         # 1. Fetch Assessment and related data
         assessment = db.execute(
             select(RiskAssessment).where(RiskAssessment.id == assessment_id)
@@ -67,14 +97,16 @@ class ReportService:
         # Fetch IA details based on advisor name or reg number
         # Note: In the standalone, it used ia_registration_number. 
         # In current models, we look up IAMaster.
+        # Fetch IA details based on advisor registration number
         ia = db.execute(
-            select(IAMaster).where(IAMaster.ia_registration_number == assessment.client.advisor_name)
+            select(IAMaster).where(IAMaster.ia_registration_number == assessment.client.advisor_registration_number)
         ).scalar_one_or_none()
-        # Fallback if IA not found by name
+        
+        # Fallback if IA not found by registration number
         if not ia:
-            # Maybe try filtering by client if there was a direct link, but assuming global IA master for now
             ia = db.execute(select(IAMaster)).first()
-            if ia: ia = ia[0]
+            if ia: 
+                ia = ia[0]
 
         buffer = BytesIO()
         
@@ -140,24 +172,43 @@ class ReportService:
             alignment=0
         )
 
-        # 3. Add Header with Logo
-        if ia and ia.ia_logo_path and os.path.exists(ia.ia_logo_path):
-            try:
-                logo = Image(ia.ia_logo_path, width=1.5*inch, height=0.75*inch)
-                header_data = [[logo, Paragraph("RISK PROFILING REPORT", title_style)]]
-                header_table = Table(header_data, colWidths=[2*inch, 5*inch])
-                header_table.setStyle(TableStyle([
-                    ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                    ('ALIGN', (0,0), (0,0), 'LEFT'),
-                    ('ALIGN', (1,0), (1,0), 'CENTER'),
-                ]))
-                story.append(header_table)
-            except:
-                story.append(Paragraph("RISK PROFILING REPORT", title_style))
-        else:
-            story.append(Paragraph("RISK PROFILING REPORT", title_style))
+        # 3. Create Cover Page
+        cover_title_style = ParagraphStyle(
+            'CoverTitle',
+            parent=title_style,
+            fontSize=28,
+            alignment=TA_CENTER,
+            spaceBefore=100
+        )
+        cover_subtitle_style = ParagraphStyle(
+            'CoverSubtitle',
+            parent=normal_style,
+            fontSize=14,
+            alignment=TA_CENTER,
+            spaceBefore=30,
+            textColor=colors.grey
+        )
         
-        story.append(Spacer(1, 10))
+        # Logo handling for cover
+        resolved_logo = resolve_logo_path(ia_logo_override or (ia.ia_logo_path if ia else None))
+        if resolved_logo:
+            try:
+                logo = Image(resolved_logo, width=2.5*inch, height=1.25*inch, kind='proportional')
+                story.append(Spacer(1, 50))
+                story.append(logo)
+                story.append(Spacer(1, 30))
+            except Exception as e:
+                print(f"Error rendering logo in risk PDF: {e}")
+        
+        story.append(Paragraph("RISK PROFILE ASSESSMENT REPORT", cover_title_style))
+        story.append(Spacer(1, 50))
+        
+        story.append(Paragraph(f"<b>CLIENT NAME:</b> {client.client_name}", cover_subtitle_style))
+        story.append(Paragraph(f"<b>CLIENT CODE:</b> {client.client_code}", cover_subtitle_style))
+        story.append(Paragraph(f"<b>ENTITY:</b> {ia.name_of_entity or ia.name_of_ia}", cover_subtitle_style))
+        story.append(Paragraph(f"<b>DATE:</b> {assessment.assessment_timestamp.strftime('%B %d, %Y')}", cover_subtitle_style))
+        
+        story.append(PageBreak())
 
         # 4. Result Summary Section
         story.append(Paragraph("ASSESSMENT SUMMARY", heading_style))
@@ -285,7 +336,7 @@ class ReportService:
         return buffer
 
     @staticmethod
-    def generate_risk_profile_docx(db: Session, assessment_id: uuid.UUID) -> BytesIO:
+    def generate_risk_profile_docx(db: Session, assessment_id: uuid.UUID, ia_logo_override: str = None) -> BytesIO:
         # 1. Fetch Data
         assessment = db.execute(
             select(RiskAssessment).where(RiskAssessment.id == assessment_id)
@@ -324,6 +375,31 @@ class ReportService:
         footer_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         run = footer_p.add_run("Page ")
         ReportService._add_page_number(footer_p.add_run())
+
+        # 3a. Cover Page logic
+        resolved_logo = resolve_logo_path(ia_logo_override or (ia.ia_logo_path if ia else None))
+        if resolved_logo:
+            doc.add_picture(resolved_logo, width=Inches(2.5))
+            last_p = doc.paragraphs[-1]
+            last_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        # Separator for cover titles
+        for _ in range(5): doc.add_paragraph()
+        
+        title = doc.add_heading('RISK PROFILE ASSESSMENT REPORT', 0)
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        subtitle = doc.add_paragraph()
+        subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = subtitle.add_run(f"\n\n\nCLIENT NAME: {client.client_name}\n")
+        run.bold = True
+        run.font.size = Pt(14)
+        run = subtitle.add_run(f"CLIENT CODE: {client.client_code}\n")
+        run.bold = True
+        run = subtitle.add_run(f"ENTITY: {ia.name_of_entity or ia.name_of_ia}\n")
+        run = subtitle.add_run(f"DATE: {assessment.assessment_timestamp.strftime('%B %d, %Y')}")
+        
+        doc.add_page_break()
 
         # 4. Header
         header_title = doc.add_heading('RISK PROFILING REPORT', 0)
