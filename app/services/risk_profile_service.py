@@ -183,3 +183,23 @@ class RiskProfileService:
             payload.client_code, 
             risk_master.ia_registration_number
         )
+
+    @staticmethod
+    def list_assessments(db: Session) -> List[dict]:
+        """
+        Retrieves all risk assessments, joining with client info.
+        """
+        results = db.execute(
+            select(RiskAssessment, ClientProfile.client_name, ClientProfile.client_code)
+            .join(ClientProfile, RiskAssessment.client_id == ClientProfile.id)
+            .order_by(RiskAssessment.assessment_timestamp.desc())
+        ).all()
+        
+        output = []
+        for row in results:
+            assessment = row[0]
+            assessment.client_name = row.client_name
+            assessment.client_code = row.client_code
+            output.append(assessment)
+            
+        return output

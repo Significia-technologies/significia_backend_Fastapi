@@ -126,3 +126,42 @@ def download_risk_profile_pdf(
         raise HTTPException(status_code=404, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate PDF: {str(e)}")
+
+@router.get("/{connector_id}/assessment/{assessment_id}/docx")
+def download_risk_profile_docx(
+    connector_id: uuid.UUID,
+    assessment_id: uuid.UUID,
+    remote_db: Session = Depends(get_remote_session)
+):
+    """
+    Generate and download a DOCX report for a specific risk assessment.
+    """
+    try:
+        from app.services.report_service import ReportService
+        from fastapi.responses import StreamingResponse
+        
+        docx_buffer = ReportService.generate_risk_profile_docx(remote_db, assessment_id)
+        
+        return StreamingResponse(
+            docx_buffer,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": f"attachment; filename=Risk_Assessment_{assessment_id}.docx"}
+        )
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate DOCX: {str(e)}")
+
+@router.get("/{connector_id}/assessments", response_model=List[RiskAssessmentResponse])
+def list_risk_assessments(
+    connector_id: uuid.UUID,
+    remote_db: Session = Depends(get_remote_session)
+):
+    """
+    Get all risk assessments for this connector.
+    """
+    try:
+        assessments = RiskProfileService.list_assessments(remote_db)
+        return assessments
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch assessments: {str(e)}")

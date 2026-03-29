@@ -17,6 +17,10 @@ from app.models.client import ClientProfile
 from app.models.ia_master import IAMaster
 from sqlalchemy.orm import Session
 from sqlalchemy import select
+from docx import Document
+from docx.shared import Inches, Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from app.services.questionnaire_constants import QUESTIONNAIRE_DATA
 
 class ReportService:
     @staticmethod
@@ -148,31 +152,59 @@ class ReportService:
         # 5. Questionnaire Responses
         story.append(Paragraph("QUESTIONNAIRE RESPONSES", heading_style))
         
-        responses = [
-            ["Q1. Interest Choice:", assessment.q1_interest_choice],
-            ["Q3. Probability Bet:", assessment.q3_probability_bet],
-            ["Q4. Portfolio Choice:", assessment.q4_portfolio_choice],
-            ["Q5. Loss Behavior:", assessment.q5_loss_behavior],
-            ["Q6. Market Reaction:", assessment.q6_market_reaction],
-            ["Q7. Fund Selection:", assessment.q7_fund_selection],
-            ["Q8. Experience Level:", assessment.q8_experience_level],
-            ["Q9. Time Horizon:", assessment.q9_time_horizon],
-            ["Q10. Net Worth:", assessment.q10_net_worth],
-            ["Q11. Age Range:", assessment.q11_age_range],
-            ["Q12. Income Range:", assessment.q12_income_range],
-            ["Q13. Expense Range:", assessment.q13_expense_range],
-            ["Q14. Dependents:", assessment.q14_dependents],
-            ["Q15. Active Loan:", assessment.q15_active_loan],
-            ["Q16. Investment Objective:", assessment.q16_investment_objective]
-        ]
-        
-        resp_table = Table(responses, colWidths=[2.5*inch, 4*inch])
-        resp_table.setStyle(TableStyle([
-            ('GRID', (0,0), (-1,-1), 0.2, colors.lightgrey),
-            ('FONTSIZE', (0,0), (-1,-1), 8),
-            ('PADDING', (0,0), (-1,-1), 4),
-        ]))
-        story.append(resp_table)
+        for q_id, q_data in QUESTIONNAIRE_DATA.items():
+            story.append(Paragraph(f"<b>{q_id.upper()}. {q_data['title']}</b>", normal_style))
+            story.append(Paragraph(q_data['question'], normal_style))
+            
+            # Handle Q2 (Factors) specifically
+            if q_id == 'q2':
+                q2_answers = assessment.q2_importance_factors
+                table_data = [["Factor", "Importance"]]
+                for f_code, f_name in q_data['factors'].items():
+                    ans_code = q2_answers.get(f_code, "-")
+                    ans_text = q_data['options'].get(ans_code, ans_code)
+                    table_data.append([f_name, Paragraph(f"<b>{ans_text}</b>", bold_style)])
+                
+                q2_table = Table(table_data, colWidths=[3.5*inch, 2.5*inch])
+                q2_table.setStyle(TableStyle([
+                    ('GRID', (0,0), (-1,-1), 0.2, colors.lightgrey),
+                    ('FONTSIZE', (0,0), (-1,-1), 8),
+                    ('BACKGROUND', (0,0), (-1,0), colors.whitesmoke),
+                    ('PADDING', (0,0), (-1,-1), 4),
+                ]))
+                story.append(q2_table)
+            else:
+                # Standard questions - mapping q_id to model field name
+                field_map = {
+                    'q1': 'q1_interest_choice',
+                    'q3': 'q3_probability_bet',
+                    'q4': 'q4_portfolio_choice',
+                    'q5': 'q5_loss_behavior',
+                    'q6': 'q6_market_reaction',
+                    'q7': 'q7_fund_selection',
+                    'q8': 'q8_experience_level',
+                    'q9': 'q9_time_horizon',
+                    'q10': 'q10_net_worth',
+                    'q11': 'q11_age_range',
+                    'q12': 'q12_income_range',
+                    'q13': 'q13_expense_range',
+                    'q14': 'q14_dependents',
+                    'q15': 'q15_active_loan',
+                    'q16': 'q16_investment_objective'
+                }
+                field_name = field_map.get(q_id, q_id)
+                selected_val = getattr(assessment, field_name, "N/A")
+                
+                options_str = ""
+                for opt_code, opt_text in q_data['options'].items():
+                    is_selected = opt_code.lower() == str(selected_val).lower()
+                    prefix = f"<b>[X]</b> " if is_selected else "[  ] "
+                    text_color = "#D4AF37" if is_selected else "#000000" # Golden for selected
+                    options_str += f"<font color='{text_color}'>{prefix}{opt_code}. {opt_text}</font><br/>"
+                
+                story.append(Paragraph(options_str, ParagraphStyle('Options', parent=normal_style, leftIndent=20, leading=12)))
+            
+            story.append(Spacer(1, 10))
         
         story.append(Spacer(1, 15))
         
@@ -191,5 +223,131 @@ class ReportService:
 
         # 7. Build PDF
         doc.build(story)
+        buffer.seek(0)
+        return buffer
+
+    @staticmethod
+    def generate_risk_profile_docx(db: Session, assessment_id: uuid.UUID) -> BytesIO:
+        # 1. Fetch Data
+        assessment = db.execute(
+            select(RiskAssessment).where(RiskAssessment.id == assessment_id)
+        ).scalar_one_or_none()
+        
+        if not assessment:
+            raise ValueError("Assessment not found")
+            
+        client = assessment.client
+        ia = db.execute(
+            select(IAMaster).where(IAMaster.ia_registration_number == assessment.client.advisor_name)
+        ).scalar_one_or_none()
+        if not ia:
+            ia = db.execute(select(IAMaster)).first()
+            if ia: ia = ia[0]
+
+        # 2. Setup DOCX
+        doc = Document()
+        
+        # Styles
+        style = doc.styles['Normal']
+        style.font.name = 'Arial'
+        style.font.size = Pt(10)
+
+        # 3. Header
+        header = doc.add_heading('RISK PROFILING REPORT', 0)
+        header.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        # 4. Summary Table
+        doc.add_heading('ASSESSMENT SUMMARY', level=1)
+        table = doc.add_table(rows=5, cols=2)
+        table.style = 'Table Grid'
+        
+        summary_rows = [
+            ("Client Name:", client.client_name),
+            ("Client Code:", client.client_code),
+            ("Date of Assessment:", assessment.assessment_timestamp.strftime("%Y-%m-%d %H:%M")),
+            ("Total Score:", str(assessment.calculated_score)),
+            ("Risk Category:", assessment.assigned_risk_tier)
+        ]
+        
+        for i, (label, value) in enumerate(summary_rows):
+            table.cell(i, 0).text = label
+            table.cell(i, 1).text = value
+            table.cell(i, 0).paragraphs[0].runs[0].bold = True
+
+        doc.add_paragraph().add_run().add_break()
+
+        # 5. Questionnaire Responses
+        doc.add_heading('QUESTIONNAIRE RESPONSES', level=1)
+        
+        for q_id, q_data in QUESTIONNAIRE_DATA.items():
+            p = doc.add_paragraph()
+            p.add_run(f"{q_id.upper()}. {q_data['title']}").bold = True
+            doc.add_paragraph(q_data['question'])
+            
+            if q_id == 'q2':
+                q2_answers = assessment.q2_importance_factors
+                t2 = doc.add_table(rows=1, cols=2)
+                t2.style = 'Table Grid'
+                hdr_cells = t2.rows[0].cells
+                hdr_cells[0].text = 'Factor'
+                hdr_cells[1].text = 'Importance'
+                
+                for f_code, f_name in q_data['factors'].items():
+                    ans_code = q2_answers.get(f_code, "-")
+                    ans_text = q_data['options'].get(ans_code, ans_code)
+                    row_cells = t2.add_row().cells
+                    row_cells[0].text = f_name
+                    row_cells[1].text = ans_text
+                    row_cells[1].paragraphs[0].runs[0].bold = True
+            else:
+                # Standard questions - mapping q_id to model field name
+                field_map = {
+                    'q1': 'q1_interest_choice',
+                    'q3': 'q3_probability_bet',
+                    'q4': 'q4_portfolio_choice',
+                    'q5': 'q5_loss_behavior',
+                    'q6': 'q6_market_reaction',
+                    'q7': 'q7_fund_selection',
+                    'q8': 'q8_experience_level',
+                    'q9': 'q9_time_horizon',
+                    'q10': 'q10_net_worth',
+                    'q11': 'q11_age_range',
+                    'q12': 'q12_income_range',
+                    'q13': 'q13_expense_range',
+                    'q14': 'q14_dependents',
+                    'q15': 'q15_active_loan',
+                    'q16': 'q16_investment_objective'
+                }
+                field_name = field_map.get(q_id, q_id)
+                selected_val = getattr(assessment, field_name, "N/A")
+
+                for opt_code, opt_text in q_data['options'].items():
+                    is_selected = opt_code.lower() == str(selected_val).lower()
+                    option_p = doc.add_paragraph(style='List Bullet')
+                    run = option_p.add_run(f"{opt_code}. {opt_text}")
+                    if is_selected:
+                        run.bold = True
+                        run.underline = True
+            
+            doc.add_paragraph() # Spacer
+
+        # 6. Recommendation and Notes
+        doc.add_heading('ADVISOR RECOMMENDATION', level=1)
+        doc.add_paragraph(assessment.tier_recommendation or "No recommendation provided.")
+        
+        if assessment.discussion_notes:
+            doc.add_heading('DISCUSSION NOTES', level=1)
+            doc.add_paragraph(assessment.discussion_notes)
+
+        if assessment.disclaimer_text:
+            doc.add_paragraph()
+            p = doc.add_paragraph()
+            run = p.add_run("DISCLAIMER: ")
+            run.bold = True
+            p.add_run(assessment.disclaimer_text)
+
+        # 7. Save to Buffer
+        buffer = BytesIO()
+        doc.save(buffer)
         buffer.seek(0)
         return buffer

@@ -56,8 +56,11 @@ class RiskAssessmentCalculateResponse(BaseModel):
 class RiskAssessmentResponse(BaseModel):
     id: UUID
     client_id: UUID
+    client_name: Optional[str] = None
+    client_code: Optional[str] = None
     calculated_score: int
     assigned_risk_tier: str
+    tier_recommendation: Optional[str] = None
     assessment_timestamp: datetime
 
     class Config:
