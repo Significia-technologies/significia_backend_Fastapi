@@ -76,3 +76,47 @@ class ClientRiskMaster(SiloBase):
 
     # Relationships
     client: Mapped["ClientProfile"] = relationship("ClientProfile", foreign_keys=[client_id])
+
+
+class RiskQuestionnaire(SiloBase):
+    """
+    Stores custom questionnaire definitions (questions, options, weights).
+    """
+    __tablename__ = "risk_questionnaires"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    portfolio_name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="draft") # draft, active, archived
+    
+    questions: Mapped[dict] = mapped_column(JSONB, nullable=False, default=list)
+    categories: Mapped[dict] = mapped_column(JSONB, nullable=False, default=list)
+    max_possible_score: Mapped[float] = mapped_column(Integer, default=0)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class CustomRiskAssessment(SiloBase):
+    """
+    Stores responses to custom questionnaires.
+    """
+    __tablename__ = "custom_risk_assessments"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    questionnaire_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("risk_questionnaires.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    client_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    responses: Mapped[dict] = mapped_column(JSONB, nullable=False) # { "q_0": { "option_index": 0, "score": 5 } }
+    total_score: Mapped[float] = mapped_column(Integer, nullable=False)
+    category_name: Mapped[Optional[str]] = mapped_column(String(100))
+    
+    discussion_notes: Mapped[Optional[str]] = mapped_column(Text)
+    submitted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    questionnaire: Mapped["RiskQuestionnaire"] = relationship("RiskQuestionnaire")
+    client: Mapped["ClientProfile"] = relationship("ClientProfile", foreign_keys=[client_id])

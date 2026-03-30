@@ -1,7 +1,7 @@
-import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
+import uuid
 
 from app.database.remote_session import get_remote_session
 from app.schemas.risk_profile_schema import (
@@ -11,7 +11,15 @@ from app.schemas.risk_profile_schema import (
     SaveAssessmentResponse,
     RiskAssessmentResponse
 )
+from app.schemas.custom_risk_profile_schema import (
+    RiskQuestionnaireCreate,
+    RiskQuestionnaireUpdate,
+    RiskQuestionnaireResponse,
+    CustomRiskAssessmentCreate,
+    CustomRiskAssessmentResponse
+)
 from app.services.risk_profile_service import RiskProfileService
+from app.services.custom_risk_profile_service import CustomRiskProfileService
 from app.models.risk_profile import RiskAssessment
 from app.models.client import ClientProfile
 from app.models.ia_master import IAMaster
@@ -181,3 +189,71 @@ def list_risk_assessments(
         return assessments
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch assessments: {str(e)}")
+
+# --- Custom Risk Questionnaire Endpoints ---
+
+@router.post("/{connector_id}/questionnaires", response_model=RiskQuestionnaireResponse)
+def create_questionnaire(
+    connector_id: uuid.UUID,
+    payload: RiskQuestionnaireCreate,
+    remote_db: Session = Depends(get_remote_session)
+):
+    try:
+        return CustomRiskProfileService.create_questionnaire(remote_db, payload)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{connector_id}/questionnaires", response_model=List[RiskQuestionnaireResponse])
+def list_questionnaires(
+    connector_id: uuid.UUID,
+    status: Optional[str] = None,
+    remote_db: Session = Depends(get_remote_session)
+):
+    return CustomRiskProfileService.list_questionnaires(remote_db, status)
+
+@router.get("/{connector_id}/questionnaires/{q_id}", response_model=RiskQuestionnaireResponse)
+def get_questionnaire(
+    connector_id: uuid.UUID,
+    q_id: uuid.UUID,
+    remote_db: Session = Depends(get_remote_session)
+):
+    q = CustomRiskProfileService.get_questionnaire(remote_db, q_id)
+    if not q:
+        raise HTTPException(status_code=404, detail="Questionnaire not found")
+    return q
+
+@router.put("/{connector_id}/questionnaires/{q_id}", response_model=RiskQuestionnaireResponse)
+def update_questionnaire(
+    connector_id: uuid.UUID,
+    q_id: uuid.UUID,
+    payload: RiskQuestionnaireUpdate,
+    remote_db: Session = Depends(get_remote_session)
+):
+    q = CustomRiskProfileService.update_questionnaire(remote_db, q_id, payload)
+    if not q:
+        raise HTTPException(status_code=404, detail="Questionnaire not found")
+    return q
+
+@router.post("/{connector_id}/custom-save", response_model=CustomRiskAssessmentResponse)
+def save_custom_risk_assessment(
+    connector_id: uuid.UUID,
+    request: Request,
+    payload: CustomRiskAssessmentCreate,
+    remote_db: Session = Depends(get_remote_session)
+):
+    try:
+        user_ip = request.client.host
+        user_agent = request.headers.get("User-Agent", "Unknown")
+        return CustomRiskProfileService.submit_assessment(remote_db, payload, user_ip, user_agent)
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{connector_id}/custom-assessments", response_model=List[CustomRiskAssessmentResponse])
+def list_custom_assessments(
+    connector_id: uuid.UUID,
+    client_id: Optional[uuid.UUID] = None,
+    remote_db: Session = Depends(get_remote_session)
+):
+    return CustomRiskProfileService.list_client_assessments(remote_db, client_id)

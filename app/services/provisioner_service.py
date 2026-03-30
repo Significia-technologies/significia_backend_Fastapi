@@ -124,6 +124,38 @@ class ProvisionerService:
 
             # Patch risk_assessments for form_name
             engine.execute_query("ALTER TABLE significia_core.risk_assessments ADD COLUMN IF NOT EXISTS form_name VARCHAR(255) DEFAULT 'Sample';")
+
+            # Create Risk Questionnaire Table
+            create_risk_questionnaires = """
+            CREATE TABLE IF NOT EXISTS significia_core.risk_questionnaires (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                portfolio_name VARCHAR(255) UNIQUE NOT NULL,
+                status VARCHAR(20) DEFAULT 'draft',
+                questions JSONB NOT NULL DEFAULT '[]'::jsonb,
+                categories JSONB NOT NULL DEFAULT '[]'::jsonb,
+                max_possible_score DOUBLE PRECISION DEFAULT 0.0,
+                created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+            engine.execute_query(create_risk_questionnaires)
+
+            # Create Custom Risk Assessment Table
+            create_custom_risk_assessments = """
+            CREATE TABLE IF NOT EXISTS significia_core.custom_risk_assessments (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                questionnaire_id UUID NOT NULL REFERENCES significia_core.risk_questionnaires(id) ON DELETE CASCADE,
+                client_id UUID NOT NULL REFERENCES significia_core.clients(id) ON DELETE CASCADE,
+                responses JSONB NOT NULL,
+                total_score DOUBLE PRECISION NOT NULL,
+                category_name VARCHAR(100),
+                discussion_notes TEXT,
+                submitted_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_custom_risk_assessments_q ON significia_core.custom_risk_assessments(questionnaire_id);
+            CREATE INDEX IF NOT EXISTS idx_custom_risk_assessments_client ON significia_core.custom_risk_assessments(client_id);
+            """
+            engine.execute_query(create_custom_risk_assessments)
         except Exception as e:
             print(f"Migration patching failed: {e}")
 
@@ -417,3 +449,35 @@ class ProvisionerService:
         CREATE INDEX IF NOT EXISTS idx_client_risk_master_client ON significia_core.client_risk_master(client_id);
         """
         engine.execute_query(create_client_risk_master)
+
+        # Create Risk Questionnaire Table
+        create_risk_questionnaires = """
+        CREATE TABLE IF NOT EXISTS significia_core.risk_questionnaires (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            portfolio_name VARCHAR(255) UNIQUE NOT NULL,
+            status VARCHAR(20) DEFAULT 'draft',
+            questions JSONB NOT NULL DEFAULT '[]'::jsonb,
+            categories JSONB NOT NULL DEFAULT '[]'::jsonb,
+            max_possible_score DOUBLE PRECISION DEFAULT 0.0,
+            created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+        engine.execute_query(create_risk_questionnaires)
+
+        # Create Custom Risk Assessment Table
+        create_custom_risk_assessments = """
+        CREATE TABLE IF NOT EXISTS significia_core.custom_risk_assessments (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            questionnaire_id UUID NOT NULL REFERENCES significia_core.risk_questionnaires(id) ON DELETE CASCADE,
+            client_id UUID NOT NULL REFERENCES significia_core.clients(id) ON DELETE CASCADE,
+            responses JSONB NOT NULL,
+            total_score DOUBLE PRECISION NOT NULL,
+            category_name VARCHAR(100),
+            discussion_notes TEXT,
+            submitted_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_custom_risk_assessments_q ON significia_core.custom_risk_assessments(questionnaire_id);
+        CREATE INDEX IF NOT EXISTS idx_custom_risk_assessments_client ON significia_core.custom_risk_assessments(client_id);
+        """
+        engine.execute_query(create_custom_risk_assessments)
