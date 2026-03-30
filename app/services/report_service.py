@@ -1028,3 +1028,144 @@ class ReportService:
         doc.save(buffer)
         buffer.seek(0)
         return buffer
+
+    @staticmethod
+    def generate_blank_risk_form_pdf(db: Session, questionnaire_id: uuid.UUID, ia_logo_override: str = None) -> BytesIO:
+        def fmt_score(val):
+            try:
+                f_val = float(val)
+                return int(f_val) if f_val % 1 == 0 else f_val
+            except: return val
+
+        # 1. Fetch Data
+        questionnaire = db.execute(
+            select(RiskQuestionnaire).where(RiskQuestionnaire.id == questionnaire_id)
+        ).scalar_one_or_none()
+        
+        if not questionnaire:
+            raise ValueError("Questionnaire not found")
+        
+        ia = db.execute(select(IAMaster)).first()
+        if ia: 
+            ia = ia[0]
+
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(
+            buffer, 
+            pagesize=letter, 
+            topMargin=1.2*inch,
+            bottomMargin=0.7*inch, 
+            leftMargin=0.5*inch, 
+            rightMargin=0.5*inch
+        )
+        
+        story = []
+        styles = getSampleStyleSheet()
+
+        # Styles
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=20,
+            textColor=colors.HexColor('#1e3c72'),
+            spaceAfter=20,
+            alignment=1,
+            fontName='Helvetica-Bold'
+        )
+        heading_style = ParagraphStyle(
+            'CustomHeading',
+            parent=styles['Heading2'],
+            fontSize=14,
+            textColor=colors.HexColor('#2a5298'),
+            spaceAfter=12,
+            spaceBefore=15,
+            fontName='Helvetica-Bold'
+        )
+        normal_style = ParagraphStyle(
+            'NormalCustom',
+            parent=styles['Normal'],
+            fontSize=9,
+            spaceAfter=4,
+            fontName='Helvetica'
+        )
+        bold_style = ParagraphStyle(
+            'BoldCustom',
+            parent=styles['Normal'],
+            fontSize=9,
+            spaceAfter=4,
+            fontName='Helvetica-Bold'
+        )
+
+        cover_title_style = ParagraphStyle(
+            'CoverTitle',
+            parent=title_style,
+            fontSize=28,
+            alignment=TA_CENTER,
+            spaceBefore=100
+        )
+        cover_subtitle_style = ParagraphStyle(
+            'CoverSubtitle',
+            parent=normal_style,
+            fontSize=14,
+            alignment=TA_CENTER,
+            spaceBefore=30,
+            textColor=colors.grey
+        )
+
+        # 3. Create Cover Page
+        resolved_logo = resolve_logo_path(ia_logo_override or (ia.ia_logo_path if ia else None))
+        if resolved_logo:
+            try:
+                logo = Image(resolved_logo, width=2.5*inch, height=1.25*inch, kind='proportional')
+                story.append(Spacer(1, 50))
+                story.append(logo)
+            except: pass
+        
+        story.append(Spacer(1, 30))
+        story.append(Paragraph("RISK ASSESSMENT FORM", cover_title_style))
+        story.append(Paragraph(f"(FORM ID: {str(questionnaire.id)[:8].upper()})", cover_subtitle_style))
+        story.append(Spacer(1, 50))
+        
+        story.append(Paragraph("<b>CLIENT NAME:</b> __________________________", cover_subtitle_style))
+        story.append(Paragraph("<b>CLIENT CODE:</b> __________________________", cover_subtitle_style))
+        if ia:
+            story.append(Paragraph(f"<b>ENTITY:</b> {ia.name_of_entity or ia.name_of_ia}", cover_subtitle_style))
+            story.append(Paragraph(f"<b>REGISTRATION NO:</b> {ia.ia_registration_number or 'N/A'}", cover_subtitle_style))
+        story.append(Paragraph(f"<b>DATE:</b> __________________________", cover_subtitle_style))
+        
+        story.append(PageBreak())
+
+        # 5. Questionnaire Items
+        story.append(Paragraph("QUESTIONNAIRE", heading_style))
+        
+        for q_idx, q_data in enumerate(questionnaire.questions):
+            story.append(Paragraph(f"<b>{q_idx+1}. {q_data.get('text', '')}</b>", normal_style))
+            
+            options_p = ""
+            for i, opt in enumerate(q_data.get('options', [])):
+                prefix = f"[ {chr(65 + i)} ] "
+                options_p += f"{prefix}{opt.get('text', '')}<br/>"
+            
+            story.append(Paragraph(options_p, ParagraphStyle('Options', parent=normal_style, leftIndent=20, leading=12)))
+            story.append(Spacer(1, 10))
+
+        # 6. Signature Section
+
+        # 7. Signature Section
+        story.append(Spacer(1, 40))
+        sig_data = [
+            [Paragraph("<b>__________________________</b><br/>Client Signature", normal_style), 
+             Paragraph("<b>__________________________</b><br/>IA Advisor Signature", normal_style)],
+            [Paragraph(f"Date: __________________", normal_style),
+             Paragraph(f"Date: __________________", normal_style)]
+        ]
+        sig_table = Table(sig_data, colWidths=[3*inch, 3*inch])
+        sig_table.setStyle(TableStyle([
+            ('TOPPADDING', (0,0), (-1,-1), 10),
+            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ]))
+        story.append(sig_table)
+
+        doc.build(story, onFirstPage=ReportService._draw_footer, onLaterPages=ReportService._draw_footer)
+        buffer.seek(0)
+        return buffer

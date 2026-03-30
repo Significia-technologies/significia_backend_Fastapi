@@ -319,3 +319,40 @@ async def download_custom_risk_profile_docx(
         raise HTTPException(status_code=404, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate custom DOCX: {str(e)}")
+
+@router.get("/{connector_id}/questionnaires/{questionnaire_id}/pdf")
+async def download_blank_risk_profile_pdf(
+    connector_id: uuid.UUID,
+    questionnaire_id: uuid.UUID,
+    remote_db: Session = Depends(get_remote_session)
+):
+    """
+    Generate a blank, printable PDF for a custom risk questionnaire.
+    """
+    try:
+        from app.services.report_service import ReportService
+        from fastapi.responses import StreamingResponse
+        
+        ia_logo_path = None
+        ia_master = remote_db.execute(select(IAMaster)).first()
+        if ia_master:
+            ia_master = ia_master[0]
+            # Try to resolve logo to a local path for ReportLab
+            try:
+                ia_logo_path = await resolve_logo_to_local_path(ia_master.ia_logo_path, remote_db)
+            except:
+                ia_logo_path = None
+            
+        pdf_buffer = ReportService.generate_blank_risk_form_pdf(remote_db, questionnaire_id, ia_logo_path)
+        
+        return StreamingResponse(
+            pdf_buffer,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=Blank_Risk_Form_{questionnaire_id}.pdf"}
+        )
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to generate blank PDF: {str(e)}")
