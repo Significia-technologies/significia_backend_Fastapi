@@ -323,7 +323,7 @@ async def download_custom_risk_profile_docx(
 @router.get("/{connector_id}/questionnaires/{questionnaire_id}/pdf")
 async def download_blank_risk_profile_pdf(
     connector_id: uuid.UUID,
-    questionnaire_id: uuid.UUID,
+    questionnaire_id: str,
     remote_db: Session = Depends(get_remote_session)
 ):
     """

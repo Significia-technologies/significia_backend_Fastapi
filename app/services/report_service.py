@@ -1022,33 +1022,62 @@ class ReportService:
         sig_table.rows[0].cells[1].text = "__________________________\nIA Advisor Signature"
         sig_date = assessment.submitted_at.strftime("%Y-%m-%d")
         sig_table.rows[1].cells[0].text = f"Date: {sig_date}"
-        sig_table.rows[1].cells[1].text = f"Date: {sig_date}"
-
-        buffer = BytesIO()
-        doc.save(buffer)
-        buffer.seek(0)
-        return buffer
-
     @staticmethod
-    def generate_blank_risk_form_pdf(db: Session, questionnaire_id: uuid.UUID, ia_logo_override: str = None) -> BytesIO:
-        def fmt_score(val):
+    def generate_blank_risk_form_pdf(db: Session, questionnaire_id: str, ia_logo_override: str = None) -> BytesIO:
+        # Fetch IA details 
+        ia = db.execute(select(IAMaster)).scalar_one_or_none()
+
+        if questionnaire_id == "sample-form":
+            # Mock questionnaire object for legacy form
+            from app.services.questionnaire_constants import QUESTIONNAIRE_DATA
+            
+            mock_questions = []
+            for q_key, q_val in QUESTIONNAIRE_DATA.items():
+                if q_key == 'q2':
+                    # Main Question 2 Instruction
+                    mock_questions.append({
+                        'text': q_val.get('question', ''),
+                        'options': [], # No options for the instruction itself
+                        'is_main': True
+                    })
+                    # Sub-questions 2.1 to 2.8
+                    options = [{'text': v} for v in q_val.get('options', {}).values()]
+                    for i, (f_key, f_val) in enumerate(q_val.get('factors', {}).items()):
+                        mock_questions.append({
+                            'text': f_val,
+                            'options': options,
+                            'is_sub': True,
+                            'sub_idx': i + 1
+                        })
+                else:
+                    options = [{'text': v} for v in q_val.get('options', {}).values()]
+                    mock_questions.append({
+                        'text': q_val.get('question', ''),
+                        'options': options,
+                        'is_main': True
+                    })
+
+            class MockQuestionnaire:
+                def __init__(self, questions):
+                    self.id = "SYSTEM-DEFAULT"
+                    self.questions = questions
+                    self.disclaimer = None # Remove disclaimer for system default
+            
+            questionnaire = MockQuestionnaire(mock_questions)
+        else:
+            # Fetch custom questionnaire
             try:
-                f_val = float(val)
-                return int(f_val) if f_val % 1 == 0 else f_val
-            except: return val
+                q_uuid = uuid.UUID(questionnaire_id)
+                questionnaire = db.execute(
+                    select(RiskQuestionnaire).where(RiskQuestionnaire.id == q_uuid)
+                ).scalar_one_or_none()
+            except:
+                raise ValueError("Questionnaire not found")
+            
+            if not questionnaire:
+                raise ValueError("Questionnaire not found")
 
-        # 1. Fetch Data
-        questionnaire = db.execute(
-            select(RiskQuestionnaire).where(RiskQuestionnaire.id == questionnaire_id)
-        ).scalar_one_or_none()
-        
-        if not questionnaire:
-            raise ValueError("Questionnaire not found")
-        
-        ia = db.execute(select(IAMaster)).first()
-        if ia: 
-            ia = ia[0]
-
+        # 1. Setup Document
         buffer = BytesIO()
         doc = SimpleDocTemplate(
             buffer, 
@@ -1138,15 +1167,24 @@ class ReportService:
         # 5. Questionnaire Items
         story.append(Paragraph("QUESTIONNAIRE", heading_style))
         
-        for q_idx, q_data in enumerate(questionnaire.questions):
-            story.append(Paragraph(f"<b>{q_idx+1}. {q_data.get('text', '')}</b>", normal_style))
+        main_q_idx = 0
+        for q_data in questionnaire.questions:
+            # Handle Numbering
+            if q_data.get('is_sub'):
+                label = f"{main_q_idx}.{q_data.get('sub_idx')}"
+            else:
+                main_q_idx += 1
+                label = f"{main_q_idx}"
+            
+            story.append(Paragraph(f"<b>{label}. {q_data.get('text', '')}</b>", normal_style))
             
             options_p = ""
             for i, opt in enumerate(q_data.get('options', [])):
                 prefix = f"[ {chr(65 + i)} ] "
                 options_p += f"{prefix}{opt.get('text', '')}<br/>"
             
-            story.append(Paragraph(options_p, ParagraphStyle('Options', parent=normal_style, leftIndent=20, leading=12)))
+            if options_p:
+                story.append(Paragraph(options_p, ParagraphStyle('Options', parent=normal_style, leftIndent=30, leading=12)))
             story.append(Spacer(1, 10))
 
         # 7. Disclaimer Section
@@ -1159,15 +1197,13 @@ class ReportService:
         # 8. Discussion Notes Section
         story.append(Spacer(1, 20))
         story.append(Paragraph("DISCUSSION & STRATEGIC NOTES", bold_style))
-        story.append(Spacer(1, 120)) # Large blank space for manual notes
+        story.append(Spacer(1, 80)) # Reduced blank space for manual notes
         
         # 9. Signature Section
-        story.append(Spacer(1, 40))
+        story.append(Spacer(1, 30))
         sig_data = [
-            [Paragraph("<b>__________________________</b><br/>Client Signature", normal_style), 
-             Paragraph("<b>__________________________</b><br/>IA Advisor Signature", normal_style)],
-            [Paragraph(f"Date: __________________", normal_style),
-             Paragraph(f"Date: __________________", normal_style)]
+            [Paragraph("<b>__________________________</b><br/>Client Signature<br/><br/>Date: __________________", normal_style), 
+             Paragraph("<b>__________________________</b><br/>IA Advisor Signature<br/><br/>Date: __________________", normal_style)]
         ]
         sig_table = Table(sig_data, colWidths=[3*inch, 3*inch])
         sig_table.setStyle(TableStyle([
