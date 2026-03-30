@@ -257,3 +257,65 @@ def list_custom_assessments(
     remote_db: Session = Depends(get_remote_session)
 ):
     return CustomRiskProfileService.list_client_assessments(remote_db, client_id)
+    
+@router.get("/{connector_id}/custom-assessment/{assessment_id}/pdf")
+async def download_custom_risk_profile_pdf(
+    connector_id: uuid.UUID,
+    assessment_id: uuid.UUID,
+    remote_db: Session = Depends(get_remote_session)
+):
+    """
+    Generate and download a PDF report for a custom risk assessment.
+    """
+    try:
+        from app.services.report_service import ReportService
+        from fastapi.responses import StreamingResponse
+        
+        ia_logo_path = None
+        ia_master = remote_db.execute(select(IAMaster)).first()
+        if ia_master:
+            ia_master = ia_master[0]
+            ia_logo_path = await resolve_logo_to_local_path(ia_master.ia_logo_path, remote_db)
+        
+        pdf_buffer = ReportService.generate_custom_risk_profile_pdf(remote_db, assessment_id, ia_logo_path)
+        
+        return StreamingResponse(
+            pdf_buffer,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=Custom_Risk_Assessment_{assessment_id}.pdf"}
+        )
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate custom PDF: {str(e)}")
+
+@router.get("/{connector_id}/custom-assessment/{assessment_id}/docx")
+async def download_custom_risk_profile_docx(
+    connector_id: uuid.UUID,
+    assessment_id: uuid.UUID,
+    remote_db: Session = Depends(get_remote_session)
+):
+    """
+    Generate and download a DOCX report for a custom risk assessment.
+    """
+    try:
+        from app.services.report_service import ReportService
+        from fastapi.responses import StreamingResponse
+        
+        ia_logo_path = None
+        ia_master = remote_db.execute(select(IAMaster)).first()
+        if ia_master:
+            ia_master = ia_master[0]
+            ia_logo_path = await resolve_logo_to_local_path(ia_master.ia_logo_path, remote_db)
+            
+        docx_buffer = ReportService.generate_custom_risk_profile_docx(remote_db, assessment_id, ia_logo_path)
+        
+        return StreamingResponse(
+            docx_buffer,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": f"attachment; filename=Custom_Risk_Assessment_{assessment_id}.docx"}
+        )
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate custom DOCX: {str(e)}")
