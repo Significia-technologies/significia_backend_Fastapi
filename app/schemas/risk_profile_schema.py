@@ -37,6 +37,7 @@ class RiskAssessmentCreate(BaseModel):
     include_ai: bool = False
     disclaimer_text: Optional[str] = None
     discussion_notes: Optional[str] = ""
+    form_name: Optional[str] = "Sample"
 
 class RiskAssessmentCalculateRequest(BaseModel):
     answers: RiskAssessmentAnswers
@@ -61,6 +62,7 @@ class RiskAssessmentResponse(BaseModel):
     calculated_score: int
     assigned_risk_tier: str
     tier_recommendation: Optional[str] = None
+    form_name: str
     assessment_timestamp: datetime
 
     class Config:

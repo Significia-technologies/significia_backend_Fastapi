@@ -104,6 +104,7 @@ class ProvisionerService:
                 discussion_notes TEXT,
                 question_scores JSONB NOT NULL,
                 assessment_timestamp TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                form_name VARCHAR(255) DEFAULT 'Sample',
                 created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
             );
             """
@@ -120,6 +121,9 @@ class ProvisionerService:
             );
             """
             engine.execute_query(create_client_risk_master)
+
+            # Patch risk_assessments for form_name
+            engine.execute_query("ALTER TABLE significia_core.risk_assessments ADD COLUMN IF NOT EXISTS form_name VARCHAR(255) DEFAULT 'Sample';")
         except Exception as e:
             print(f"Migration patching failed: {e}")
 
@@ -393,6 +397,7 @@ class ProvisionerService:
             discussion_notes TEXT,
             question_scores JSONB NOT NULL,
             assessment_timestamp TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            form_name VARCHAR(255) DEFAULT 'Sample',
             created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_risk_assessments_client ON significia_core.risk_assessments(client_id);

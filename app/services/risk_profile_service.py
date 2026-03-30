@@ -131,6 +131,7 @@ class RiskProfileService:
             tier_recommendation=recommendation,
             disclaimer_text=payload.disclaimer_text,
             discussion_notes=payload.discussion_notes,
+            form_name=payload.form_name,
             question_scores=question_scores
         )
         db.add(assessment)
@@ -166,7 +167,8 @@ class RiskProfileService:
             changes=json.dumps({
                 "client_code": payload.client_code,
                 "score": total_score,
-                "tier": risk_tier
+                "tier": risk_tier,
+                "form_name": payload.form_name
             }),
             user_ip=user_ip,
             user_agent=user_agent

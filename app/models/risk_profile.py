@@ -48,6 +48,9 @@ class RiskAssessment(SiloBase):
     discussion_notes: Mapped[Optional[str]] = mapped_column(Text)
     question_scores: Mapped[dict] = mapped_column(JSONB, nullable=False)
     
+    # Form Identification
+    form_name: Mapped[str] = mapped_column(String(255), default="Sample", server_default="Sample")
+
     # Timestamps
     assessment_timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
