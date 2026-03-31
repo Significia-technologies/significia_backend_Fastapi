@@ -1,7 +1,7 @@
 import json
 import uuid
 from datetime import datetime
-from typing import Dict, Tuple, Optional
+from typing import Dict, Tuple, Optional, List
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
