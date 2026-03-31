@@ -49,6 +49,136 @@ class AssetAllocationReportUtils:
         canvas.drawCentredString(letter[0] / 2, 0.75 * inch, text)
 
     @staticmethod
+    def generate_blank_pdf(ia_master: Optional[IAMaster], ia_logo_path: Optional[str] = None) -> io.BytesIO:
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=1*inch)
+        story = []
+        styles = getSampleStyleSheet()
+
+        # Custom styles (Same as generate_pdf)
+        cover_title_style = ParagraphStyle(
+            'CoverTitle',
+            parent=styles['Heading1'],
+            fontSize=28,
+            textColor=colors.HexColor('#1a2980'),
+            alignment=1,
+            spaceAfter=40,
+            fontName="Helvetica-Bold",
+            leading=34
+        )
+        cover_subtitle_style = ParagraphStyle('CoverSubTitle', parent=styles['Normal'], fontSize=16, textColor=colors.HexColor('#45B7D1'), alignment=1, spaceAfter=60, fontName="Helvetica")
+        cover_client_style = ParagraphStyle('CoverClient', parent=styles['Normal'], fontSize=18, textColor=colors.black, alignment=1, spaceAfter=15, fontName="Helvetica-Bold")
+        cover_info_style = ParagraphStyle('CoverInfo', parent=styles['Normal'], fontSize=12, textColor=colors.grey, alignment=1, spaceAfter=10, fontName="Helvetica")
+        heading_style = ParagraphStyle('HeadingStyle', parent=styles['Heading2'], fontSize=14, textColor=colors.HexColor('#1a2980'), spaceAfter=12, spaceBefore=20)
+        subheading_style = ParagraphStyle('SubheadingStyle', parent=styles['Heading3'], fontSize=12, textColor=colors.HexColor('#2a5298'), spaceAfter=8, spaceBefore=15)
+        normal_style = ParagraphStyle('NormalStyle', parent=styles['Normal'], fontSize=10, spaceAfter=6)
+
+        # --- COVER PAGE ---
+        story.append(Spacer(1, 1.5*inch))
+        if ia_logo_path and os.path.exists(ia_logo_path):
+            try:
+                story.append(Image(ia_logo_path, width=2.5*inch, height=1.25*inch))
+            except: pass
+        
+        story.append(Spacer(1, 0.5*inch))
+        story.append(Paragraph("ASSET ALLOCATION FORM", cover_title_style))
+        story.append(Paragraph("Strategic Portfolio Distribution Template", cover_subtitle_style))
+        story.append(Spacer(1, 0.5*inch))
+        
+        story.append(Paragraph("Client Name: _________________________________", cover_client_style))
+        story.append(Paragraph("Client Code: _________________________________", cover_info_style))
+        story.append(Paragraph("Target Risk Profile: __________________________", cover_info_style))
+        
+        story.append(Spacer(1, 1.2*inch))
+        if ia_master:
+            story.append(Paragraph(f"<b>Investment Advisor:</b>", cover_info_style))
+            story.append(Paragraph(f"{ia_master.name_of_ia}", cover_info_style))
+            story.append(Paragraph(f"Registration No: {ia_master.ia_registration_number}", cover_info_style))
+        
+        story.append(Spacer(1, 0.2*inch))
+        story.append(Paragraph(f"Date: ________________________", cover_info_style))
+        story.append(PageBreak())
+
+        # --- BLANK TABLES ---
+        story.append(Paragraph("ASSET ALLOCATION DETAILS", heading_style))
+        
+        story.append(Paragraph("MAIN ASSET CLASS ALLOCATION", subheading_style))
+        main_data = [
+            ["Asset Class", "Allocation %"],
+            ["Equities", "__________%"],
+            ["Debt Securities", "__________%"],
+            ["Commodities", "__________%"],
+            ["TOTAL", "100.0%"]
+        ]
+        main_table = Table(main_data, colWidths=[2.5*inch, 1.5*inch])
+        main_table.setStyle(TableStyle([
+            ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+            ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
+            ('PADDING', (0,0), (-1,-1), 8),
+        ]))
+        story.append(main_table)
+
+        story.append(Paragraph("SUB-ASSET CLASSES (EQUITIES)", subheading_style))
+        eq_data = [
+            ["Sub-asset", "Allocation %", "Within Equities", "Within Total Portfolio"],
+            ["Stocks", "______%", "______%", "______%"],
+            ["Mutual Funds (Equity)", "______%", "______%", "______%"],
+            ["ULIP (Equity)", "______%", "______%", "______%"],
+            ["TOTAL", "100.0%", "100.0%", "______%"]
+        ]
+        eq_table = Table(eq_data, colWidths=[2.3*inch, 1.2*inch, 1.2*inch, 1.8*inch])
+        eq_table.setStyle(TableStyle([('GRID', (0,0), (-1,-1), 0.5, colors.grey), ('BACKGROUND', (0,0), (-1,0), colors.lightgrey), ('FONTSIZE', (0,0), (-1,-1), 8)]))
+        story.append(eq_table)
+
+        story.append(Paragraph("SUB-ASSET CLASSES (DEBT)", subheading_style))
+        debt_data = [
+            ["Sub-asset", "Allocation %", "Within Debt", "Within Total Portfolio"],
+            ["Fixed Deposits & Bonds", "______%", "______%", "______%"],
+            ["Mutual Funds (Debt)", "______%", "______%", "______%"],
+            ["ULIP (Debt)", "______%", "______%", "______%"],
+            ["TOTAL", "100.0%", "100.0%", "______%"]
+        ]
+        debt_table = Table(debt_data, colWidths=[2.3*inch, 1.2*inch, 1.2*inch, 1.8*inch])
+        debt_table.setStyle(TableStyle([('GRID', (0,0), (-1,-1), 0.5, colors.grey), ('BACKGROUND', (0,0), (-1,0), colors.lightgrey), ('FONTSIZE', (0,0), (-1,-1), 8)]))
+        story.append(debt_table)
+
+        story.append(Paragraph("SUB-ASSET CLASSES (COMMODITIES)", subheading_style))
+        comm_data = [
+            ["Sub-asset", "Allocation %", "Within Commodities", "Within Total Portfolio"],
+            ["Gold ETF", "______%", "______%", "______%"],
+            ["Silver ETF", "______%", "______%", "______%"],
+            ["TOTAL", "100.0%", "100.0%", "______%"]
+        ]
+        comm_table = Table(comm_data, colWidths=[2.3*inch, 1.2*inch, 1.2*inch, 1.8*inch])
+        comm_table.setStyle(TableStyle([('GRID', (0,0), (-1,-1), 0.5, colors.grey), ('BACKGROUND', (0,0), (-1,0), colors.lightgrey), ('FONTSIZE', (0,0), (-1,-1), 8)]))
+        story.append(comm_table)
+
+        # Blank Space for Conclusion/Notes
+        story.append(Paragraph("Discussions", heading_style))
+        story.append(Spacer(1, 0.1*inch))
+        story.append(Spacer(1, 2.0*inch))
+
+        story.append(Paragraph("DISCLAIMER", heading_style))
+        disclaimer = "This asset allocation report is prepared based on the client's risk profile and financial goals as assessed by the Investment Advisor. The allocation percentages represent a recommended distribution of investable assets and should be reviewed periodically. Past performance is not indicative of future results."
+        story.append(Paragraph(disclaimer, styles['Italic']))
+
+        # Signatures
+        story.append(Spacer(1, 0.5*inch))
+        sig_data = [
+            [Paragraph("__________________________<br/><br/><b>Client Signature</b><br/><br/>Date: ________________", normal_style),
+             Paragraph("__________________________<br/><br/><b>Advisor Signature</b><br/><br/>Date: ________________", normal_style)],
+            [Paragraph("__________________________", normal_style),
+             Paragraph(f"{ia_master.name_of_ia if ia_master else 'Investment Advisor'}", normal_style)]
+        ]
+        sig_table = Table(sig_data, colWidths=[3.5*inch, 3.5*inch])
+        sig_table.setStyle(TableStyle([('ALIGN', (0,0), (-1,-1), 'CENTER'), ('VALIGN', (0,0), (-1,-1), 'BOTTOM'), ('BOTTOMPADDING', (0,0), (-1,0), 30)]))
+        story.append(sig_table)
+
+        doc.build(story, onFirstPage=AssetAllocationReportUtils.add_page_number, onLaterPages=AssetAllocationReportUtils.add_page_number)
+        buffer.seek(0)
+        return buffer
+
+    @staticmethod
     def generate_pdf(allocation: AssetAllocation, ia_master: Optional[IAMaster], ia_logo_path: Optional[str] = None) -> io.BytesIO:
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=1*inch)

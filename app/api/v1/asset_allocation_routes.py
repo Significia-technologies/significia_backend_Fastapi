@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import uuid
@@ -13,6 +14,7 @@ from app.schemas.asset_allocation import (
 from app.services.asset_allocation_service import AssetAllocationService
 from app.models.ia_master import IAMaster
 from app.utils.file_utils import resolve_logo_to_local_path
+from app.utils.reports.asset_allocation_report import AssetAllocationReportUtils
 from sqlalchemy import select
 
 router = APIRouter()
@@ -174,9 +176,6 @@ async def download_allocation_pdf(
     Generate and download a PDF report for a specific asset allocation.
     """
     try:
-        from app.utils.reports.asset_allocation_report import AssetAllocationReportUtils
-        from fastapi.responses import StreamingResponse
-        
         allocation = AssetAllocationService.get_allocation_by_id(remote_db, allocation_id)
         if not allocation:
             raise HTTPException(status_code=404, detail="Allocation not found")
@@ -217,9 +216,6 @@ async def download_allocation_docx(
     Generate and download a DOCX report for a specific asset allocation.
     """
     try:
-        from app.utils.reports.asset_allocation_report import AssetAllocationReportUtils
-        from fastapi.responses import StreamingResponse
-        
         allocation = AssetAllocationService.get_allocation_by_id(remote_db, allocation_id)
         if not allocation:
             raise HTTPException(status_code=404, detail="Allocation not found")
@@ -239,3 +235,32 @@ async def download_allocation_docx(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate DOCX: {str(e)}")
+@router.get("/{connector_id}/blank-form/pdf")
+async def download_blank_pdf(
+    connector_id: uuid.UUID,
+    remote_db: Session = Depends(get_remote_session)
+):
+    """
+    Generate and download a blank Asset Allocation PDF template.
+    """
+    # Get IA Master for branding (Fetch the first/primary IA record)
+    ia_master = remote_db.execute(select(IAMaster)).first()
+    if ia_master:
+        ia_master = ia_master[0]
+    
+    ia_logo_path = ia_master.ia_logo_path if ia_master else None
+    
+    # Resolve logo path if possible
+    if ia_logo_path:
+        try:
+            ia_logo_path = await resolve_logo_to_local_path(ia_logo_path, remote_db)
+        except:
+            ia_logo_path = None
+
+    pdf_buffer = AssetAllocationReportUtils.generate_blank_pdf(ia_master, ia_logo_path)
+    
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=Asset_Allocation_Blank_Form.pdf"}
+    )
