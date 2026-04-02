@@ -113,8 +113,89 @@ def get_tenant_by_slug(
     return tenant
 
 
+# ════════════════════════════════════════════════════════════════════
+#  BRIDGE ARCHITECTURE — New Dependencies
+# ════════════════════════════════════════════════════════════════════
+
+def get_current_tenant(
+    db: Session = Depends(get_db),
+    token: str | None = Depends(oauth2_scheme),
+    x_api_key: str | None = Depends(api_key_header),
+    x_tenant_slug: str | None = __import__('fastapi').Header(None, alias="X-Tenant-Slug"),
+    host: str | None = __import__('fastapi').Header(None),
+) -> "Tenant":
+    """
+    Resolve the current tenant from JWT claims, API key, slug, or domain.
+    This replaces the connector_id pattern — we no longer need a connector_id
+    because the tenant's Bridge URL tells us where to send queries.
+    """
+    tenant = None
+
+    # Method 1: From API key
+    if x_api_key:
+        hashed = hashlib.sha256(x_api_key.encode()).hexdigest()
+        api_key_obj = db.query(ApiKey).filter(ApiKey.hashed_key == hashed, ApiKey.is_active == True).first()
+        if api_key_obj:
+            tenant = db.query(Tenant).filter(Tenant.id == api_key_obj.tenant_id).first()
+
+    # Method 2: From JWT token (user's tenant_id claim)
+    if not tenant and token:
+        try:
+            payload = decode_token(token)
+            token_tenant_id = payload.get("tenant_id")
+            if token_tenant_id:
+                tenant = db.query(Tenant).filter(Tenant.id == token_tenant_id).first()
+        except Exception:
+            pass
+
+    # Method 3: From tenant slug header
+    if not tenant and x_tenant_slug:
+        tenant = db.query(Tenant).filter(Tenant.subdomain == x_tenant_slug).first()
+
+    # Method 4: From Host header (Subdomain or Custom Domain)
+    if not tenant and host:
+        clean_host = host.split(':')[0]
+        # Skip root domains
+        root_domains = ["localhost", "127.0.0.1", "significia.com", "www.significia.com", "app.significia.com"]
+        
+        if clean_host in root_domains:
+            if clean_host in ["app.significia.com"]:
+                 # Explicitly resolve master tenant for admin domains
+                 tenant = db.query(Tenant).filter(Tenant.subdomain == "master").first()
+        else:
+            # Check if it's a subdomain of localhost or significia.com
+            for root in ["localhost", "significia.com"]:
+                if clean_host.endswith(f".{root}"):
+                    slug = clean_host.split(f".{root}")[0]
+                    tenant = db.query(Tenant).filter(Tenant.subdomain == slug).first()
+                    break
+            
+            # If not a subdomain, it must be a custom domain
+            if not tenant:
+                tenant = db.query(Tenant).filter(Tenant.custom_domain == clean_host).first()
+
+    if not tenant:
+        raise HTTPException(status_code=401, detail="Could not determine tenant context. Please provide X-Tenant-Slug or use a valid subdomain.")
+
+    if not tenant.is_active:
+        raise HTTPException(status_code=403, detail="Tenant is inactive")
+
+    return tenant
+
+
+def get_bridge_client(
+    tenant: "Tenant" = Depends(get_current_tenant),
+) -> BridgeClient:
+    """
+    Return a configured BridgeClient for the current tenant.
+    This replaces get_remote_session — instead of a direct DB session,
+    you get an HTTP client pointing at the tenant's Bridge.
+    """
+    return BridgeClient(tenant)
+
+
 def get_client_db(
-    tenant: Tenant | None = Depends(get_tenant_by_slug),
+    tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ) -> Generator[Session, None, None]:
     if not tenant:
@@ -171,83 +252,3 @@ def get_current_client(
         raise HTTPException(status_code=403, detail="Inactive client")
         
     return client
-
-
-# ════════════════════════════════════════════════════════════════════
-#  BRIDGE ARCHITECTURE — New Dependencies
-# ════════════════════════════════════════════════════════════════════
-
-def get_current_tenant(
-    db: Session = Depends(get_db),
-    token: str | None = Depends(oauth2_scheme),
-    x_api_key: str | None = Depends(api_key_header),
-    x_tenant_slug: str | None = __import__('fastapi').Header(None, alias="X-Tenant-Slug"),
-    host: str | None = __import__('fastapi').Header(None),
-) -> "Tenant":
-    """
-    Resolve the current tenant from JWT claims, API key, slug, or domain.
-    This replaces the connector_id pattern — we no longer need a connector_id
-    because the tenant's Bridge URL tells us where to send queries.
-    """
-    tenant = None
-
-    # Method 1: From API key
-    if x_api_key:
-        hashed = hashlib.sha256(x_api_key.encode()).hexdigest()
-        api_key_obj = db.query(ApiKey).filter(ApiKey.hashed_key == hashed, ApiKey.is_active == True).first()
-        if api_key_obj:
-            tenant = db.query(Tenant).filter(Tenant.id == api_key_obj.tenant_id).first()
-
-    # Method 2: From JWT token (user's tenant_id claim)
-    if not tenant and token:
-        try:
-            user = get_current_user(db=db, token=token)
-            tenant = db.query(Tenant).filter(Tenant.id == user.tenant_id).first()
-        except HTTPException:
-            pass
-
-    # Method 3: From tenant slug header
-    if not tenant and x_tenant_slug:
-        tenant = db.query(Tenant).filter(Tenant.subdomain == x_tenant_slug).first()
-
-    # Method 4: From Host header (Subdomain or Custom Domain)
-    if not tenant and host:
-        clean_host = host.split(':')[0]
-        # Skip root domains
-        root_domains = ["localhost", "127.0.0.1", "significia.com", "www.significia.com", "app.significia.com"]
-        
-        if clean_host in root_domains:
-            if clean_host in ["app.significia.com"]:
-                 # Explicitly resolve master tenant for admin domains
-                 tenant = db.query(Tenant).filter(Tenant.subdomain == "master").first()
-        else:
-            # Check if it's a subdomain of localhost or significia.com
-            for root in ["localhost", "significia.com"]:
-                if clean_host.endswith(f".{root}"):
-                    slug = clean_host.split(f".{root}")[0]
-                    tenant = db.query(Tenant).filter(Tenant.subdomain == slug).first()
-                    break
-            
-            # If not a subdomain, it must be a custom domain
-            if not tenant:
-                tenant = db.query(Tenant).filter(Tenant.custom_domain == clean_host).first()
-
-    if not tenant:
-        raise HTTPException(status_code=401, detail="Could not determine tenant context. Please provide X-Tenant-Slug or use a valid subdomain.")
-
-    if not tenant.is_active:
-        raise HTTPException(status_code=403, detail="Tenant is inactive")
-
-    return tenant
-
-
-def get_bridge_client(
-    tenant: "Tenant" = Depends(get_current_tenant),
-) -> BridgeClient:
-    """
-    Return a configured BridgeClient for the current tenant.
-    This replaces get_remote_session — instead of a direct DB session,
-    you get an HTTP client pointing at the tenant's Bridge.
-    """
-    return BridgeClient(tenant)
-

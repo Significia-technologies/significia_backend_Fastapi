@@ -8,63 +8,25 @@ import json
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Form
 from fastapi.responses import Response
-from sqlalchemy.orm import Session
 
-from app.api.deps import get_bridge_client, get_db, get_current_user
+from app.api.deps import get_bridge_client, get_current_tenant
 from app.services.bridge_client import BridgeClient
-from app.models.user import User
+from app.models.tenant import Tenant
 
-# Legacy imports for backward compat
-from app.database.remote_session import get_remote_session
+# Legacy schemas kept for typed responses
 from app.schemas.ia_master import IAMasterRead, IANumberValidationResponse, IAMasterPermitUpdate, IAMasterListResponse
-from app.services.ia_master_service import IAMasterService
 
 router = APIRouter()
-ia_service = IAMasterService()
 
-
-# ════════════════════════════════════════════════════════════════════
-#  BRIDGE-POWERED ROUTES (no connector_id)
-# ════════════════════════════════════════════════════════════════════
-
-@router.get("/bridge/latest", response_model=dict)
-async def get_latest_ia_bridge(
-    bridge: BridgeClient = Depends(get_bridge_client),
-):
-    """Get current IA Master record via the Bridge."""
-    return await bridge.get("/ia-master")
-
-
-@router.post("/bridge", response_model=dict)
-async def create_or_update_ia_bridge(
-    data: dict,
-    bridge: BridgeClient = Depends(get_bridge_client),
-):
-    """Create or update IA Master record via the Bridge."""
-    return await bridge.post("/ia-master", data)
-
-
-@router.get("/bridge/employees", response_model=list)
-async def list_employees_bridge(
-    bridge: BridgeClient = Depends(get_bridge_client),
-):
-    """List all employees of the IA via the Bridge."""
-    return await bridge.get("/employees")
-
-
-# ════════════════════════════════════════════════════════════════════
-#  LEGACY ROUTES (with connector_id — kept during transition)
-# ════════════════════════════════════════════════════════════════════
-
-@router.get("/validate-remote/{ia_number}", response_model=IANumberValidationResponse)
-def validate_ia_number_remote(
+@router.get("/validate/{ia_number}", response_model=IANumberValidationResponse)
+async def validate_ia_number_remote(
     ia_number: str,
-    db: Session = Depends(get_remote_session)
+    bridge: BridgeClient = Depends(get_bridge_client)
 ):
-    exists = ia_service.validate_ia_number(db, ia_number)
-    return {"exists": exists}
+    """Proxy validation to the Bridge silo."""
+    return await bridge.get(f"/ia-master/validate/{ia_number}")
 
-@router.post("/", response_model=IAMasterRead)
+@router.post("/", response_model=dict)
 async def create_ia_entry(
     name_of_ia: str = Form(...),
     nature_of_entity: str = Form(...),
@@ -86,11 +48,15 @@ async def create_ia_entry(
     ia_signature: Optional[UploadFile] = File(None),
     ia_logo: Optional[UploadFile] = File(None),
     employee_certificates: List[UploadFile] = File([]),
-    db: Session = Depends(get_remote_session),
-    current_user: User = Depends(get_current_user)
+    bridge: BridgeClient = Depends(get_bridge_client),
 ):
+    """
+    Forward IA Registration to the local Bridge service.
+    All data and files stay in the IA's local silo.
+    """
     try:
-        ia_data = {
+        # 1. Prepare Form Data
+        data = {
             "name_of_ia": name_of_ia,
             "nature_of_entity": nature_of_entity,
             "name_of_entity": name_of_entity,
@@ -105,20 +71,28 @@ async def create_ia_entry(
             "bank_account_number": bank_account_number,
             "bank_name": bank_name,
             "bank_branch": bank_branch,
-            "ifsc_code": ifsc_code
+            "ifsc_code": ifsc_code,
+            "employees_json": employees_json
         }
-        employees_data = json.loads(employees_json)
-        db_ia = await ia_service.create_ia_entry(
-            db=db, ia_data=ia_data, employees_data=employees_data,
-            ia_cert=ia_certificate, ia_sig=ia_signature, ia_logo=ia_logo,
-            employee_certs=employee_certificates, tenant_id=current_user.tenant_id
-        )
-        await ia_service.sign_file_urls(db_ia, db)
-        return db_ia
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
-@router.patch("/{ia_id}", response_model=IAMasterRead)
+        # 2. Prepare Files
+        files = {}
+        if ia_certificate:
+            files["ia_certificate"] = (ia_certificate.filename, await ia_certificate.read(), ia_certificate.content_type)
+        if ia_signature:
+            files["ia_signature"] = (ia_signature.filename, await ia_signature.read(), ia_signature.content_type)
+        if ia_logo:
+            files["ia_logo"] = (ia_logo.filename, await ia_logo.read(), ia_logo.content_type)
+        
+        # Note: employee_certificates handling could be added if needed on Bridge side
+        
+        # 3. Forward to Bridge
+        return await bridge.post_multipart("/ia-master", data=data, files=files)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Bridge Registration Failed: {str(e)}")
+
+@router.patch("/{ia_id}", response_model=dict)
 async def update_ia_entry(
     ia_id: uuid.UUID,
     name_of_ia: str = Form(None),
@@ -141,11 +115,15 @@ async def update_ia_entry(
     ia_signature: Optional[UploadFile] = File(None),
     ia_logo: Optional[UploadFile] = File(None),
     employee_certificates: List[UploadFile] = File([]),
-    db: Session = Depends(get_remote_session),
-    current_user: User = Depends(get_current_user)
+    bridge: BridgeClient = Depends(get_bridge_client),
 ):
+    """
+    Update IA Registration via the Bridge.
+    Proxies to the same Bridge logic as POST.
+    """
     try:
-        ia_data = {
+        # 1. Prepare Form Data (only including non-None values)
+        data = {
             k: v for k, v in {
                 "name_of_ia": name_of_ia, "nature_of_entity": nature_of_entity,
                 "name_of_entity": name_of_entity, "ia_registration_number": ia_registration_number,
@@ -153,46 +131,44 @@ async def update_ia_entry(
                 "registered_address": registered_address, "registered_contact_number": registered_contact_number,
                 "office_contact_number": office_contact_number, "registered_email_id": registered_email_id,
                 "cin_number": cin_number, "bank_account_number": bank_account_number,
-                "bank_name": bank_name, "bank_branch": bank_branch, "ifsc_code": ifsc_code
+                "bank_name": bank_name, "bank_branch": bank_branch, "ifsc_code": ifsc_code,
+                "employees_json": employees_json
             }.items() if v is not None
         }
-        employees_data = json.loads(employees_json)
-        db_ia = await ia_service.update_ia_entry(
-            db=db, ia_id=ia_id, ia_data=ia_data, employees_data=employees_data,
-            ia_cert=ia_certificate, ia_sig=ia_signature, ia_logo=ia_logo,
-            employee_certs=employee_certificates
-        )
-        await ia_service.sign_file_urls(db_ia, db)
-        return db_ia
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
 
-@router.patch("/{ia_id}/client-permit", response_model=IAMasterRead)
-async def update_client_permit(
-    ia_id: uuid.UUID,
-    permit_update: IAMasterPermitUpdate,
-    db: Session = Depends(get_remote_session),
-    current_user: User = Depends(get_current_user)
+        # 2. Prepare Files
+        files = {}
+        if ia_certificate:
+            files["ia_certificate"] = (ia_certificate.filename, await ia_certificate.read(), ia_certificate.content_type)
+        if ia_signature:
+            files["ia_signature"] = (ia_signature.filename, await ia_signature.read(), ia_signature.content_type)
+        if ia_logo:
+            files["ia_logo"] = (ia_logo.filename, await ia_logo.read(), ia_logo.content_type)
+        
+        # 3. Forward to Bridge
+        return await bridge.post_multipart("/ia-master", data=data, files=files)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Bridge Update Failed: {str(e)}")
+
+@router.get("/latest", response_model=dict)
+async def get_latest_ia(
+    bridge: BridgeClient = Depends(get_bridge_client)
 ):
-    try:
-        db_ia = ia_service.update_client_permit(db, ia_id, permit_update.max_client_permit)
-        await ia_service.sign_file_urls(db_ia, db)
-        return db_ia
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    """Proxy Latest IA Info request to the Bridge."""
+    return await bridge.get("/ia-master")
 
-@router.get("/latest", response_model=Optional[IAMasterRead])
-async def get_latest_ia(db: Session = Depends(get_remote_session), current_user: User = Depends(get_current_user)):
-    return await ia_service.get_latest_ia(db)
-
-@router.get("/list", response_model=IAMasterListResponse)
-async def get_all_ias(skip: int = 0, limit: int = 100, db: Session = Depends(get_remote_session), current_user: User = Depends(get_current_user)):
-    return await ia_service.get_all_ias(db, skip=skip, limit=limit)
+@router.get("/list", response_model=dict)
+async def get_all_ias(
+    bridge: BridgeClient = Depends(get_bridge_client)
+):
+    """Proxy List IAs request to the Bridge (usually just returns the owner)."""
+    return await bridge.get("/ia-master")
 
 @router.get("/{ia_id}/pdf")
-async def download_ia_pdf(ia_id: uuid.UUID, db: Session = Depends(get_remote_session)):
-    try:
-        pdf_bytes, filename = await ia_service.generate_pdf(db, ia_id)
-        return Response(content=pdf_bytes, media_type="application/pdf", headers={"Content-Disposition": f"attachment; filename={filename}"})
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+async def download_ia_pdf(
+    ia_id: uuid.UUID, 
+    bridge: BridgeClient = Depends(get_bridge_client)
+):
+    """Proxy PDF download to the Bridge (if implemented on Bridge side)."""
+    raise HTTPException(status_code=501, detail="Bridge PDF generation not yet implemented")

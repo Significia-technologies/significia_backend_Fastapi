@@ -127,7 +127,7 @@ class BridgeClient:
                 raise HTTPException(503, "Bridge is offline. Please contact your administrator.")
 
     async def upload_file(self, path: str, file_bytes: bytes, filename: str, content_type: str = "application/octet-stream") -> Any:
-        """Upload a file to the Bridge (which stores it in the IA's own bucket)."""
+        """Upload a single file to the Bridge."""
         url = f"{self.base_url}{path}"
         logger.info(f"[Bridge UPLOAD] tenant={self.tenant_name} path={path} file={filename}")
 
@@ -136,7 +136,7 @@ class BridgeClient:
             "X-Significia-Tenant-Id": str(self.tenant_id),
         }
 
-        async with httpx.AsyncClient(timeout=60) as client:  # Longer timeout for uploads
+        async with httpx.AsyncClient(timeout=60) as client:
             try:
                 files = {"file": (filename, file_bytes, content_type)}
                 response = await client.post(url, headers=headers, files=files)
@@ -145,6 +145,25 @@ class BridgeClient:
                 raise HTTPException(503, "Bridge upload timed out. Please try again.")
             except httpx.ConnectError:
                 raise HTTPException(503, "Bridge is offline. Cannot upload files.")
+
+    async def post_multipart(self, path: str, data: Dict[str, Any], files: Dict[str, Any]) -> Any:
+        """Send a POST request with multiple files and form data to the Bridge."""
+        url = f"{self.base_url}{path}"
+        logger.info(f"[Bridge MULTIPART] tenant={self.tenant_name} path={path}")
+
+        headers = {
+            "Authorization": f"Bearer {self.api_secret}",
+            "X-Significia-Tenant-Id": str(self.tenant_id),
+        }
+
+        async with httpx.AsyncClient(timeout=60) as client:
+            try:
+                response = await client.post(url, headers=headers, data=data, files=files)
+                return self._handle_response(response, path)
+            except httpx.ConnectTimeout:
+                raise HTTPException(503, "Bridge multipart request timed out.")
+            except httpx.ConnectError:
+                raise HTTPException(503, "Bridge is offline.")
 
     async def health_check(self) -> Dict[str, Any]:
         """Check if the Bridge is alive and responding."""

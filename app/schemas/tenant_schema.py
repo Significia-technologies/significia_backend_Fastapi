@@ -25,8 +25,10 @@ class TenantPortalUpdate(BaseModel):
             raise ValueError("Invalid custom domain format")
         return v
 
+import uuid
+
 class TenantResponse(BaseModel):
-    id: str
+    id: uuid.UUID
     name: str
     subdomain: Optional[str]
     custom_domain: Optional[str]
