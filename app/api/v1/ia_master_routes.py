@@ -32,7 +32,7 @@ async def get_latest_ia_bridge(
     bridge: BridgeClient = Depends(get_bridge_client),
 ):
     """Get current IA Master record via the Bridge."""
-    return await bridge.get("/api/ia-master")
+    return await bridge.get("/ia-master")
 
 
 @router.post("/bridge", response_model=dict)
@@ -41,7 +41,7 @@ async def create_or_update_ia_bridge(
     bridge: BridgeClient = Depends(get_bridge_client),
 ):
     """Create or update IA Master record via the Bridge."""
-    return await bridge.post("/api/ia-master", data)
+    return await bridge.post("/ia-master", data)
 
 
 @router.get("/bridge/employees", response_model=list)
@@ -49,7 +49,7 @@ async def list_employees_bridge(
     bridge: BridgeClient = Depends(get_bridge_client),
 ):
     """List all employees of the IA via the Bridge."""
-    return await bridge.get("/api/employees")
+    return await bridge.get("/employees")
 
 
 # ════════════════════════════════════════════════════════════════════

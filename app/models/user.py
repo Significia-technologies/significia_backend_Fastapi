@@ -27,7 +27,7 @@ class User(Base):
     phone_number: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     phone_verified: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    password_hash: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     role: Mapped[str] = mapped_column(String(50), default="user")
     status: Mapped[str] = mapped_column(String(50), default="active")

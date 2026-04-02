@@ -40,7 +40,7 @@ async def create_client_bridge(
         data["password_hash"] = get_password_hash(raw_password)
         data["email_normalized"] = data["email"].lower()
 
-        result = await bridge.post("/api/clients", data)
+        result = await bridge.post("/clients", data)
         return result
     except HTTPException:
         raise
@@ -59,7 +59,7 @@ async def list_clients_bridge(
     params = {"skip": skip, "limit": limit}
     if search:
         params["search"] = search
-    return await bridge.get("/api/clients", params=params)
+    return await bridge.get("/clients", params=params)
 
 
 @router.get("/clients/{client_id}", response_model=dict)
@@ -68,7 +68,7 @@ async def get_client_bridge(
     bridge: BridgeClient = Depends(get_bridge_client),
 ):
     """Get a single client via the Bridge."""
-    return await bridge.get(f"/api/clients/{client_id}")
+    return await bridge.get(f"/clients/{client_id}")
 
 
 @router.get("/clients/pan/{pan}", response_model=dict)
@@ -77,7 +77,7 @@ async def get_client_by_pan_bridge(
     bridge: BridgeClient = Depends(get_bridge_client),
 ):
     """Get client by PAN via the Bridge."""
-    result = await bridge.get("/api/clients", params={"search": pan})
+    result = await bridge.get("/clients", params={"search": pan})
     clients = result.get("clients", [])
     for c in clients:
         if c.get("pan_number", "").upper() == pan.upper():
@@ -91,7 +91,7 @@ async def get_client_by_code_bridge(
     bridge: BridgeClient = Depends(get_bridge_client),
 ):
     """Get client by client code via the Bridge."""
-    result = await bridge.get("/api/clients", params={"search": code})
+    result = await bridge.get("/clients", params={"search": code})
     clients = result.get("clients", [])
     for c in clients:
         if c.get("client_code", "").upper() == code.upper():
@@ -107,7 +107,7 @@ async def update_client_bridge(
 ):
     """Update a client via the Bridge."""
     update_data = client_in.model_dump(exclude_unset=True)
-    return await bridge.patch(f"/api/clients/{client_id}", update_data)
+    return await bridge.patch(f"/clients/{client_id}", update_data)
 
 
 @router.delete("/clients/{client_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -116,7 +116,7 @@ async def delete_client_bridge(
     bridge: BridgeClient = Depends(get_bridge_client),
 ):
     """Soft-delete a client via the Bridge."""
-    await bridge.delete(f"/api/clients/{client_id}")
+    await bridge.delete(f"/clients/{client_id}")
     return None
 
 
@@ -143,7 +143,7 @@ async def get_client_count_bridge(
     bridge: BridgeClient = Depends(get_bridge_client),
 ):
     """Get client count (billing metric) from the Bridge."""
-    return await bridge.get("/api/billing/client-count")
+    return await bridge.get("/billing/client-count")
 
 
 # ════════════════════════════════════════════════════════════════════

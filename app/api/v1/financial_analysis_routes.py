@@ -41,7 +41,7 @@ async def create_analysis_bridge(
     bridge: BridgeClient = Depends(get_bridge_client),
 ):
     """Create a new financial analysis via the Bridge."""
-    return await bridge.post("/api/financial-analysis/profiles", analysis_in.model_dump())
+    return await bridge.post("/financial-analysis/profiles", analysis_in.model_dump())
 
 
 @router.get("/bridge/analysis", response_model=list)
@@ -53,7 +53,8 @@ async def list_analyses_bridge(
     params = {}
     if client_id:
         params["client_id"] = client_id
-    return await bridge.get("/api/financial-analysis/profiles/" + (client_id or ""), params=params)
+    path = f"/financial-analysis/profiles/{client_id}" if client_id else "/financial-analysis/profiles"
+    return await bridge.get(path, params=params)
 
 
 @router.get("/bridge/analysis/{result_id}", response_model=dict)
@@ -62,7 +63,7 @@ async def get_analysis_bridge(
     bridge: BridgeClient = Depends(get_bridge_client),
 ):
     """Get a financial analysis result by ID via the Bridge."""
-    return await bridge.get(f"/api/financial-analysis/results/{result_id}")
+    return await bridge.get(f"/financial-analysis/results/{result_id}")
 
 
 # ════════════════════════════════════════════════════════════════════

@@ -5,6 +5,7 @@ Two groups of endpoints:
 
 1. Super Admin routes (app.significia.com) — manage Bridges
 2. Bridge-facing routes — called by the Bridge software itself
+3. Tenant self-service routes (IA Owners)
 """
 
 import uuid
@@ -12,7 +13,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db, get_current_super_admin
+from app.api.deps import get_db, get_current_super_admin, get_current_ia_owner
 from app.models.user import User
 from app.models.tenant import Tenant
 from app.schemas.bridge_schema import (
@@ -24,11 +25,34 @@ from app.schemas.bridge_schema import (
     TenantProvisionRequest,
     TenantProvisionResponse,
     BridgeTokenRegenerateResponse,
+    TenantUpdateRequest,
+    TenantUpdateResponse,
 )
 from app.services.bridge_service import BridgeService
 
 router = APIRouter()
 bridge_service = BridgeService()
+
+
+# ════════════════════════════════════════════════════════════════════
+#  TENANT SELF-SERVICE (Organization Owners)
+# ════════════════════════════════════════════════════════════════════
+
+@router.patch("/tenants/me", response_model=TenantUpdateResponse)
+def update_my_tenant(
+    request: TenantUpdateRequest,
+    db: Session = Depends(get_db),
+    current_owner: User = Depends(get_current_ia_owner),
+):
+    """
+    Allow an IA Owner to update their own organization settings.
+    Currently supports: custom_domain.
+    """
+    return bridge_service.update_tenant_info(
+        db=db, 
+        tenant_id=current_owner.tenant_id, 
+        custom_domain=request.custom_domain
+    )
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -109,6 +133,7 @@ def revoke_bridge(
     The IA's portal will stop working until they re-register.
     """
     return bridge_service.revoke_bridge(db, tenant_id)
+
 
 
 # ════════════════════════════════════════════════════════════════════

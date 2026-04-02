@@ -83,16 +83,18 @@ async def save_risk_assessment_bridge(
         "discussion_notes": payload.discussion_notes,
         "form_name": payload.form_name,
     }
-    return await bridge.post("/api/risk-assessments", data)
+    return await bridge.post("/risk-assessments", data)
 
 
+@router.get("/bridge/assessments")
 @router.get("/bridge/assessments/{client_id}", response_model=list)
 async def get_risk_assessments_bridge(
-    client_id: str,
+    client_id: Optional[str] = None,
     bridge: BridgeClient = Depends(get_bridge_client),
 ):
     """Get risk assessments for a client via the Bridge."""
-    return await bridge.get(f"/api/risk-assessments/{client_id}")
+    path = f"/risk-assessments/{client_id}" if client_id else "/risk-assessments"
+    return await bridge.get(path)
 
 
 @router.get("/bridge/questionnaires", response_model=list)
@@ -100,7 +102,7 @@ async def list_questionnaires_bridge(
     bridge: BridgeClient = Depends(get_bridge_client),
 ):
     """List all risk questionnaires via the Bridge."""
-    return await bridge.get("/api/risk-questionnaires")
+    return await bridge.get("/risk-questionnaires")
 
 
 @router.post("/bridge/questionnaires", response_model=dict)
@@ -109,7 +111,7 @@ async def create_questionnaire_bridge(
     bridge: BridgeClient = Depends(get_bridge_client),
 ):
     """Create a risk questionnaire via the Bridge."""
-    return await bridge.post("/api/risk-questionnaires", payload.model_dump())
+    return await bridge.post("/risk-questionnaires", payload.model_dump())
 
 
 @router.get("/bridge/questionnaires/{q_id}", response_model=dict)
@@ -118,7 +120,7 @@ async def get_questionnaire_bridge(
     bridge: BridgeClient = Depends(get_bridge_client),
 ):
     """Get a risk questionnaire by ID via the Bridge."""
-    return await bridge.get(f"/api/risk-questionnaires/{q_id}")
+    return await bridge.get(f"/risk-questionnaires/{q_id}")
 
 
 @router.put("/bridge/questionnaires/{q_id}", response_model=dict)
@@ -128,7 +130,7 @@ async def update_questionnaire_bridge(
     bridge: BridgeClient = Depends(get_bridge_client),
 ):
     """Update a risk questionnaire via the Bridge."""
-    return await bridge.patch(f"/api/risk-questionnaires/{q_id}", payload.model_dump(exclude_unset=True))
+    return await bridge.patch(f"/risk-questionnaires/{q_id}", payload.model_dump(exclude_unset=True))
 
 
 @router.post("/bridge/custom-save", response_model=dict)
@@ -137,16 +139,18 @@ async def save_custom_risk_assessment_bridge(
     bridge: BridgeClient = Depends(get_bridge_client),
 ):
     """Save a custom risk assessment via the Bridge."""
-    return await bridge.post("/api/custom-risk-assessments", payload.model_dump())
+    return await bridge.post("/custom-risk-assessments", payload.model_dump())
 
 
+@router.get("/bridge/custom-assessments")
 @router.get("/bridge/custom-assessments/{client_id}", response_model=list)
 async def get_custom_assessments_bridge(
-    client_id: str,
+    client_id: Optional[str] = None,
     bridge: BridgeClient = Depends(get_bridge_client),
 ):
     """Get custom risk assessments for a client via the Bridge."""
-    return await bridge.get(f"/api/custom-risk-assessments/{client_id}")
+    path = f"/custom-risk-assessments/{client_id}" if client_id else "/custom-risk-assessments"
+    return await bridge.get(path)
 
 
 # ════════════════════════════════════════════════════════════════════

@@ -34,6 +34,7 @@ PUBLIC_PATHS = {
 SUPER_ADMIN_PREFIXES = [
     "/api/v1/admin/",
     "/api/v1/bridge/tenants/",
+    "/api/v1/bridge/initialize-tenant/",
 ]
 
 # Significia's own domains (Super Admin access)

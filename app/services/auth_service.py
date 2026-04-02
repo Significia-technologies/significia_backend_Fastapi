@@ -45,7 +45,17 @@ class AuthService:
 
     def authenticate_user(self, db: Session, request: UserLoginRequest, request_ip: str, user_agent: str) -> TokenResponse:
         user = self.user_repo.get_by_email(db, request.email)
-        if not user or not verify_password(request.password, user.password_hash):
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+            
+        if not user.password_hash:
+            # This is likely an IA staff/owner who should use their specific portal
+            raise HTTPException(
+                status_code=401, 
+                detail="This account is managed via a private portal. Please log in through your company's subdomain."
+            )
+
+        if not verify_password(request.password, user.password_hash):
             raise HTTPException(status_code=401, detail="Invalid email or password")
             
         if user.status != "active":

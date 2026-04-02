@@ -181,8 +181,10 @@ class BridgeService:
         return {
             "tenant_id": str(tenant.id),
             "tenant_name": tenant.name,
+            "subdomain": tenant.subdomain,
             "bridge_url": tenant.bridge_url,
             "bridge_status": tenant.bridge_status,
+            "bridge_registration_token": tenant.bridge_registration_token,
             "bridge_registered_at": tenant.bridge_registered_at,
             "bridge_last_heartbeat": tenant.bridge_last_heartbeat,
             "max_client_permit": tenant.max_client_permit,
@@ -200,14 +202,15 @@ class BridgeService:
             {
                 "tenant_id": str(t.id),
                 "tenant_name": t.name,
+                "subdomain": t.subdomain,
                 "bridge_url": t.bridge_url,
                 "bridge_status": t.bridge_status,
+                "bridge_registration_token": t.bridge_registration_token,
                 "bridge_last_heartbeat": t.bridge_last_heartbeat,
                 "max_client_permit": t.max_client_permit,
                 "current_client_count": t.current_client_count,
                 "billing_plan": t.billing_plan,
                 "custom_domain": t.custom_domain,
-                "subdomain": t.subdomain,
             }
             for t in tenants
         ]
@@ -231,4 +234,35 @@ class BridgeService:
         return {
             "tenant_id": str(tenant.id),
             "message": "Bridge access has been revoked. The IA must re-register to regain access.",
+        }
+
+    # ── Update Tenant Info (Self-Service) ──────────────────────────
+    @staticmethod
+    def update_tenant_info(db: Session, tenant_id: uuid.UUID, custom_domain: str = None) -> dict:
+        """Allow a tenant owner to update their own organization settings (e.g. custom domain)."""
+        tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+        if not tenant:
+            raise HTTPException(status_code=404, detail="Tenant record not found")
+
+        if tenant.subdomain == "master":
+            raise HTTPException(status_code=403, detail="Master organization cannot be modified via this path.")
+
+        if custom_domain:
+            # Check for uniqueness if changing domain
+            custom_domain = custom_domain.lower().strip()
+            if custom_domain != tenant.custom_domain:
+                existing = db.query(Tenant).filter(Tenant.custom_domain == custom_domain).first()
+                if existing:
+                    raise HTTPException(status_code=400, detail="This custom domain is already registered to another tenant.")
+            tenant.custom_domain = custom_domain
+        
+        db.commit()
+        db.refresh(tenant)
+        return {
+            "tenant_id": str(tenant.id),
+            "tenant_name": tenant.name,
+            "subdomain": tenant.subdomain,
+            "custom_domain": tenant.custom_domain,
+            "bridge_status": tenant.bridge_status,
+            "message": "Organization profile updated successfully"
         }

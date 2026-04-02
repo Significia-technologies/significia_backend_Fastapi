@@ -55,7 +55,7 @@ class BridgeClient:
 
         self.tenant_id = tenant.id
         self.tenant_name = tenant.name
-        self.base_url = tenant.bridge_url.rstrip("/")
+        self.base_url = f"{tenant.bridge_url.rstrip('/')}/api/v1/bridge"
         self.api_secret = tenant.bridge_api_secret or ""
 
     def _headers(self) -> Dict[str, str]:
@@ -158,6 +158,14 @@ class BridgeClient:
         """Process Bridge response, raise appropriate errors."""
         if response.status_code == 200 or response.status_code == 201:
             return response.json()
+
+        if response.status_code == 401:
+            logger.warning(f"[Bridge 401] tenant={self.tenant_name} path={path}")
+            try:
+                detail = response.json().get("detail", "Invalid credentials on Bridge")
+            except Exception:
+                detail = "Invalid credentials on Bridge"
+            raise HTTPException(401, detail)
 
         if response.status_code == 403:
             logger.warning(f"[Bridge 403] tenant={self.tenant_name} path={path}")

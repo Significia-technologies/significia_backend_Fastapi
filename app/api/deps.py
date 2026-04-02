@@ -1,17 +1,26 @@
 import uuid
-from typing import Generator
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+import hashlib
+import logging
+from typing import Generator, List, Optional, Any
+from datetime import datetime
+
+from fastapi import Depends, HTTPException, status, Header
+from fastapi.security import OAuth2PasswordBearer, APIKeyHeader
 from sqlalchemy.orm import Session
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
 from app.database.session import SessionLocal
 from app.repositories.user_repository import UserRepository
 from app.models.user import User
-from app.core.jwt import decode_token
-from app.services.bridge_client import BridgeClient
-
-from fastapi.security.api_key import APIKeyHeader
+from app.models.tenant import Tenant
 from app.models.api_key import ApiKey
-import hashlib
+from app.models.connector import Connector
+from app.models.client import ClientProfile
+from app.core.jwt import decode_token
+from app.core.config import settings
+from app.services.bridge_client import BridgeClient
+from app.utils.encryption import decrypt_string
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"/api/v1/auth/login", auto_error=False)
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -51,20 +60,28 @@ def get_current_user(
     return user
 
 def get_current_super_admin(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role != "super_admin":
+    """
+    Strict dependency for Super Admin routes.
+    Ensures the user has the 'super_admin' role AND belongs to the 'master' tenant.
+    """
+    if current_user.role != "super_admin" or current_user.tenant.subdomain != "master":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, 
-            detail="The user doesn't have enough privileges"
+            detail="Access restricted to Super Admins only."
         )
     return current_user
 
-from fastapi import Header
-from app.models.tenant import Tenant
-from app.models.connector import Connector
-from app.utils.encryption import decrypt_string
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from app.models.client import ClientProfile
+def get_current_ia_owner(current_user: User = Depends(get_current_user)) -> User:
+    """
+    Dependency for IA Owner self-service routes (e.g. settings).
+    Ensures the user is an 'owner' of their respective tenant.
+    """
+    if current_user.role != "owner":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access restricted to Organization Owners."
+        )
+    return current_user
 
 def get_tenant_by_slug(
     x_tenant_slug: str | None = Header(None, alias="X-Tenant-Slug"),
@@ -193,15 +210,30 @@ def get_current_tenant(
     if not tenant and x_tenant_slug:
         tenant = db.query(Tenant).filter(Tenant.subdomain == x_tenant_slug).first()
 
-    # Method 4: From Host header (custom domain)
+    # Method 4: From Host header (Subdomain or Custom Domain)
     if not tenant and host:
         clean_host = host.split(':')[0]
+        # Skip root domains
         root_domains = ["localhost", "127.0.0.1", "significia.com", "www.significia.com", "app.significia.com"]
-        if clean_host not in root_domains:
-            tenant = db.query(Tenant).filter(Tenant.custom_domain == clean_host).first()
+        
+        if clean_host in root_domains:
+            if clean_host in ["app.significia.com"]:
+                 # Explicitly resolve master tenant for admin domains
+                 tenant = db.query(Tenant).filter(Tenant.subdomain == "master").first()
+        else:
+            # Check if it's a subdomain of localhost or significia.com
+            for root in ["localhost", "significia.com"]:
+                if clean_host.endswith(f".{root}"):
+                    slug = clean_host.split(f".{root}")[0]
+                    tenant = db.query(Tenant).filter(Tenant.subdomain == slug).first()
+                    break
+            
+            # If not a subdomain, it must be a custom domain
+            if not tenant:
+                tenant = db.query(Tenant).filter(Tenant.custom_domain == clean_host).first()
 
     if not tenant:
-        raise HTTPException(status_code=401, detail="Could not determine tenant context")
+        raise HTTPException(status_code=401, detail="Could not determine tenant context. Please provide X-Tenant-Slug or use a valid subdomain.")
 
     if not tenant.is_active:
         raise HTTPException(status_code=403, detail="Tenant is inactive")

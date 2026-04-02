@@ -20,6 +20,7 @@ from app.api.deps import get_db, get_bridge_client, get_current_tenant
 from app.services.bridge_client import BridgeClient
 from app.models.tenant import Tenant
 from app.core.jwt import create_access_token, create_refresh_token
+# from app.core.security import verify_password  # No longer needed for IA staff
 
 router = APIRouter()
 
@@ -51,11 +52,15 @@ async def ia_staff_login(
     The tenant is resolved from the Host header (bunty.com → Tenant).
     Credentials are verified through the Bridge against the IA's local DB.
     """
-    # Ask the Bridge to verify the IA user
+    # Authenticate via Bridge
     try:
-        user_data = await bridge.post("/api/auth/verify-ia-user", {
+        print(f"[AUTH DEBUG] Attempting IA login for: {request.email} (Proxying to Bridge)")
+        # We now send BOTH email and password to the Bridge for secure, local verification
+        user_data = await bridge.post("/auth/verify-ia-user", {
             "email": request.email,
+            "password": request.password
         })
+        print(f"[AUTH DEBUG] Bridge login SUCCESS: User {user_data.get('email')} verified locally")
     except HTTPException as e:
         if e.status_code == 401:
             raise HTTPException(401, "Invalid email or password")

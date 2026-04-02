@@ -39,7 +39,7 @@ async def save_asset_allocation_bridge(
     bridge: BridgeClient = Depends(get_bridge_client),
 ):
     """Save an asset allocation via the Bridge."""
-    return await bridge.post("/api/asset-allocations", payload.model_dump())
+    return await bridge.post("/asset-allocations", payload.model_dump())
 
 
 @router.get("/bridge/allocations", response_model=list)
@@ -47,7 +47,7 @@ async def list_allocations_bridge(
     bridge: BridgeClient = Depends(get_bridge_client),
 ):
     """List all asset allocations via the Bridge."""
-    return await bridge.get("/api/asset-allocations/all")
+    return await bridge.get("/asset-allocations")
 
 
 @router.get("/bridge/allocation/{allocation_id}", response_model=dict)
@@ -56,7 +56,7 @@ async def get_allocation_bridge(
     bridge: BridgeClient = Depends(get_bridge_client),
 ):
     """Get a specific allocation via the Bridge."""
-    return await bridge.get(f"/api/asset-allocations/{allocation_id}")
+    return await bridge.get(f"/asset-allocations/{allocation_id}")
 
 
 # ════════════════════════════════════════════════════════════════════

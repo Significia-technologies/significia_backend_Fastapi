@@ -42,8 +42,10 @@ class BridgeStatusResponse(BaseModel):
     """Bridge status as seen by the Super Admin."""
     tenant_id: str
     tenant_name: str
+    subdomain: Optional[str] = None
     bridge_url: Optional[str] = None
     bridge_status: str
+    bridge_registration_token: Optional[str] = None
     bridge_registered_at: Optional[datetime] = None
     bridge_last_heartbeat: Optional[datetime] = None
     max_client_permit: int
@@ -73,5 +75,16 @@ class TenantProvisionResponse(BaseModel):
 class BridgeTokenRegenerateResponse(BaseModel):
     """Response when Super Admin regenerates a Bridge registration token."""
     tenant_id: str
-    new_token: str
-    message: str = "New Bridge registration token generated. Previous token is now invalid."
+    bridge_registration_token: str
+    message: str
+
+class TenantUpdateRequest(BaseModel):
+    custom_domain: Optional[str] = Field(None, description="The custom corporate domain for this IA")
+
+class TenantUpdateResponse(BaseModel):
+    tenant_id: str
+    tenant_name: str
+    subdomain: Optional[str]
+    custom_domain: Optional[str]
+    bridge_status: str
+    message: str

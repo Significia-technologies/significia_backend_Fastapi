@@ -1,12 +1,15 @@
 from fastapi import APIRouter
 from app.api.v1 import (
-    auth_routes, client_auth_routes, admin_routes, connector_routes, 
+    auth_routes, client_auth_routes, admin_routes, 
     client_routes, ia_master_routes, storage_routes, api_key_routes,
     financial_analysis_routes, risk_profile_routes, asset_allocation_routes,
-    bridge_routes, ia_auth_routes, billing_routes
+    bridge_routes, ia_auth_routes, billing_routes, public_routes, tenant_routes
 )
 
 api_router = APIRouter()
+
+# ── Public Routes (Discovery) ───────────────────────────────────────
+api_router.include_router(public_routes.router, prefix="/public", tags=["Public Branding"])
 
 # ── Core Auth ───────────────────────────────────────────────────────
 api_router.include_router(auth_routes.router, prefix="/auth", tags=["Authentication"])
@@ -20,6 +23,7 @@ api_router.include_router(billing_routes.router, prefix="/billing", tags=["Billi
 
 # ── Bridge Architecture ─────────────────────────────────────────────
 api_router.include_router(bridge_routes.router, prefix="/bridge", tags=["Bridge Management"])
+api_router.include_router(tenant_routes.router, prefix="/tenants", tags=["Tenant Management"])
 
 # ── Data Routes (Bridge + Legacy) ───────────────────────────────────
 api_router.include_router(client_routes.router, prefix="/master", tags=["Master Data - Clients"])
@@ -29,7 +33,6 @@ api_router.include_router(risk_profile_routes.router, prefix="/risk-profile", ta
 api_router.include_router(asset_allocation_routes.router, prefix="/asset-allocation", tags=["Asset Allocation"])
 
 # ── Legacy (Deprecated — will be removed in Bridge v2.0) ────────────
-api_router.include_router(connector_routes.router, prefix="/connectors", tags=["⚠️ DEPRECATED: Database Connectors"])
 api_router.include_router(storage_routes.router, prefix="/storage", tags=["⚠️ DEPRECATED: Storage Connectors"])
 
 @api_router.get("/health", status_code=200)
