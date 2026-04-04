@@ -41,7 +41,7 @@ class BridgeClient:
         result = await bridge.post("/risk-profile/assess", payload)
     """
 
-    def __init__(self, tenant: Tenant):
+    def __init__(self, tenant: Tenant, user: Optional[Any] = None):
         if not tenant.bridge_url:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -57,14 +57,19 @@ class BridgeClient:
         self.tenant_name = tenant.name
         self.base_url = f"{tenant.bridge_url.rstrip('/')}/api/v1/bridge"
         self.api_secret = tenant.bridge_api_secret or ""
+        self.user = user
 
     def _headers(self) -> Dict[str, str]:
         """Build authentication headers for Bridge requests."""
-        return {
+        headers = {
             "Authorization": f"Bearer {self.api_secret}",
             "X-Significia-Tenant-Id": str(self.tenant_id),
             "Content-Type": "application/json",
         }
+        if self.user:
+            headers["X-User-Id"] = str(self.user.id)
+            headers["X-User-Role"] = str(self.user.role)
+        return headers
 
     async def get(self, path: str, params: Optional[Dict] = None) -> Any:
         """Send a GET request to the Bridge."""
@@ -202,18 +207,25 @@ class BridgeClient:
             raise HTTPException(404, detail)
 
         if response.status_code == 422:
+            logger.warning(f"[Bridge 422] tenant={self.tenant_name} path={path} body={response.text[:200]}")
             try:
                 detail = response.json().get("detail", "Validation error")
             except Exception:
-                detail = "Validation error on Bridge"
+                detail = f"Validation error on Bridge: {response.text}"
             raise HTTPException(422, detail)
 
-        # Unexpected error
+        # Unexpected error (5xx or other)
         logger.error(
             f"[Bridge ERROR] tenant={self.tenant_name} path={path} "
             f"status={response.status_code} body={response.text[:200]}"
         )
-        raise HTTPException(502, f"Bridge returned unexpected status: {response.status_code}")
+        # Try to extract the error message from the body if available
+        try:
+            detail = response.json().get("detail", f"Bridge Error (Status {response.status_code})")
+        except Exception:
+            detail = f"Bridge returned status {response.status_code}: {response.text[:100]}"
+            
+        raise HTTPException(response.status_code if response.status_code >= 400 and response.status_code < 600 else 502, detail)
 
 
 # ── Helper: Get Bridge Client from Tenant ──────────────────────────

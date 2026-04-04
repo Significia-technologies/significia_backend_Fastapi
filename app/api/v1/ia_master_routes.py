@@ -3,6 +3,7 @@ IA Master Routes — Bridge Architecture
 ───────────────────────────────────────
 IA Master data operations now go through the Bridge.
 """
+import logging
 import uuid
 import json
 from typing import List, Optional
@@ -16,6 +17,8 @@ from app.models.tenant import Tenant
 
 # Legacy schemas kept for typed responses
 from app.schemas.ia_master import IAMasterRead, IANumberValidationResponse, IAMasterPermitUpdate, IAMasterListResponse
+
+logger = logging.getLogger("significia.ia_master")
 
 router = APIRouter()
 
@@ -31,6 +34,7 @@ async def validate_ia_number_remote(
 async def create_ia_entry(
     name_of_ia: str = Form(...),
     nature_of_entity: str = Form(...),
+    date_of_birth: Optional[str] = Form(None),
     name_of_entity: Optional[str] = Form(None),
     ia_registration_number: str = Form(...),
     date_of_registration: str = Form(...),
@@ -44,11 +48,9 @@ async def create_ia_entry(
     bank_name: str = Form(...),
     bank_branch: str = Form(...),
     ifsc_code: str = Form(...),
-    employees_json: str = Form("[]"),
     ia_certificate: Optional[UploadFile] = File(None),
     ia_signature: Optional[UploadFile] = File(None),
     ia_logo: Optional[UploadFile] = File(None),
-    employee_certificates: List[UploadFile] = File([]),
     bridge: BridgeClient = Depends(get_bridge_client),
     db: Session = Depends(get_db),
     tenant: Tenant = Depends(get_current_tenant)
@@ -61,6 +63,7 @@ async def create_ia_entry(
         # 1. Prepare Form Data
         data = {
             "name_of_ia": name_of_ia,
+            "date_of_birth": date_of_birth,
             "nature_of_entity": nature_of_entity,
             "name_of_entity": name_of_entity,
             "ia_registration_number": ia_registration_number,
@@ -75,7 +78,6 @@ async def create_ia_entry(
             "bank_name": bank_name,
             "bank_branch": bank_branch,
             "ifsc_code": ifsc_code,
-            "employees_json": employees_json
         }
 
         # 2. Prepare Files
@@ -94,11 +96,14 @@ async def create_ia_entry(
 
         # 4. Success check and Tenant state update
         if response:
+            logger.info(f"Bridge registration successful for tenant {tenant.id}")
             check_and_update_profile_completion(db, tenant, response)
             response["is_profile_completed"] = tenant.is_profile_completed
                 
         return response
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Bridge Registration Failed: {str(e)}")
 
@@ -107,6 +112,7 @@ async def update_ia_entry(
     ia_id: uuid.UUID,
     name_of_ia: str = Form(None),
     nature_of_entity: str = Form(None),
+    date_of_birth: str = Form(None),
     name_of_entity: Optional[str] = Form(None),
     ia_registration_number: str = Form(None),
     date_of_registration: str = Form(None),
@@ -120,11 +126,9 @@ async def update_ia_entry(
     bank_name: str = Form(None),
     bank_branch: str = Form(None),
     ifsc_code: str = Form(None),
-    employees_json: str = Form("[]"),
     ia_certificate: Optional[UploadFile] = File(None),
     ia_signature: Optional[UploadFile] = File(None),
     ia_logo: Optional[UploadFile] = File(None),
-    employee_certificates: List[UploadFile] = File([]),
     bridge: BridgeClient = Depends(get_bridge_client),
     db: Session = Depends(get_db),
     tenant: Tenant = Depends(get_current_tenant)
@@ -138,13 +142,13 @@ async def update_ia_entry(
         data = {
             k: v for k, v in {
                 "name_of_ia": name_of_ia, "nature_of_entity": nature_of_entity,
+                "date_of_birth": date_of_birth,
                 "name_of_entity": name_of_entity, "ia_registration_number": ia_registration_number,
                 "date_of_registration": date_of_registration, "date_of_registration_expiry": date_of_registration_expiry,
                 "registered_address": registered_address, "registered_contact_number": registered_contact_number,
                 "office_contact_number": office_contact_number, "registered_email_id": registered_email_id,
                 "cin_number": cin_number, "bank_account_number": bank_account_number,
                 "bank_name": bank_name, "bank_branch": bank_branch, "ifsc_code": ifsc_code,
-                "employees_json": employees_json
             }.items() if v is not None
         }
 
@@ -165,11 +169,15 @@ async def update_ia_entry(
         
         # 4. Process response and update completion status
         if response:
+            logger.info(f"Bridge profile update successful for tenant {tenant.id}")
             check_and_update_profile_completion(db, tenant, response)
             response["is_profile_completed"] = tenant.is_profile_completed
             
         return response
 
+    except HTTPException:
+        # Re-raise HTTP exceptions from the Bridge directly to the frontend
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Bridge Update Failed: {str(e)}")
 
@@ -194,3 +202,36 @@ async def download_ia_pdf(
 ):
     """Proxy PDF download to the Bridge (if implemented on Bridge side)."""
     raise HTTPException(status_code=501, detail="Bridge PDF generation not yet implemented")
+# ── Helper: Completion Check ──────────────────────────────────────
+def check_and_update_profile_completion(db: Session, tenant: Tenant, bridge_data: dict):
+    """
+    Check if the IA Master profile in the Bridge silo has all mandatory fields.
+    If so, mark the tenant's profile as completed in the Master Database.
+    """
+    mandatory_fields = [
+        "ia_registration_number", 
+        "registered_address", 
+        "bank_account_number", 
+        "ifsc_code"
+    ]
+    
+    # Check if all mandatory fields have values (not None or empty string)
+    is_complete = True
+    missing_fields = []
+    
+    for field in mandatory_fields:
+        val = bridge_data.get(field)
+        if val is None or str(val).strip() == "":
+            is_complete = False
+            missing_fields.append(field)
+            
+    logger.info(f"[PROFILE COMPLETION] Tenant {tenant.name}: is_complete={is_complete}, missing={missing_fields}")
+    
+    # Update Tenant completion state if it changed
+    if is_complete != tenant.is_profile_completed:
+        logger.info(f"[PROFILE COMPLETION] Transitioning tenant {tenant.name} is_profile_completed to {is_complete}")
+        tenant.is_profile_completed = is_complete
+        db.add(tenant)
+        db.commit()
+        db.refresh(tenant)
+    return is_complete

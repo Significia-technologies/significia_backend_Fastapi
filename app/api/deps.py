@@ -15,11 +15,14 @@ from app.database.session import SessionLocal
 from app.repositories.user_repository import UserRepository
 from app.models.user import User
 from app.models.tenant import Tenant
+from app.models.api_key import ApiKey
 from app.models.client import ClientProfile
 from app.core.jwt import decode_token
 from app.core.config import settings
 from app.services.bridge_client import BridgeClient
 from app.utils.encryption import decrypt_string
+
+logger = logging.getLogger("significia.deps")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"/api/v1/auth/login", auto_error=False)
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -53,6 +56,7 @@ def get_current_user(
         )
     user = UserRepository().get_by_id(db, uuid.UUID(user_id))
     if not user:
+        logger.warning(f"[AUTH ERROR] User id {user_id} from token not found in database.")
         raise HTTPException(status_code=404, detail="User not found")
     if user.status != "active":
         raise HTTPException(status_code=403, detail="Inactive user")
@@ -69,6 +73,25 @@ def get_current_user(
             raise HTTPException(status_code=403, detail="Your subscription plan has expired. Please renew to continue.")
              
     return user
+
+def get_current_user_optional(
+    db: Session = Depends(get_db), token: str | None = Depends(oauth2_scheme)
+) -> Optional[User]:
+    """
+    Optional version of get_current_user. 
+    Returns None instead of raising 401 if unauthenticated.
+    Essential for Bridge authentication routes like Login or Registrar.
+    """
+    if not token:
+        return None
+    try:
+        payload = decode_token(token)
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            return None
+        return UserRepository().get_by_id(db, uuid.UUID(user_id))
+    except Exception:
+        return None
 
 def get_current_super_admin(current_user: User = Depends(get_current_user)) -> User:
     """
@@ -144,8 +167,8 @@ def get_current_tenant(
     db: Session = Depends(get_db),
     token: str | None = Depends(oauth2_scheme),
     x_api_key: str | None = Depends(api_key_header),
-    x_tenant_slug: str | None = __import__('fastapi').Header(None, alias="X-Tenant-Slug"),
-    host: str | None = __import__('fastapi').Header(None),
+    x_tenant_slug: str | None = Header(None, alias="X-Tenant-Slug"),
+    host: str | None = Header(None),
 ) -> "Tenant":
     """
     Resolve the current tenant from JWT claims, API key, slug, or domain.
@@ -211,18 +234,26 @@ def get_current_tenant(
 
 def get_bridge_client(
     tenant: "Tenant" = Depends(get_current_tenant),
+    current_user_optional: Optional[User] = Depends(get_current_user_optional)
 ) -> BridgeClient:
     """
     Return a configured BridgeClient for the current tenant.
-    This replaces get_remote_session — instead of a direct DB session,
-    you get an HTTP client pointing at the tenant's Bridge.
+    We pass the current_user_optional context along so the Bridge knows who 
+    is requesting the data (for siloing/privacy), while still allowing
+    unauthenticated calls for login/registration proxying.
     """
-    return BridgeClient(tenant)
+    return BridgeClient(tenant, user=current_user_optional)
 
 
+def get_bridge_for_tenant(db: Session, tenant: Tenant, user: Optional[User] = None) -> BridgeClient:
+    """
+    Factory function to create a BridgeClient for a given tenant.
+    Supports optional user context.
+    """
+    return BridgeClient(tenant, user=user)
 
 
-def get_current_client(
+async def get_current_client(
     token: str = Depends(oauth2_scheme),
     tenant: Tenant = Depends(get_tenant_by_slug),
     bridge: BridgeClient = Depends(get_bridge_client)
@@ -244,7 +275,7 @@ def get_current_client(
         raise HTTPException(status_code=401, detail="Could not validate credentials")
         
     # Since we are using Bridge Architecture, we should fetch from BridgeClient
-    client_data = bridge.get(f"/master/clients/{client_id}")
+    client_data = await bridge.get(f"/master/clients/{client_id}")
     if not client_data:
         raise HTTPException(status_code=404, detail="Client not found")
         

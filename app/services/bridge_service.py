@@ -131,19 +131,27 @@ class BridgeService:
         logger = logging.getLogger("backend.bridge_service")
         
         try:
-            # Update heartbeat timestamp (UTC for DB, IST logged)
+            # 1. Calculate Internal User Seats (Master DB source of truth)
+            # Find the count of human users (Owner, Partner, Staff, Analyst)
+            from app.models.user import User
+            internal_seat_count = db.query(User).filter(
+                User.tenant_id == tenant.id,
+                User.role.in_(["owner", "partner", "ia_staff", "analyst", "staff"])
+            ).count()
+
+            # 2. Update Heartbeat & Status
             now_utc = datetime.now(py_timezone.utc)
             tenant.bridge_status = "ACTIVE"
             tenant.bridge_last_heartbeat = now_utc
 
             # Mirror the administrative seat count for billing
-            tenant.current_client_count = client_count
+            tenant.current_client_count = internal_seat_count
 
-            # Log usage for billing audit trail (DB handles recorded_at default)
+            # Log usage for billing audit trail
             usage = TokenUsage(
                 tenant_id=tenant.id,
-                metric="admin_seat_count",
-                value=client_count
+                metric="internal_user_seats",
+                value=internal_seat_count
             )
             db.add(usage)
             db.commit()

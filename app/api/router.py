@@ -4,7 +4,8 @@ from app.api.v1 import (
     auth_routes, client_auth_routes, admin_routes, 
     client_routes, ia_master_routes,
     financial_analysis_routes, risk_profile_routes, asset_allocation_routes,
-    bridge_routes, ia_auth_routes, billing_routes, public_routes, tenant_routes
+    bridge_routes, ia_auth_routes, billing_routes, public_routes, tenant_routes,
+    team_routes
 )
 
 api_router = APIRouter()
@@ -16,6 +17,9 @@ api_router.include_router(public_routes.router, prefix="/public", tags=["Public 
 api_router.include_router(auth_routes.router, prefix="/auth", tags=["Authentication"])
 api_router.include_router(client_auth_routes.router, prefix="/client-auth", tags=["Client Authentication"])
 api_router.include_router(ia_auth_routes.router, prefix="/ia-auth", tags=["IA Staff Authentication"])
+
+# ── Team & User Management (Tenant Level) ───────────────────────────
+api_router.include_router(team_routes.router, prefix="/team", tags=["Team Management"])
 
 # ── Super Admin ─────────────────────────────────────────────────────
 api_router.include_router(admin_routes.router, prefix="/admin", tags=["Admin"])

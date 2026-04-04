@@ -27,6 +27,8 @@ class UserResponse(BaseModel):
     company_name: Optional[str] = None
     phone_number: Optional[str] = None
     is_profile_completed: bool = False
+    max_client_permit: int = 5
+    plan_expiry_date: Optional[str] = None
     
     class Config:
         from_attributes = True
