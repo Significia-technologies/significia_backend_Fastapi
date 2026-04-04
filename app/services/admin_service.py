@@ -86,20 +86,33 @@ class AdminService:
     # --- Staff Management ---
     def list_staff(self, db: Session, tenant_id: any) -> list[dict]:
         from app.models.staff_profile import StaffProfile
-        # We join User with StaffProfile to return a complete view
-        results = db.query(User, StaffProfile).join(StaffProfile, User.id == StaffProfile.user_id).filter(User.tenant_id == tenant_id).all()
+        
+        # We use outerjoin to include the Owner (who may not have a dedicated StaffProfile yet)
+        results = (
+            db.query(User, StaffProfile)
+            .outerjoin(StaffProfile, User.id == StaffProfile.user_id)
+            .filter(
+                User.tenant_id == tenant_id,
+                User.role.in_(["owner", "partner", "ia_staff", "analyst", "staff"])
+            )
+            .all()
+        )
         
         staff_list = []
         for user, profile in results:
+            # For owners/users without profiles, provide sensible fallbacks
+            full_name = profile.full_name if profile else user.email.split('@')[0].capitalize()
+            designation = profile.designation if profile else ("Principal Officer" if user.role == 'owner' else "Staff Member")
+            
             staff_list.append({
                 "id": user.id,
                 "email": user.email,
                 "role": user.role,
                 "status": user.status,
-                "full_name": profile.full_name,
-                "phone_number": profile.phone_number,
-                "designation": profile.designation,
-                "address": profile.address,
+                "full_name": full_name,
+                "phone_number": profile.phone_number if profile else user.phone_number,
+                "designation": designation,
+                "address": profile.address if profile else None,
                 "last_login_at": user.last_login_at,
                 "created_at": user.created_at
             })

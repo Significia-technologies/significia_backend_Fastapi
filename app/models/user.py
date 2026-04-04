@@ -26,6 +26,16 @@ class User(Base):
     def is_profile_completed(self) -> bool:
         return self.tenant.is_profile_completed if self.tenant else False
 
+    @property
+    def max_client_permit(self) -> int:
+        return self.tenant.max_client_permit if self.tenant else 5
+
+    @property
+    def plan_expiry_date(self) -> Optional[str]:
+        if self.tenant and self.tenant.plan_expiry_date:
+            return self.tenant.plan_expiry_date.isoformat()
+        return None
+
     email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     email_normalized: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
     is_email_verified: Mapped[bool] = mapped_column(Boolean, default=False)  # Renamed from email_verified

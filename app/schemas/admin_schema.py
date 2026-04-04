@@ -66,8 +66,8 @@ class ClientProvisionResponse(BaseModel):
 # Staff Management Schemas
 class StaffUserBase(BaseModel):
     email: EmailStr
-    full_name: str
-    phone_number: str
+    full_name: Optional[str] = "System User"
+    phone_number: Optional[str] = "N/A"
     designation: Optional[str] = None
     address: Optional[str] = None
     role: str = "relationship_manager"
