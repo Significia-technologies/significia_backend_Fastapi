@@ -89,10 +89,10 @@ async def onboard_team_member(
     }
     
     # Send to silo and expect the bridge to create the user and return their new ID
-    bridge_res = await bridge.post("/employees", json=bridge_payload)
+    bridge_res = await bridge.post("/employees", bridge_payload)
     
     return {
-        "id": bridge_res.get("id") or "pending-bridge",
+        "id": bridge_res.get("id"),
         "email": request_data.email,
         "role": request_data.role,
         "status": "active",
@@ -101,7 +101,7 @@ async def onboard_team_member(
         "designation": request_data.designation,
         "address": None,
         "last_login_at": None,
-        "created_at": None
+        "created_at": bridge_res.get("created_at")
     }
 
 @router.put("/{user_id}", response_model=StaffUserOut)
