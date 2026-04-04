@@ -43,6 +43,11 @@ class Tenant(Base):
     max_client_permit: Mapped[int] = mapped_column(Integer, default=5, server_default="5")
     current_client_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
+    # ── Plan & Subscription ─────────────────────────────────────────
+    plan_expiry_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    pricing_model: Mapped[str] = mapped_column(String(100), default="flat_fee") # e.g., per_user_yearly
+    billing_mode: Mapped[str] = mapped_column(String(50), default="yearly") # e.g., monthly, quarterly, yearly
+
     # ── Timestamps ──────────────────────────────────────────────────
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

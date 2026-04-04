@@ -1,13 +1,13 @@
 import uuid
 from datetime import datetime
 from typing import List, Optional
-from sqlalchemy import String, DateTime, ForeignKey, Text, Date
+from sqlalchemy import String, DateTime, ForeignKey, Text, Date, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 
-from app.database.base import SiloBase
+from app.database.base import SiloBase, Base
 
-class IAMaster(SiloBase):
+class IAMaster(Base):
     __tablename__ = "ia_master"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -28,6 +28,18 @@ class IAMaster(SiloBase):
     bank_branch: Mapped[str] = mapped_column(String(255))
     ifsc_code: Mapped[str] = mapped_column(String(20))
     
+    # ── Multi-Tenant Link ───────────────────────────────────────────
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=True)
+    
+    # ── Renewal Details ─────────────────────────────────────────────
+    is_renewal: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    renewal_certificate_no: Mapped[Optional[str]] = mapped_column(String(100))
+    renewal_expiry_date: Mapped[Optional[Date]] = mapped_column(Date)
+    
+    # ── Relationship Manager (RM) ───────────────────────────────────
+    # FK to users table (Super Admin's staff)
+    relationship_manager_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    
     # Document paths
     ia_certificate_path: Mapped[Optional[str]] = mapped_column(String(512))
     ia_signature_path: Mapped[Optional[str]] = mapped_column(String(512))
@@ -43,8 +55,11 @@ class IAMaster(SiloBase):
     employees: Mapped[List["EmployeeDetails"]] = relationship(
         "EmployeeDetails", back_populates="ia_master", cascade="all, delete-orphan"
     )
+    contact_persons: Mapped[List["ContactPerson"]] = relationship(
+        "ContactPerson", back_populates="ia_master", cascade="all, delete-orphan"
+    )
 
-class EmployeeDetails(SiloBase):
+class EmployeeDetails(Base):
     __tablename__ = "employee_details"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -62,7 +77,7 @@ class EmployeeDetails(SiloBase):
     # Relationships
     ia_master: Mapped["IAMaster"] = relationship("IAMaster", back_populates="employees")
 
-class AuditTrail(SiloBase):
+class AuditTrail(Base):
     __tablename__ = "audit_trail"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -77,3 +92,20 @@ class AuditTrail(SiloBase):
     user_ip: Mapped[Optional[str]] = mapped_column(String(45))
     user_agent: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+class ContactPerson(Base):
+    __tablename__ = "contact_persons"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ia_master_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("ia_master.id", ondelete="CASCADE"), nullable=False)
+    
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    designation: Mapped[Optional[str]] = mapped_column(String(100))
+    phone_number: Mapped[str] = mapped_column(String(20), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    address: Mapped[Optional[str]] = mapped_column(Text)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    ia_master: Mapped["IAMaster"] = relationship("IAMaster", back_populates="contact_persons")

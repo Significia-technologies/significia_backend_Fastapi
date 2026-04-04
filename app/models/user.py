@@ -42,10 +42,16 @@ class User(Base):
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     last_login_ip = mapped_column(INET, nullable=True)
 
+    reset_token: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     reset_token_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    
+    verification_token: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     verify_token_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    password_changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=get_now_ist)
+    
+    refresh_token: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     refresh_token_version: Mapped[int] = mapped_column(Integer, default=1)
+    
+    password_changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=get_now_ist)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=get_now_ist)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=get_now_ist, onupdate=get_now_ist)

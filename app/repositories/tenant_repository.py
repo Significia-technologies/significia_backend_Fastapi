@@ -6,7 +6,7 @@ class TenantRepository:
     def get_by_id(self, db: Session, tenant_id: uuid.UUID) -> Tenant:
         return db.query(Tenant).filter(Tenant.id == tenant_id).first()
 
-    def create(self, db: Session, name: str, subdomain: str = None) -> Tenant:
+    def create(self, db: Session, name: str, subdomain: str = None, **kwargs) -> Tenant:
         if subdomain:
             # If subdomain is provided, ensure it's unique
             base_subdomain = subdomain
@@ -22,7 +22,8 @@ class TenantRepository:
             name=name, 
             subdomain=subdomain,
             bridge_registration_token=registration_token,
-            bridge_status="PENDING"
+            bridge_status="PENDING",
+            **kwargs
         )
         db.add(db_tenant)
         db.commit()

@@ -2,9 +2,16 @@ import uuid
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
-from app.models.ia_master import IAMaster, EmployeeDetails
+from app.models.ia_master import IAMaster, EmployeeDetails, ContactPerson
 
 class IAMasterRepository:
+    # ... (existing methods)
+    def create_contact_person(self, db: Session, contact_data: dict) -> ContactPerson:
+        db_contact = ContactPerson(**contact_data)
+        db.add(db_contact)
+        db.commit()
+        db.refresh(db_contact)
+        return db_contact
     def get_by_id(self, db: Session, ia_id: uuid.UUID) -> Optional[IAMaster]:
         return db.query(IAMaster).filter(IAMaster.id == ia_id).first()
 

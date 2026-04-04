@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import (
     get_bridge_client, get_current_tenant,
-    get_client_db, get_tenant_by_slug, get_current_client,
+    get_tenant_by_slug, get_current_client,
     oauth2_scheme
 )
 from app.services.bridge_client import BridgeClient
@@ -105,18 +105,6 @@ async def login_bridge(
 # ════════════════════════════════════════════════════════════════════
 #  LEGACY ROUTES (kept during transition)
 # ════════════════════════════════════════════════════════════════════
-
-@router.post("/login", response_model=ClientTokenResponse)
-def login(
-    request: ClientLoginRequest, 
-    tenant: Tenant = Depends(get_tenant_by_slug),
-    client_db: Session = Depends(get_client_db)
-):
-    """
-    Login endpoint specifically for clients (legacy).
-    Relies on X-Tenant-Slug header via dependencies to route to correct DB.
-    """
-    return client_auth_service.authenticate_client(client_db, request, tenant)
 
 @router.get("/me")
 async def get_client_me(

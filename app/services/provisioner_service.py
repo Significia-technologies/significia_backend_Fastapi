@@ -1,35 +1,16 @@
 import uuid
 from datetime import datetime
 from sqlalchemy.orm import Session
-from app.models.connector import Connector
+from sqlalchemy.orm import Session
 from app.utils.encryption import decrypt_string
 from app.connectors.database.postgresql import PostgreSQLConnector
 
 class ProvisionerService:
     @staticmethod
-    def initialize_database(db: Session, connector_id: uuid.UUID, tenant_id: uuid.UUID) -> bool:
-        connector_record = db.query(Connector).filter(
-            Connector.id == connector_id,
-            Connector.tenant_id == tenant_id
-        ).first()
-
-        if not connector_record:
-            return False
-
-        connector_record.initialization_status = "INITIALIZING"
-        db.commit()
+    def initialize_database(db: Session, config: dict, tenant_id: uuid.UUID) -> bool:
 
         try:
-            password = decrypt_string(connector_record.encrypted_password)
-            config = {
-                "host": connector_record.host,
-                "port": connector_record.port,
-                "database_name": connector_record.database_name,
-                "username": connector_record.username,
-                "password": password
-            }
-
-            if connector_record.type == "postgresql":
+            if config.get("type") == "postgresql":
                 engine = PostgreSQLConnector(config)
                 
                 # 1. Create Schema
@@ -44,138 +25,20 @@ class ProvisionerService:
                 # 4. Patch existing tables (Migration)
                 ProvisionerService._patch_database(engine)
                 
-                connector_record.initialization_status = "READY"
-                connector_record.initialized_at = datetime.utcnow()
-                db.commit()
                 return True
             
             return False
         except Exception as e:
             print(f"Provisioning failed: {e}")
-            connector_record.initialization_status = "FAILED"
-            db.commit()
             return False
 
     @staticmethod
     def _patch_database(engine: PostgreSQLConnector):
         """
         Add any missing columns to existing tables for backward compatibility.
+        Note: Currently all legacy patches are merged into _create_master_tables.
         """
-        try:
-            # Add deleted_at to clients if missing
-            engine.execute_query("ALTER TABLE significia_core.clients ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITHOUT TIME ZONE;")
-            # Add aadhar and passport numbers
-            engine.execute_query("ALTER TABLE significia_core.clients ADD COLUMN IF NOT EXISTS aadhar_number VARCHAR(12);")
-            engine.execute_query("ALTER TABLE significia_core.clients ADD COLUMN IF NOT EXISTS passport_number VARCHAR(50);")
-            engine.execute_query("ALTER TABLE significia_core.clients ADD COLUMN IF NOT EXISTS spouse_dob DATE;")
-            # Add date_of_birth to relevant tables
-            engine.execute_query("ALTER TABLE significia_core.ia_master ADD COLUMN IF NOT EXISTS date_of_birth DATE;")
-            engine.execute_query("ALTER TABLE significia_core.employee_details ADD COLUMN IF NOT EXISTS date_of_birth DATE;")
-            # Patch financial_analysis_profiles
-            engine.execute_query("ALTER TABLE significia_core.financial_analysis_profiles ADD COLUMN IF NOT EXISTS pan VARCHAR(20);")
-            engine.execute_query("ALTER TABLE significia_core.financial_analysis_profiles ADD COLUMN IF NOT EXISTS contact VARCHAR(20);")
-            engine.execute_query("ALTER TABLE significia_core.financial_analysis_profiles ADD COLUMN IF NOT EXISTS email VARCHAR(100);")
-            
-            # 1. Create Risk Profile Tables if missing
-            create_risk_assessments = """
-            CREATE TABLE IF NOT EXISTS significia_core.risk_assessments (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                client_id UUID NOT NULL REFERENCES significia_core.clients(id) ON DELETE CASCADE,
-                q1_interest_choice VARCHAR(10) NOT NULL,
-                q2_importance_factors JSONB NOT NULL,
-                q3_probability_bet VARCHAR(10) NOT NULL,
-                q4_portfolio_choice VARCHAR(10) NOT NULL,
-                q5_loss_behavior VARCHAR(10) NOT NULL,
-                q6_market_reaction VARCHAR(10) NOT NULL,
-                q7_fund_selection VARCHAR(10) NOT NULL,
-                q8_experience_level VARCHAR(10) NOT NULL,
-                q9_time_horizon VARCHAR(10) NOT NULL,
-                q10_net_worth VARCHAR(10) NOT NULL,
-                q11_age_range VARCHAR(10) NOT NULL,
-                q12_income_range VARCHAR(10) NOT NULL,
-                q13_expense_range VARCHAR(10) NOT NULL,
-                q14_dependents VARCHAR(10) NOT NULL,
-                q15_active_loan VARCHAR(10) NOT NULL,
-                q16_investment_objective VARCHAR(10) NOT NULL,
-                calculated_score INTEGER NOT NULL,
-                assigned_risk_tier VARCHAR(100) NOT NULL,
-                tier_recommendation TEXT,
-                disclaimer_text TEXT,
-                discussion_notes TEXT,
-                question_scores JSONB NOT NULL,
-                assessment_timestamp TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                form_name VARCHAR(255) DEFAULT 'Sample',
-                created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
-            );
-            """
-            engine.execute_query(create_risk_assessments)
-
-            create_client_risk_master = """
-            CREATE TABLE IF NOT EXISTS significia_core.client_risk_master (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                client_id UUID NOT NULL REFERENCES significia_core.clients(id) ON DELETE CASCADE,
-                ia_registration_number VARCHAR(100) NOT NULL,
-                category_name VARCHAR(100) NOT NULL,
-                portfolio_name VARCHAR(100) NOT NULL,
-                submitted_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
-            );
-            """
-            engine.execute_query(create_client_risk_master)
-
-            # Patch risk_assessments for form_name
-            engine.execute_query("ALTER TABLE significia_core.risk_assessments ADD COLUMN IF NOT EXISTS form_name VARCHAR(255) DEFAULT 'Sample';")
-
-            # Create Risk Questionnaire Table (With Disclaimer)
-            create_risk_questionnaires = """
-            CREATE TABLE IF NOT EXISTS significia_core.risk_questionnaires (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                portfolio_name VARCHAR(255) UNIQUE NOT NULL,
-                status VARCHAR(20) DEFAULT 'draft',
-                questions JSONB NOT NULL DEFAULT '[]'::jsonb,
-                categories JSONB NOT NULL DEFAULT '[]'::jsonb,
-                max_possible_score DOUBLE PRECISION DEFAULT 0.0,
-                disclaimer TEXT,
-                created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
-            );
-            """
-            engine.execute_query(create_risk_questionnaires)
-            
-            # Patch risk_questionnaires for disclaimer
-            engine.execute_query("ALTER TABLE significia_core.risk_questionnaires ADD COLUMN IF NOT EXISTS disclaimer TEXT;")
-
-            # Create Asset Allocation Table
-            create_asset_allocations = """
-            CREATE TABLE IF NOT EXISTS significia_core.asset_allocations (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                client_id UUID NOT NULL REFERENCES significia_core.clients(id) ON DELETE CASCADE,
-                ia_registration_number VARCHAR(100) NOT NULL,
-                assigned_risk_tier VARCHAR(100) NOT NULL,
-                tier_recommendation TEXT NOT NULL,
-                equities_percentage DOUBLE PRECISION DEFAULT 0.0,
-                debt_securities_percentage DOUBLE PRECISION DEFAULT 0.0,
-                commodities_percentage DOUBLE PRECISION DEFAULT 0.0,
-                stocks_percentage DOUBLE PRECISION DEFAULT 0.0,
-                mutual_fund_equity_percentage DOUBLE PRECISION DEFAULT 0.0,
-                ulip_equity_percentage DOUBLE PRECISION DEFAULT 0.0,
-                fixed_deposits_bonds_percentage DOUBLE PRECISION DEFAULT 0.0,
-                mutual_fund_debt_percentage DOUBLE PRECISION DEFAULT 0.0,
-                ulip_debt_percentage DOUBLE PRECISION DEFAULT 0.0,
-                gold_etf_percentage DOUBLE PRECISION DEFAULT 0.0,
-                silver_etf_percentage DOUBLE PRECISION DEFAULT 0.0,
-                system_conclusion TEXT,
-                generate_system_conclusion BOOLEAN DEFAULT TRUE,
-                discussion_notes TEXT,
-                disclaimer_text TEXT,
-                total_allocation DOUBLE PRECISION DEFAULT 100.0,
-                created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
-            );
-            CREATE INDEX IF NOT EXISTS idx_asset_allocations_client ON significia_core.asset_allocations(client_id);
-            """
-            engine.execute_query(create_asset_allocations)
-        except Exception as e:
-            print(f"Migration patching failed: {e}")
+        pass
 
     @staticmethod
     def _create_master_tables(engine: PostgreSQLConnector):
@@ -208,6 +71,7 @@ class ProvisionerService:
             tax_residency VARCHAR(100) NOT NULL,
             pep_status VARCHAR(100) NOT NULL,
             father_name VARCHAR(255) NOT NULL,
+            mother_name VARCHAR(255) NOT NULL,
             spouse_name VARCHAR(255),
             spouse_dob DATE,
             aadhar_number VARCHAR(12),
@@ -234,12 +98,18 @@ class ProvisionerService:
             liquidity_needs VARCHAR(100) NOT NULL,
             
             advisor_name VARCHAR(255) NOT NULL,
+            advisor_registration_number VARCHAR(100) NOT NULL,
+            client_date DATE NOT NULL DEFAULT CURRENT_DATE,
             nominee_name VARCHAR(255),
             nominee_relationship VARCHAR(100),
+            previous_advisor_name VARCHAR(255),
+            referral_source VARCHAR(100),
             declaration_signed BOOLEAN DEFAULT FALSE,
             declaration_date DATE,
             client_signature_path VARCHAR(512),
             advisor_signature_path VARCHAR(512),
+            
+            assigned_employee_id UUID REFERENCES significia_core.employee_details(id) ON DELETE SET NULL,
             
             created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -293,6 +163,13 @@ class ProvisionerService:
             bank_name VARCHAR(255),
             bank_branch VARCHAR(255),
             ifsc_code VARCHAR(20),
+            
+            tenant_id UUID,
+            is_renewal BOOLEAN DEFAULT FALSE,
+            renewal_certificate_no VARCHAR(100),
+            renewal_expiry_date DATE,
+            relationship_manager_id UUID,
+            
             ia_certificate_path VARCHAR(512),
             ia_signature_path VARCHAR(512),
             ia_logo_path VARCHAR(512),
@@ -313,7 +190,7 @@ class ProvisionerService:
             name_of_employee VARCHAR(255) NOT NULL,
             designation VARCHAR(100),
             ia_registration_number VARCHAR(100) NOT NULL,
-            date_of_birth DATE,
+            date_of_birth DATE NOT NULL,
             date_of_registration DATE,
             date_of_registration_expiry DATE,
             certificate_path VARCHAR(512),
@@ -321,6 +198,21 @@ class ProvisionerService:
         );
         """
         engine.execute_query(create_employee_details)
+
+        # Create Contact Persons Table
+        create_contact_persons = """
+        CREATE TABLE IF NOT EXISTS significia_core.contact_persons (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            ia_master_id UUID NOT NULL REFERENCES significia_core.ia_master(id) ON DELETE CASCADE,
+            name VARCHAR(255) NOT NULL,
+            designation VARCHAR(100),
+            phone_number VARCHAR(20) NOT NULL,
+            email VARCHAR(255) NOT NULL,
+            address TEXT,
+            created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+        engine.execute_query(create_contact_persons)
 
         # Create Storage Connectors Table
         create_storage = """

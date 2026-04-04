@@ -12,6 +12,9 @@ import uuid
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
+import logging
+
+logger = logging.getLogger("backend.bridge_routes")
 
 from app.api.deps import get_db, get_current_super_admin, get_current_ia_owner
 from app.models.user import User
@@ -172,26 +175,36 @@ def bridge_heartbeat(
     Reports current client count and status.
     Significia uses this for billing and monitoring.
     """
-    # Extract API secret from Authorization header
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(401, "Invalid authorization header")
-    api_secret = authorization.replace("Bearer ", "")
+    try:
+        # Extract API secret from Authorization header
+        if not authorization.startswith("Bearer "):
+            raise HTTPException(401, "Invalid authorization header")
+        api_secret = authorization.replace("Bearer ", "")
 
-    # Find tenant by the shared API secret
-    tenant = db.query(Tenant).filter(
-        Tenant.bridge_api_secret == api_secret,
-        Tenant.id == uuid.UUID(heartbeat.tenant_id),
-    ).first()
+        # Find tenant by the shared API secret
+        tenant_uuid = uuid.UUID(heartbeat.tenant_id)
+        tenant = db.query(Tenant).filter(
+            Tenant.bridge_api_secret == api_secret,
+            Tenant.id == tenant_uuid,
+        ).first()
 
-    if not tenant:
-        raise HTTPException(401, "Invalid Bridge credentials")
+        if not tenant:
+            logger.warning(f"❌ Heartbeat failed: Invalid credentials for tenant {heartbeat.tenant_id}")
+            raise HTTPException(401, "Invalid Bridge credentials")
 
-    if tenant.bridge_status == "REVOKED":
-        raise HTTPException(403, "Bridge access has been revoked")
+        if tenant.bridge_status == "REVOKED":
+            logger.warning(f"❌ Heartbeat failed: Bridge revoked for {tenant.name}")
+            raise HTTPException(403, "Bridge access has been revoked")
 
-    result = bridge_service.process_heartbeat(
-        db=db,
-        tenant=tenant,
-        client_count=heartbeat.client_count,
-    )
-    return result
+        result = bridge_service.process_heartbeat(
+            db=db,
+            tenant=tenant,
+            client_count=heartbeat.client_count,
+        )
+        return result
+    except ValueError as e:
+        logger.error(f"❌ Heartbeat failed: Invalid UUID string: {heartbeat.tenant_id}")
+        raise HTTPException(status_code=400, detail=f"Invalid tenant_id format: {str(e)}")
+    except Exception as e:
+        logger.error(f"❌ Heartbeat route crash: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal route error: {str(e)}")

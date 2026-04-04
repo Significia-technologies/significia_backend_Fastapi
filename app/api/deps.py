@@ -2,7 +2,7 @@ import uuid
 import hashlib
 import logging
 from typing import Generator, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import Depends, HTTPException, status, Header
 from fastapi.security import OAuth2PasswordBearer, APIKeyHeader
@@ -14,8 +14,6 @@ from app.database.session import SessionLocal
 from app.repositories.user_repository import UserRepository
 from app.models.user import User
 from app.models.tenant import Tenant
-from app.models.api_key import ApiKey
-from app.models.connector import Connector
 from app.models.client import ClientProfile
 from app.core.jwt import decode_token
 from app.core.config import settings
@@ -57,6 +55,18 @@ def get_current_user(
         raise HTTPException(status_code=404, detail="User not found")
     if user.status != "active":
         raise HTTPException(status_code=403, detail="Inactive user")
+    
+    # ── Tenant Level Enforcement ────────────────────────────────────
+    # Non-super_admins must belong to an active, non-expired tenant
+    if user.role != "super_admin":
+        tenant = user.tenant
+        if not tenant:
+            raise HTTPException(status_code=403, detail="User has no tenant assignment")
+        if not tenant.is_active:
+            raise HTTPException(status_code=403, detail="Your organization account is deactivated.")
+        if tenant.plan_expiry_date and tenant.plan_expiry_date < datetime.now(timezone.utc):
+             raise HTTPException(status_code=403, detail="Your subscription plan has expired. Please renew to continue.")
+             
     return user
 
 def get_current_super_admin(current_user: User = Depends(get_current_user)) -> User:
@@ -180,6 +190,9 @@ def get_current_tenant(
     if not tenant.is_active:
         raise HTTPException(status_code=403, detail="Tenant is inactive")
 
+    if tenant.plan_expiry_date and tenant.plan_expiry_date < datetime.now(timezone.utc):
+        raise HTTPException(status_code=403, detail="Tenant subscription has expired")
+
     return tenant
 
 
@@ -194,47 +207,19 @@ def get_bridge_client(
     return BridgeClient(tenant)
 
 
-def get_client_db(
-    tenant: Tenant = Depends(get_current_tenant),
-    db: Session = Depends(get_db)
-) -> Generator[Session, None, None]:
-    if not tenant:
-         raise HTTPException(status_code=401, detail="Tenant context required for this operation")
-         
-    connector = db.query(Connector).filter(
-        Connector.tenant_id == tenant.id,
-        Connector.type == "postgresql",
-        Connector.is_active == True
-    ).first()
-    
-    if not connector:
-        # Fallback for older code where type might be used or lowercase provider
-        connector = db.query(Connector).filter(
-            Connector.tenant_id == tenant.id,
-            Connector.is_active == True
-        ).first()
 
-    if not connector or connector.initialization_status != "READY":
-        raise HTTPException(status_code=503, detail="Tenant database not available")
-        
-    try:
-        password = decrypt_string(connector.encrypted_password)
-        db_url = f"postgresql+psycopg://{connector.username}:{password}@{connector.host}:{connector.port}/{connector.database_name}"
-        engine = create_engine(db_url, connect_args={"options": "-c search_path=significia_core,public"})
-        RemoteSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-        session = RemoteSessionLocal()
-        try:
-            yield session
-        finally:
-            session.close()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Database connection failed")
 
 def get_current_client(
     token: str = Depends(oauth2_scheme),
     tenant: Tenant = Depends(get_tenant_by_slug),
-    client_db: Session = Depends(get_client_db)
-) -> ClientProfile:
+    bridge: BridgeClient = Depends(get_bridge_client)
+) -> dict:
+    """
+    Returns the current client profile from the Silo via the BridgeClient.
+    Note: Now returns a dict (or we can wrap it in a Pydantic model)
+    since the Master no longer has a local ClientProfile SQLAlchemy model
+    that's in sync with the Silo's direct connection.
+    """
     try:
         payload = decode_token(token)
         client_id: str = payload.get("sub")
@@ -245,10 +230,9 @@ def get_current_client(
     except ValueError:
         raise HTTPException(status_code=401, detail="Could not validate credentials")
         
-    client = client_db.query(ClientProfile).filter(ClientProfile.id == client_id).first()
-    if not client:
+    # Since we are using Bridge Architecture, we should fetch from BridgeClient
+    client_data = bridge.get(f"/master/clients/{client_id}")
+    if not client_data:
         raise HTTPException(status_code=404, detail="Client not found")
-    if not client.is_active:
-        raise HTTPException(status_code=403, detail="Inactive client")
         
-    return client
+    return client_data

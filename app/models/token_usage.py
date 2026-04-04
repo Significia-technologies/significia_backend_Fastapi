@@ -31,4 +31,4 @@ class TokenUsage(Base):
     value: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # When this measurement was recorded
-    recorded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # recorded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

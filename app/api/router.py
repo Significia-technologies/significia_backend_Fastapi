@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from app.api.v1 import (
     auth_routes, client_auth_routes, admin_routes, 
-    client_routes, ia_master_routes, storage_routes, api_key_routes,
+    client_routes, ia_master_routes,
     financial_analysis_routes, risk_profile_routes, asset_allocation_routes,
     bridge_routes, ia_auth_routes, billing_routes, public_routes, tenant_routes
 )
@@ -13,7 +13,6 @@ api_router.include_router(public_routes.router, prefix="/public", tags=["Public 
 
 # ── Core Auth ───────────────────────────────────────────────────────
 api_router.include_router(auth_routes.router, prefix="/auth", tags=["Authentication"])
-api_router.include_router(api_key_routes.router, prefix="/api-keys", tags=["API Keys"])
 api_router.include_router(client_auth_routes.router, prefix="/client-auth", tags=["Client Authentication"])
 api_router.include_router(ia_auth_routes.router, prefix="/ia-auth", tags=["IA Staff Authentication"])
 
@@ -31,9 +30,6 @@ api_router.include_router(ia_master_routes.router, prefix="/ia-master", tags=["M
 api_router.include_router(financial_analysis_routes.router, prefix="/financial-analysis", tags=["Financial Analysis"])
 api_router.include_router(risk_profile_routes.router, prefix="/risk-profile", tags=["Risk Profile"])
 api_router.include_router(asset_allocation_routes.router, prefix="/asset-allocation", tags=["Asset Allocation"])
-
-# ── Legacy (Deprecated — will be removed in Bridge v2.0) ────────────
-api_router.include_router(storage_routes.router, prefix="/storage", tags=["⚠️ DEPRECATED: Storage Connectors"])
 
 @api_router.get("/health", status_code=200)
 def health_check() -> dict:

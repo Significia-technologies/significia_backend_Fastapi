@@ -7,11 +7,14 @@ processing heartbeats, and checking Bridge health.
 
 import secrets
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone as py_timezone
 from typing import Optional
+import logging
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
+
+from app.core.timezone import get_now_ist, to_ist
 
 from app.models.tenant import Tenant
 from app.models.token_usage import TokenUsage
@@ -95,12 +98,12 @@ class BridgeService:
         # Generate a shared secret for ongoing communication
         api_secret = secrets.token_urlsafe(48)
 
-        # Update tenant with Bridge details
+        now_utc = datetime.now(py_timezone.utc)
         tenant.bridge_url = bridge_url
         tenant.bridge_api_secret = api_secret
         tenant.bridge_status = "REGISTERED"
-        tenant.bridge_registered_at = datetime.utcnow()
-        tenant.bridge_last_heartbeat = datetime.utcnow()
+        tenant.bridge_registered_at = now_utc
+        tenant.bridge_last_heartbeat = now_utc
 
         # Invalidate the registration token (one-time use)
         tenant.bridge_registration_token = None
@@ -123,28 +126,44 @@ class BridgeService:
     ) -> dict:
         """
         Process a periodic heartbeat from the Bridge.
-        Updates the tenant's status, last heartbeat time, and client count.
+        Updates the tenant's status, last heartbeat time, and administrative seat count.
+        
+        NOTE: client_count here represents IA Master + Staff accounts (Active Seats).
+        Investors (End Clients) are not counted in this limit.
         """
-        # Update heartbeat timestamp
-        tenant.bridge_status = "ACTIVE"
-        tenant.bridge_last_heartbeat = datetime.utcnow()
+        logger = logging.getLogger("backend.bridge_service")
+        
+        try:
+            # Update heartbeat timestamp (UTC for DB, IST logged)
+            now_utc = datetime.now(py_timezone.utc)
+            tenant.bridge_status = "ACTIVE"
+            tenant.bridge_last_heartbeat = now_utc
 
-        # Mirror the client count for billing
-        tenant.current_client_count = client_count
+            # Mirror the administrative seat count for billing
+            tenant.current_client_count = client_count
 
-        # Log usage for billing audit trail
-        usage = TokenUsage(
-            tenant_id=tenant.id,
-            metric="client_count",
-            value=client_count,
-        )
-        db.add(usage)
-        db.commit()
+            # Log usage for billing audit trail (DB handles recorded_at default)
+            usage = TokenUsage(
+                tenant_id=tenant.id,
+                metric="admin_seat_count",
+                value=client_count
+            )
+            db.add(usage)
+            db.commit()
 
-        return {
-            "acknowledged": True,
-            "max_client_permit": tenant.max_client_permit,
-        }
+            # Prepare IST timestamp for response/logging
+            now_ist = to_ist(now_utc).strftime("%Y-%m-%d %H:%M:%S IST")
+            logger.info(f"💓 Heartbeat acknowledged for {tenant.name} at {now_ist} (Seats: {client_count})")
+
+            return {
+                "acknowledged": True,
+                "max_client_permit": tenant.max_client_permit,
+                "server_time_ist": now_ist
+            }
+        except Exception as e:
+            db.rollback()
+            logger.error(f"❌ Heartbeat processing error for tenant {tenant.id}: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Heartbeat failed: {str(e)}")
 
     # ── Bridge Token Regeneration ───────────────────────────────────
     @staticmethod
