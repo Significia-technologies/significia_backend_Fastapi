@@ -45,6 +45,21 @@ class User(Base):
 
     password_hash: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
+    @property
+    def max_client_permit(self) -> int:
+        """Proxy client limit from the associated Tenant."""
+        if self.tenant:
+            return self.tenant.max_client_permit
+        return 5  # Default fallback if no tenant
+
+    @property
+    def plan_expiry_date(self) -> Optional[datetime]:
+        """Proxy plan expiry from the associated Tenant."""
+        if self.tenant:
+            # Assumes tenant has a plan_expiry_date attribute or uses model defaults
+            return getattr(self.tenant, "plan_expiry_date", None)
+        return None
+
     role: Mapped[str] = mapped_column(String(50), default="user")
     status: Mapped[str] = mapped_column(String(50), default="active")
 

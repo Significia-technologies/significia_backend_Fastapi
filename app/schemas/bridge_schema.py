@@ -18,6 +18,7 @@ class BridgeHeartbeat(BaseModel):
 
 class BridgeHeartbeatResponse(BaseModel):
     acknowledged: bool
+    current_seat_usage: int
     max_client_permit: int
     server_time_ist: str
 

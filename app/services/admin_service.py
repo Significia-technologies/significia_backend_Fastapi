@@ -105,12 +105,12 @@ class AdminService:
             designation = profile.designation if profile else ("Principal Officer" if user.role == 'owner' else "Staff Member")
             
             staff_list.append({
-                "id": user.id,
+                "id": str(user.id),
                 "email": user.email,
                 "role": user.role,
                 "status": user.status,
-                "full_name": full_name,
-                "phone_number": profile.phone_number if profile else user.phone_number,
+                "full_name": full_name or "System User",
+                "phone_number": (profile.phone_number if profile else user.phone_number) or "N/A",
                 "designation": designation,
                 "address": profile.address if profile else None,
                 "last_login_at": user.last_login_at,

@@ -162,6 +162,7 @@ class BridgeService:
 
             return {
                 "acknowledged": True,
+                "current_seat_usage": internal_seat_count,
                 "max_client_permit": tenant.max_client_permit,
                 "server_time_ist": now_ist
             }
