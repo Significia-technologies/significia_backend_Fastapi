@@ -1,7 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.api.deps import get_db, get_current_super_admin
-from app.schemas.admin_schema import ClientProvisionRequest, ClientProvisionResponse
+from app.schemas.admin_schema import (
+    ClientProvisionRequest, ClientProvisionResponse,
+    StaffUserCreate, StaffUserUpdate, StaffUserOut,
+    AdminActivityLogOut
+)
 from app.services.admin_service import AdminService
 from app.models.user import User
 
@@ -18,7 +22,48 @@ def provision_new_client(
     Super Admin endpoint to manually provision a new Client (Tenant)
     and their initial root Owner account.
     """
-    return admin_service.provision_client(db, request)
+    result = admin_service.provision_client(db, request)
+    admin_service.log_activity(
+        db, current_admin, "PROVISION_CLIENT", "tenant", 
+        result["tenant_id"], f"Provisioned client: {result['tenant_name']}"
+    )
+    return result
+
+# --- Staff Management ---
+
+@router.get("/staff", response_model=list[StaffUserOut])
+def list_staff(
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(get_current_super_admin)
+):
+    return admin_service.list_staff(db, current_admin.tenant_id)
+
+@router.post("/staff", response_model=StaffUserOut, status_code=201)
+def create_staff(
+    request: StaffUserCreate,
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(get_current_super_admin)
+):
+    return admin_service.create_staff_user(db, current_admin, request.dict())
+
+@router.put("/staff/{user_id}", response_model=StaffUserOut)
+def update_staff(
+    user_id: str,
+    request: StaffUserUpdate,
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(get_current_super_admin)
+):
+    return admin_service.update_staff_user(db, current_admin, user_id, request.dict())
+
+# --- Audit Logs ---
+
+@router.get("/logs", response_model=list[AdminActivityLogOut])
+def list_logs(
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(get_current_super_admin)
+):
+    return admin_service.get_logs(db, limit)
     
 from pydantic import BaseModel
 

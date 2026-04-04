@@ -8,4 +8,6 @@ from app.models.risk_profile import RiskAssessment, ClientRiskMaster
 from app.models.asset_allocation import AssetAllocation
 from app.models.token_usage import TokenUsage
 from app.models.billing import BillingRecord
+from app.models.staff_profile import StaffProfile
+from app.models.admin_activity_log import AdminActivityLog
 

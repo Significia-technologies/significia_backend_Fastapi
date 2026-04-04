@@ -16,6 +16,7 @@ class User(Base):
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
 
     tenant = relationship("Tenant", lazy="joined")
+    staff_profile = relationship("StaffProfile", back_populates="user", uselist=False, cascade="all, delete-orphan")
 
     @property
     def company_name(self) -> str:

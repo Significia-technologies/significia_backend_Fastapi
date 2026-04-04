@@ -77,3 +77,117 @@ class AdminService:
             "bridge_registration_token": tenant.bridge_registration_token,
             "message": "Client provisioned successfully with full registration and billing profile."
         }
+
+    # --- Staff Management ---
+    def list_staff(self, db: Session, tenant_id: any) -> list[dict]:
+        from app.models.staff_profile import StaffProfile
+        # We join User with StaffProfile to return a complete view
+        results = db.query(User, StaffProfile).join(StaffProfile, User.id == StaffProfile.user_id).filter(User.tenant_id == tenant_id).all()
+        
+        staff_list = []
+        for user, profile in results:
+            staff_list.append({
+                "id": user.id,
+                "email": user.email,
+                "role": user.role,
+                "status": user.status,
+                "full_name": profile.full_name,
+                "phone_number": profile.phone_number,
+                "designation": profile.designation,
+                "address": profile.address,
+                "last_login_at": user.last_login_at,
+                "created_at": user.created_at
+            })
+        return staff_list
+
+    def create_staff_user(self, db: Session, admin: User, request: dict, ip_address: str = None):
+        from app.models.tenant import Tenant
+        from app.models.staff_profile import StaffProfile
+        from app.core.security import get_password_hash
+        
+        # 1. Create User (Authentication)
+        new_user = User(
+            tenant_id=admin.tenant_id, # Assumes staff belong to the same tenant as the provisioner
+            email=request["email"],
+            email_normalized=request["email"].lower(),
+            password_hash=get_password_hash(request["password"]),
+            role=request["role"],
+            status="active"
+        )
+        db.add(new_user)
+        db.flush() # Get user ID
+        
+        # 2. Create Staff Profile
+        new_profile = StaffProfile(
+            user_id=new_user.id,
+            full_name=request["full_name"],
+            phone_number=request["phone_number"],
+            designation=request.get("designation"),
+            address=request.get("address")
+        )
+        db.add(new_profile)
+        db.commit()
+        
+        self.log_activity(db, admin, "CREATE_STAFF", "user", str(new_user.id), f"Created staff profile for {new_user.email}", ip_address)
+        
+        # Return merged data for API response
+        return self.list_staff(db, admin.tenant_id)[-1] # Quickest way to get the output schema formatted correctly
+
+    def update_staff_user(self, db: Session, admin: User, user_id: str, request: dict, ip_address: str = None):
+        import uuid
+        from app.models.staff_profile import StaffProfile
+        
+        user = self.user_repo.get_by_id(db, uuid.UUID(user_id))
+        if not user:
+            raise HTTPException(404, "User not found")
+        
+        profile = db.query(StaffProfile).filter(StaffProfile.user_id == user.id).first()
+        
+        # Update User fields
+        if "role" in request: user.role = request["role"]
+        if "status" in request: user.status = request["status"]
+            
+        # Update Profile fields
+        if profile:
+            if "full_name" in request: profile.full_name = request["full_name"]
+            if "phone_number" in request: profile.phone_number = request["phone_number"]
+            if "designation" in request: profile.designation = request["designation"]
+            if "address" in request: profile.address = request["address"]
+            
+        db.commit()
+        self.log_activity(db, admin, "UPDATE_STAFF", "user", str(user.id), f"Updated staff details for {user.email}", ip_address)
+        
+        # Fetch fresh data using UUID object
+        results = db.query(User, StaffProfile).join(StaffProfile, User.id == StaffProfile.user_id).filter(User.id == user.id).first()
+        user, profile = results
+        return {
+            "id": user.id,
+            "email": user.email,
+            "role": user.role,
+            "status": user.status,
+            "full_name": profile.full_name,
+            "phone_number": profile.phone_number,
+            "designation": profile.designation,
+            "address": profile.address,
+            "last_login_at": user.last_login_at,
+            "created_at": user.created_at
+        }
+
+    # --- Activity Logging ---
+    def log_activity(self, db: Session, admin: User, action: str, target_type: str, target_id: str = None, details: str = None, ip_address: str = None):
+        from app.models.admin_activity_log import AdminActivityLog
+        log = AdminActivityLog(
+            admin_id=admin.id,
+            admin_email=admin.email,
+            action=action,
+            target_type=target_type,
+            target_id=target_id,
+            details=details,
+            ip_address=ip_address
+        )
+        db.add(log)
+        db.commit()
+
+    def get_logs(self, db: Session, limit: int = 100) -> list:
+        from app.models.admin_activity_log import AdminActivityLog
+        return db.query(AdminActivityLog).order_by(AdminActivityLog.created_at.desc()).limit(limit).all()

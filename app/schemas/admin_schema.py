@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List
-from datetime import date as date_type
+from datetime import date as date_type, datetime
 from uuid import UUID
 
 class ContactPersonBase(BaseModel):
@@ -48,3 +48,47 @@ class ClientProvisionResponse(BaseModel):
     subdomain: Optional[str]
     bridge_registration_token: str
     message: str = "Client provisioned successfully"
+
+# Staff Management Schemas
+class StaffUserBase(BaseModel):
+    email: EmailStr
+    full_name: str
+    phone_number: str
+    designation: Optional[str] = None
+    address: Optional[str] = None
+    role: str = "relationship_manager"
+    status: str = "active"
+
+class StaffUserCreate(StaffUserBase):
+    password: str = Field(..., min_length=8)
+
+class StaffUserUpdate(BaseModel):
+    full_name: Optional[str] = None
+    phone_number: Optional[str] = None
+    designation: Optional[str] = None
+    address: Optional[str] = None
+    role: Optional[str] = None
+    status: Optional[str] = None
+
+class StaffUserOut(StaffUserBase):
+    id: UUID
+    last_login_at: Optional[datetime] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# Activity Log Schemas
+class AdminActivityLogOut(BaseModel):
+    id: UUID
+    admin_id: UUID
+    admin_email: str
+    action: str
+    target_type: str
+    target_id: Optional[str] = None
+    details: Optional[str] = None
+    ip_address: Optional[str] = None
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
