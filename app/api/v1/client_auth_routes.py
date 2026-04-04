@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import (
     get_bridge_client, get_current_tenant,
     get_tenant_by_slug, get_current_client,
-    oauth2_scheme
+    oauth2_scheme, get_db
 )
 from app.services.bridge_client import BridgeClient
 from app.models.tenant import Tenant
@@ -29,6 +29,7 @@ client_auth_service = ClientAuthService()
 async def login_bridge(
     request: Request,
     login_data: ClientLoginRequest,
+    db: Session = Depends(get_db),
     tenant: Tenant = Depends(get_current_tenant),
     bridge: BridgeClient = Depends(get_bridge_client),
 ):
@@ -76,16 +77,28 @@ async def login_bridge(
         else:
             raise
 
-    # Generate JWT token locally using the resolved identity and role
     from app.core.jwt import create_access_token, create_refresh_token
+    from app.models.user import User
+    import uuid
+    
+    # The session version is now fully decentralized and managed by the Bridge
+    # Use the version returned from either verify-client or verify-ia-user
+    token_version = 1
+    if role == "client":
+        token_version = client_data.get("refresh_token_version", 1)
+    else:
+        token_version = ia_data.get("refresh_token_version", 1)
+
     access_token = create_access_token(
         subject=str(user_id),
         tenant_id=str(tenant.id),
-        role=role
+        role=role,
+        version=token_version
     )
     refresh_token = create_refresh_token(
         subject=str(user_id),
-        tenant_id=str(tenant.id)
+        tenant_id=str(tenant.id),
+        version=token_version
     )
 
     return {
@@ -97,6 +110,10 @@ async def login_bridge(
             "name": user_name,
             "role": role,
             "email": login_data.email,
+            "is_profile_completed": tenant.is_profile_completed,
+            "max_client_permit": tenant.max_client_permit,
+            "company_name": tenant.name,
+            "tenant_id": str(tenant.id)
         },
         "subdomain": tenant.subdomain,
     }
@@ -125,6 +142,13 @@ async def get_client_me(
             
         # Fetch the complete unified profile from the Bridge
         profile = await bridge.get(f"/auth/profile/{user_id}")
+        
+        # Inject Master DB tenant metadata that the Bridge is unaware of
+        profile["is_profile_completed"] = tenant.is_profile_completed
+        profile["max_client_permit"] = tenant.max_client_permit
+        profile["company_name"] = tenant.name
+        profile["tenant_id"] = str(tenant.id)
+        
         return profile
         
     except Exception as e:

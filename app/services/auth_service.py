@@ -78,9 +78,21 @@ class AuthService:
         if user.status != "active":
             raise HTTPException(status_code=403, detail="Account is disabled")
 
-        # Generate tokens
-        access_token = create_access_token(subject=str(user.id), tenant_id=str(user.tenant_id), role=user.role)
-        refresh_token = create_refresh_token(subject=str(user.id), tenant_id=str(user.tenant_id))
+        # Increment session version (Single Device Login logic)
+        user.refresh_token_version += 1
+        
+        # Generate tokens with the new version
+        access_token = create_access_token(
+            subject=str(user.id), 
+            tenant_id=str(user.tenant_id), 
+            role=user.role,
+            version=user.refresh_token_version
+        )
+        refresh_token = create_refresh_token(
+            subject=str(user.id), 
+            tenant_id=str(user.tenant_id),
+            version=user.refresh_token_version
+        )
 
         # 3. Successful Login Logic
         # Update last login info, refresh token, and reset failed attempts
@@ -109,7 +121,22 @@ class AuthService:
         if not user or user.status != "active":
             raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
 
-        new_access_token = create_access_token(subject=str(user.id), tenant_id=str(user.tenant_id), role=user.role)
+        # Verify session version
+        try:
+            from app.core.jwt import decode_token
+            payload = decode_token(refresh_token)
+            token_version = payload.get("version")
+            if token_version != user.refresh_token_version:
+                raise HTTPException(status_code=401, detail="Session invalidated. Please log in again.")
+        except Exception:
+            raise HTTPException(status_code=401, detail="Invalid session token")
+
+        new_access_token = create_access_token(
+            subject=str(user.id), 
+            tenant_id=str(user.tenant_id), 
+            role=user.role,
+            version=user.refresh_token_version
+        )
         
         tenant = self.tenant_repo.get_by_id(db, user.tenant_id)
         subdomain = tenant.subdomain if tenant else None

@@ -5,7 +5,7 @@ from jose import jwt
 
 from app.core.config import settings
 
-def create_access_token(subject: str, tenant_id: str, role: str, expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(subject: str, tenant_id: str, role: str, version: int = 0, expires_delta: Optional[timedelta] = None) -> str:
     if expires_delta:
         expire = get_now_ist() + expires_delta
     else:
@@ -16,13 +16,14 @@ def create_access_token(subject: str, tenant_id: str, role: str, expires_delta: 
         "sub": str(subject),
         "tenant_id": str(tenant_id),
         "role": role,
+        "version": version,
         "type": "access"
     }
     
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
 
-def create_refresh_token(subject: str, tenant_id: str, expires_delta: Optional[timedelta] = None) -> str:
+def create_refresh_token(subject: str, tenant_id: str, version: int = 0, expires_delta: Optional[timedelta] = None) -> str:
     if expires_delta:
         expire = get_now_ist() + expires_delta
     else:
@@ -32,6 +33,7 @@ def create_refresh_token(subject: str, tenant_id: str, expires_delta: Optional[t
         "exp": expire,
         "sub": str(subject),
         "tenant_id": str(tenant_id),
+        "version": version,
         "type": "refresh"
     }
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)

@@ -41,8 +41,9 @@ class IAStaffLoginResponse(BaseModel):
 
 @router.post("/login", response_model=IAStaffLoginResponse)
 async def ia_staff_login(
-    request: Request,  # Added to capture IP
+    request: Request,
     login_data: IAStaffLoginRequest,
+    db: Session = Depends(get_db),
     tenant: Tenant = Depends(get_current_tenant),
     bridge: BridgeClient = Depends(get_bridge_client),
 ):
@@ -71,14 +72,19 @@ async def ia_staff_login(
             raise HTTPException(423, e.detail)
         raise
 
+    # The Bridge has already incremented the refresh_token_version during successful login verification
+    token_version = user_data.get("refresh_token_version", 1)
+
     access_token = create_access_token(
         subject=user_data["id"],
         tenant_id=str(tenant.id),
         role=user_data.get("role", "ia_staff"),
+        version=token_version
     )
     refresh_token = create_refresh_token(
         subject=user_data["id"],
         tenant_id=str(tenant.id),
+        version=token_version
     )
 
     return IAStaffLoginResponse(

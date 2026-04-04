@@ -34,9 +34,23 @@ def get_db() -> Generator:
     finally:
         db.close()
 
-def get_current_user(
+class AuthUser:
+    """
+    A lightweight mock object representing a decentralized user from a Bridge Silo.
+    Provides duck-typing compatibility with the SQLAlchemy User model for downstream dependencies.
+    """
+    def __init__(self, id, email, role, status, refresh_token_version, tenant):
+        self.id = uuid.UUID(id) if isinstance(id, str) else id
+        self.email = email
+        self.role = role
+        self.status = status
+        self.refresh_token_version = refresh_token_version
+        self.tenant = tenant
+        self.is_profile_completed = tenant.is_profile_completed
+
+async def get_current_user(
     db: Session = Depends(get_db), token: str | None = Depends(oauth2_scheme)
-) -> User:
+) -> Any:
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -46,6 +60,8 @@ def get_current_user(
     try:
         payload = decode_token(token)
         user_id: str = payload.get("sub")
+        role: str = payload.get("role")
+        tenant_id: str = payload.get("tenant_id")
         if user_id is None:
             raise HTTPException(status_code=401, detail="Could not validate credentials")
     except Exception:
@@ -54,43 +70,74 @@ def get_current_user(
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    user = UserRepository().get_by_id(db, uuid.UUID(user_id))
-    if not user:
-        logger.warning(f"[AUTH ERROR] User id {user_id} from token not found in database.")
-        raise HTTPException(status_code=404, detail="User not found")
-    if user.status != "active":
-        raise HTTPException(status_code=403, detail="Inactive user")
-    
-    # ── Tenant Level Enforcement ────────────────────────────────────
-    # Non-super_admins must belong to an active, non-expired tenant
-    if user.role != "super_admin":
-        tenant = user.tenant
-        if not tenant:
-            raise HTTPException(status_code=403, detail="User has no tenant assignment")
-        if not tenant.is_active:
-            raise HTTPException(status_code=403, detail="Your organization account is deactivated.")
-        if tenant.plan_expiry_date and make_aware_ist(tenant.plan_expiry_date) < get_now_ist():
-            raise HTTPException(status_code=403, detail="Your subscription plan has expired. Please renew to continue.")
-             
-    return user
+        
+    token_version = payload.get("version")
 
-def get_current_user_optional(
+    # ── Master DB Routing (Super Admins) ──
+    if role == "super_admin":
+        user = UserRepository().get_by_id(db, uuid.UUID(user_id))
+        if not user:
+            logger.warning(f"[AUTH ERROR] Super Admin id {user_id} not found in database.")
+            raise HTTPException(status_code=404, detail="User not found")
+            
+        if token_version is None or token_version != user.refresh_token_version:
+            logger.info(f"🚫 Session invalidated for {user.email}")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="SESSION_INVALIDATED")
+            
+        if user.status != "active":
+            raise HTTPException(status_code=403, detail="Inactive user")
+            
+        return user
+
+    # ── Bridge DB Routing (IA Owners, Staff, Clients) ──
+    if not tenant_id:
+        raise HTTPException(status_code=403, detail="User has no tenant assignment")
+        
+    tenant = db.query(Tenant).filter(Tenant.id == uuid.UUID(tenant_id)).first()
+    if not tenant:
+        raise HTTPException(status_code=403, detail="User tenant not found")
+    if not tenant.is_active:
+        raise HTTPException(status_code=403, detail="Your organization account is deactivated.")
+    if tenant.plan_expiry_date and make_aware_ist(tenant.plan_expiry_date) < get_now_ist():
+        raise HTTPException(status_code=403, detail="Your subscription plan has expired. Please renew to continue.")
+
+    # Validate against Bridge DB dynamically
+    try:
+        bridge = BridgeClient(tenant)
+        bridge_user = await bridge.get(f"/auth/profile/{user_id}")
+    except Exception as e:
+        logger.error(f"Bridge auth proxy failed for {tenant.subdomain}: {e}")
+        raise HTTPException(status_code=503, detail="Tenant silo is currently offline.")
+
+    remote_version = bridge_user.get("refresh_token_version", 1)
+    if token_version is None or token_version != remote_version:
+        logger.info(f"🚫 Decentralized Session invalidated for {bridge_user.get('email')} (Token: {token_version}, Silo: {remote_version})")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="SESSION_INVALIDATED")
+        
+    status_str = "active" if bridge_user.get("is_active", True) else "inactive"
+    if status_str != "active":
+        raise HTTPException(status_code=403, detail="Inactive user")
+
+    # Return a duck-typed AuthUser so the rest of the app thinks it's a regular user object
+    return AuthUser(
+        id=user_id,
+        email=bridge_user.get("email"),
+        role=bridge_user.get("role", role),
+        status=status_str,
+        refresh_token_version=remote_version,
+        tenant=tenant
+    )
+
+async def get_current_user_optional(
     db: Session = Depends(get_db), token: str | None = Depends(oauth2_scheme)
-) -> Optional[User]:
+) -> Optional[Any]:
     """
     Optional version of get_current_user. 
     Returns None instead of raising 401 if unauthenticated.
-    Essential for Bridge authentication routes like Login or Registrar.
     """
-    if not token:
-        return None
     try:
-        payload = decode_token(token)
-        user_id: str = payload.get("sub")
-        if user_id is None:
-            return None
-        return UserRepository().get_by_id(db, uuid.UUID(user_id))
-    except Exception:
+        return await get_current_user(db, token)
+    except HTTPException:
         return None
 
 def get_current_super_admin(current_user: User = Depends(get_current_user)) -> User:

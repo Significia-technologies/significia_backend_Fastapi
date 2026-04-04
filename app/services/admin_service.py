@@ -62,20 +62,12 @@ class AdminService:
             }
             self.ia_repo.create_contact_person(db, cp_data)
 
-        # 5. Create the Root User (Owner) for this Tenant
-        user = User(
-            tenant_id=tenant.id,
-            email=request.email,
-            email_normalized=request.email.lower(),
-            password_hash=None, # Pure Bridge Auth: We don't store IA owner passwords in Master
-            role="owner",
-            status="active"
-        )
-        created_user = self.user_repo.create(db, user)
+        # 5. The Root User (Owner) is intentionally NOT saved to the Master DB 'users' table anymore.
+        # They will only exist natively inside the isolated Bridge Silo via the bridge integration flow.
         
         return {
-            "id": str(created_user.id),
-            "email": created_user.email,
+            "id": None, # Decoupled from Master users table
+            "email": request.email,
             "tenant_id": str(tenant.id),
             "tenant_name": tenant.name,
             "subdomain": tenant.subdomain,
