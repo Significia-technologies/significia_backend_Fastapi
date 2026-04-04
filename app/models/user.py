@@ -20,45 +20,34 @@ class User(Base):
 
     @property
     def company_name(self) -> str:
+        """Proxy company name from the associated Tenant."""
         return self.tenant.name if self.tenant else ""
 
     @property
     def is_profile_completed(self) -> bool:
+        """Proxy profile completion status from the associated Tenant."""
         return self.tenant.is_profile_completed if self.tenant else False
 
     @property
     def max_client_permit(self) -> int:
+        """Proxy client limit from the associated Tenant."""
         return self.tenant.max_client_permit if self.tenant else 5
 
     @property
     def plan_expiry_date(self) -> Optional[str]:
+        """Proxy plan expiry from the associated Tenant as ISO string."""
         if self.tenant and self.tenant.plan_expiry_date:
             return self.tenant.plan_expiry_date.isoformat()
         return None
 
     email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     email_normalized: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
-    is_email_verified: Mapped[bool] = mapped_column(Boolean, default=False)  # Renamed from email_verified
+    is_email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
 
     phone_number: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     phone_verified: Mapped[bool] = mapped_column(Boolean, default=False)
 
     password_hash: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-
-    @property
-    def max_client_permit(self) -> int:
-        """Proxy client limit from the associated Tenant."""
-        if self.tenant:
-            return self.tenant.max_client_permit
-        return 5  # Default fallback if no tenant
-
-    @property
-    def plan_expiry_date(self) -> Optional[datetime]:
-        """Proxy plan expiry from the associated Tenant."""
-        if self.tenant:
-            # Assumes tenant has a plan_expiry_date attribute or uses model defaults
-            return getattr(self.tenant, "plan_expiry_date", None)
-        return None
 
     role: Mapped[str] = mapped_column(String(50), default="user")
     status: Mapped[str] = mapped_column(String(50), default="active")
