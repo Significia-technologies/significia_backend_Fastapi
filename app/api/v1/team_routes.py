@@ -194,4 +194,4 @@ async def update_team_member_permissions(
     bridge: BridgeClient = Depends(get_bridge_client)
 ):
     """Update member permissions in the Bridge Silo."""
-    return await bridge.put(f"/employees/{str(user_id)}/permissions", json=permissions)
+    return await bridge.put(f"/employees/{str(user_id)}/permissions", data=permissions)

@@ -105,6 +105,22 @@ class BridgeClient:
                 logger.error(f"[Bridge OFFLINE] tenant={self.tenant_name} path={path}")
                 raise HTTPException(503, "Bridge is offline. Please contact your administrator.")
 
+    async def put(self, path: str, data: Any = None) -> Any:
+        """Send a PUT request to the Bridge."""
+        url = f"{self.base_url}{path}"
+        logger.info(f"[Bridge PUT] tenant={self.tenant_name} path={path}")
+
+        async with httpx.AsyncClient(timeout=BRIDGE_TIMEOUT_SECONDS) as client:
+            try:
+                response = await client.put(url, headers=self._headers(), json=data)
+                return self._handle_response(response, path)
+            except httpx.ConnectTimeout:
+                logger.error(f"[Bridge TIMEOUT] tenant={self.tenant_name} path={path}")
+                raise HTTPException(503, "Bridge is not responding. Please try again later.")
+            except httpx.ConnectError:
+                logger.error(f"[Bridge OFFLINE] tenant={self.tenant_name} path={path}")
+                raise HTTPException(503, "Bridge is offline. Please contact your administrator.")
+
     async def patch(self, path: str, data: Any = None) -> Any:
         """Send a PATCH request to the Bridge."""
         url = f"{self.base_url}{path}"
