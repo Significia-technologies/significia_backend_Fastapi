@@ -13,6 +13,7 @@ from fastapi.responses import Response
 from app.api.deps import get_bridge_client, get_current_tenant, get_db
 from sqlalchemy.orm import Session
 from app.services.bridge_client import BridgeClient
+from app.services.ia_master_service import IAMasterService
 from app.models.tenant import Tenant
 
 # Legacy schemas kept for typed responses
@@ -198,10 +199,26 @@ async def get_all_ias(
 @router.get("/{ia_id}/pdf")
 async def download_ia_pdf(
     ia_id: uuid.UUID, 
-    bridge: BridgeClient = Depends(get_bridge_client)
+    bridge: BridgeClient = Depends(get_bridge_client),
+    db: Session = Depends(get_db)
 ):
-    """Proxy PDF download to the Bridge (if implemented on Bridge side)."""
-    raise HTTPException(status_code=501, detail="Bridge PDF generation not yet implemented")
+    """Proxy PDF download to the Bridge (using Backend generator)."""
+    try:
+        service = IAMasterService()
+        pdf_bytes, filename = await service.generate_pdf_bridge(db, bridge)
+        
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}"
+            }
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"IA Master PDF Generation Failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate PDF report")
 # ── Helper: Completion Check ──────────────────────────────────────
 def check_and_update_profile_completion(db: Session, tenant: Tenant, bridge_data: dict):
     """

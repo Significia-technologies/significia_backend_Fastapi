@@ -10,7 +10,7 @@ from app.utils.file_storage import save_upload_file
 from app.utils.file_utils import resolve_logo_to_local_path
 from app.utils.pdf_generator import IAPDFGenerator
 from app.schemas.ia_master import IAMasterCreate, EmployeeCreate
-from app.services.storage_service import StorageService
+from app.services.bridge_client import BridgeClient
 
 class IAMasterService:
     def __init__(self):
@@ -117,13 +117,12 @@ class IAMasterService:
     async def sign_file_urls(self, ia_record: any, db: Session):
         if not ia_record:
             return ia_record
-        driver = StorageService.get_tenant_storage(db)
+        
         async def get_url(path: str):
             if not path:
                 return None
-            if driver and not path.startswith(('http://', 'https://')):
-                return await driver.get_file_url(path)
             return path
+            
         if hasattr(ia_record, 'ia_certificate_path'):
             ia_record.ia_certificate_path = await get_url(ia_record.ia_certificate_path)
         if hasattr(ia_record, 'ia_signature_path'):
@@ -174,4 +173,42 @@ class IAMasterService:
         pdf_bytes = IAPDFGenerator.generate_ia_report(ia_dict, emp_list, logo_path=logo_path)
         filename = f"IA_Master_Entry_{db_ia.ia_registration_number}.pdf"
         self.audit_repo.log_event(db, "PDF_EXPORT", "ia_master", str(db_ia.id), f"Exported PDF for IA Master ID: {db_ia.id}")
+        return pdf_bytes, filename
+
+    async def generate_pdf_bridge(self, db: Session, bridge: BridgeClient) -> Tuple[bytes, str]:
+        """
+        Fetch IA Master and Employee data from Bridge and generate PDF report.
+        Handles logo resolution by getting a pre-signed URL from Bridge storage.
+        """
+        # 1. Fetch unified IA Master Data (includes employees)
+        ia_data = await bridge.get("/ia-master")
+        if not ia_data:
+            raise ValueError("IA Master data not found on Bridge")
+
+        employees = ia_data.get("employees", [])
+        
+        # 2. Resolve IA Logo Path (Bridge stores it, Backend needs to download/resolve it for PDF)
+        logo_path = None
+        ia_logo_key = ia_data.get("ia_logo_path")
+        if ia_logo_key:
+            try:
+                # Ask Bridge for a temporary signed URL for the logo
+                url_resp = await bridge.get("/storage/url", params={"key": ia_logo_key})
+                signed_url = url_resp.get("url")
+                if signed_url:
+                    logo_path = await resolve_logo_to_local_path(signed_url, db)
+            except Exception as e:
+                import logging
+                logging.getLogger("significia.ia_master").warning(f"Failed to resolve logo for PDF: {e}")
+
+        # 3. Generate PDF using the existing layout
+        pdf_bytes = IAPDFGenerator.generate_ia_report(ia_data, employees, logo_path=logo_path)
+        
+        # 4. Success Audit & Filename
+        reg_no = ia_data.get("ia_registration_number", "REPORT")
+        filename = f"IA_Master_Report_{reg_no}.pdf"
+        
+        # Cleanup temp file if it was created by resolve_logo_to_local_path
+        # (Though resolve_logo_to_local_path usually handles it if needed or keeps it for cache)
+        
         return pdf_bytes, filename
