@@ -131,13 +131,9 @@ class BridgeService:
         logger = logging.getLogger("backend.bridge_service")
         
         try:
-            # 1. Calculate Internal User Seats (Master DB source of truth)
-            # Find the count of human users (Owner, Partner, Staff, Analyst)
-            from app.models.user import User
-            internal_seat_count = db.query(User).filter(
-                User.tenant_id == tenant.id,
-                User.role.in_(["owner", "partner", "ia_staff", "analyst", "staff"])
-            ).count()
+            # 1. Use client count reported by the Bridge (Source of Truth)
+            # This represents the total "Internal User Seats" (Owner, Staff, Partners)
+            internal_seat_count = client_count
 
             # 2. Update Heartbeat & Status
             now_utc = datetime.now(py_timezone.utc)
