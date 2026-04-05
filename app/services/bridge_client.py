@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 from fastapi import HTTPException, status
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
 
 from app.models.tenant import Tenant
@@ -96,7 +97,7 @@ class BridgeClient:
 
         async with httpx.AsyncClient(timeout=BRIDGE_TIMEOUT_SECONDS) as client:
             try:
-                response = await client.post(url, headers=self._headers(), json=data)
+                response = await client.post(url, headers=self._headers(), json=jsonable_encoder(data))
                 return self._handle_response(response, path)
             except httpx.ConnectTimeout:
                 logger.error(f"[Bridge TIMEOUT] tenant={self.tenant_name} path={path}")
@@ -112,7 +113,7 @@ class BridgeClient:
 
         async with httpx.AsyncClient(timeout=BRIDGE_TIMEOUT_SECONDS) as client:
             try:
-                response = await client.put(url, headers=self._headers(), json=data)
+                response = await client.put(url, headers=self._headers(), json=jsonable_encoder(data))
                 return self._handle_response(response, path)
             except httpx.ConnectTimeout:
                 logger.error(f"[Bridge TIMEOUT] tenant={self.tenant_name} path={path}")
@@ -128,7 +129,7 @@ class BridgeClient:
 
         async with httpx.AsyncClient(timeout=BRIDGE_TIMEOUT_SECONDS) as client:
             try:
-                response = await client.patch(url, headers=self._headers(), json=data)
+                response = await client.patch(url, headers=self._headers(), json=jsonable_encoder(data))
                 return self._handle_response(response, path)
             except httpx.ConnectTimeout:
                 raise HTTPException(503, "Bridge is not responding. Please try again later.")

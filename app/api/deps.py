@@ -46,6 +46,10 @@ class AuthUser:
         self.status = status
         self.refresh_token_version = refresh_token_version
         self.tenant = tenant
+        self.tenant_id = tenant.id
+        self.company_name = tenant.name
+        self.max_client_permit = tenant.max_client_permit
+        self.plan_expiry_date = str(tenant.plan_expiry_date) if tenant.plan_expiry_date else None
         self.is_profile_completed = tenant.is_profile_completed
 
 async def get_current_user(
