@@ -172,3 +172,26 @@ async def remove_team_member(
     await bridge.delete(f"/employees/{str(user_id)}")
     
     return None
+
+
+@router.get("/{user_id}/permissions")
+async def get_team_member_permissions(
+    user_id: UUID,
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(get_current_ia_admin),
+    bridge: BridgeClient = Depends(get_bridge_client)
+):
+    """Fetch member permissions from the Bridge Silo."""
+    return await bridge.get(f"/employees/{str(user_id)}/permissions")
+
+
+@router.put("/{user_id}/permissions")
+async def update_team_member_permissions(
+    user_id: UUID,
+    permissions: List[dict],
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(get_current_ia_admin),
+    bridge: BridgeClient = Depends(get_bridge_client)
+):
+    """Update member permissions in the Bridge Silo."""
+    return await bridge.put(f"/employees/{str(user_id)}/permissions", json=permissions)
