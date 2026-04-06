@@ -110,7 +110,7 @@ class IAPDFGenerator:
 
 class ClientPDFGenerator:
     @staticmethod
-    def generate_client_report(client_data: dict) -> bytes:
+    def generate_client_report(client_data: dict, ia_data: Optional[dict] = None) -> bytes:
         pdf = FPDF()
         pdf.set_auto_page_break(auto=True, margin=5)
         pdf.add_page()
@@ -126,6 +126,14 @@ class ClientPDFGenerator:
         pdf.set_text_color(*text_black)
         pdf.cell(0, 10, "CLIENT REGISTRATION REPORT", ln=True, align="L")
         
+        if ia_data:
+            entity_name = ia_data.get('name_of_entity') or ia_data.get('name_of_ia', 'N/A')
+            ia_reg = ia_data.get('ia_registration_number', 'N/A')
+            pdf.set_font("helvetica", "B", 10)
+            pdf.set_text_color(*text_muted)
+            pdf.cell(0, 5, f"ENTITY: {entity_name.upper()}", ln=True, align="L")
+            pdf.cell(0, 5, f"REGISTRATION NO: {ia_reg}", ln=True, align="L")
+
         pdf.set_font("helvetica", "B", 10)
         pdf.set_text_color(*primary_blue)
         pdf.cell(0, 5, f"REFERENCE: {client_data.get('client_code')}", ln=True, align="L")
@@ -135,7 +143,8 @@ class ClientPDFGenerator:
         current_date = datetime.now().strftime('%d-%m-%Y %H:%M:%S')
         pdf.set_xy(10, 10)
         pdf.cell(0, 10, f"DATE: {current_date}", ln=True, align="R")
-        pdf.set_y(25)
+        # Shift Y down if header is present
+        pdf.set_y(40 if ia_data else 25)
 
         def render_compact_section(title, fields, row_h=7.5, is_last=False):
             temp_fields = [f for f in fields if f[1] is not None]
@@ -264,7 +273,7 @@ class ClientPDFGenerator:
         pdf.cell(0, 0.2, "", ln=True, fill=True)
         pdf.set_font("helvetica", "B", 6)
         pdf.set_text_color(*text_muted)
-        pdf.cell(0, 6, "OFFICIAL CLIENT RECORD - SIGNIFICIA SECURE PLATFORM", ln=False, align="L")
+        pdf.cell(0, 6, "OFFICIAL CLIENT RECORD", ln=False, align="L")
         pdf.set_font("helvetica", "I", 6)
         pdf.cell(0, 6, "Page 1 / 1", ln=False, align="R")
 

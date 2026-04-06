@@ -244,6 +244,37 @@ async def download_client_master_report(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate master report: {str(e)}")
+@router.get("/clients/{client_id}/pdf")
+async def download_client_individual_report(
+    client_id: uuid.UUID,
+    bridge: BridgeClient = Depends(get_bridge_client),
+):
+    """
+    Generate and download a detailed personal report for a specific client via the Bridge.
+    """
+    try:
+        # 1. Fetch individual client data and IA profile in parallel
+        import asyncio
+        client_task = bridge.get(f"/clients/{client_id}")
+        ia_task = bridge.get("/ia-master")
+        
+        client, ia_data = await asyncio.gather(client_task, ia_task)
+        
+        if not client:
+            raise HTTPException(status_code=404, detail="Client not found")
 
-
-
+        # 2. Generate PDF
+        pdf_bytes = ClientPDFGenerator.generate_client_report(client, ia_data=ia_data)
+        
+        client_name = client.get("client_name", "Client").replace(" ", "_")
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename=Report_{client_name}.pdf"
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate client report: {str(e)}")
