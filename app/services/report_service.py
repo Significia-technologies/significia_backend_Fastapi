@@ -1023,9 +1023,13 @@ class ReportService:
         sig_date = assessment.submitted_at.strftime("%Y-%m-%d")
         sig_table.rows[1].cells[0].text = f"Date: {sig_date}"
     @staticmethod
-    def generate_blank_risk_form_pdf(db: Session, questionnaire_id: str, ia_logo_override: str = None) -> BytesIO:
+    def generate_blank_risk_form_pdf(db: Optional[Session], questionnaire_id: str, ia_logo_override: str = None, ia_data: dict = None) -> BytesIO:
         # Fetch IA details 
-        ia = db.execute(select(IAMaster)).scalar_one_or_none()
+        if ia_data:
+            ia = type('MockIA', (), ia_data)() # Convert dict to object-like access if needed, or adapt code
+            # Actually, let's just adapt the code below to handle both.
+        else:
+            ia = db.execute(select(IAMaster)).scalar_one_or_none() if db else None
 
         if questionnaire_id == "sample-form":
             # Mock questionnaire object for legacy form
@@ -1142,7 +1146,14 @@ class ReportService:
         )
 
         # 3. Create Cover Page
-        resolved_logo = resolve_logo_path(ia_logo_override or (ia.ia_logo_path if ia else None))
+        ia_logo_path = ia_logo_override
+        if not ia_logo_path:
+            if ia_data:
+                ia_logo_path = ia_data.get("ia_logo_path")
+            elif ia:
+                ia_logo_path = ia.ia_logo_path
+
+        resolved_logo = resolve_logo_path(ia_logo_path)
         if resolved_logo:
             try:
                 logo = Image(resolved_logo, width=2.5*inch, height=1.25*inch, kind='proportional')
@@ -1157,9 +1168,23 @@ class ReportService:
         
         story.append(Paragraph("<b>CLIENT NAME:</b> __________________________", cover_subtitle_style))
         story.append(Paragraph("<b>CLIENT CODE:</b> __________________________", cover_subtitle_style))
-        if ia:
-            story.append(Paragraph(f"<b>ENTITY:</b> {ia.name_of_entity or ia.name_of_ia}", cover_subtitle_style))
-            story.append(Paragraph(f"<b>REGISTRATION NO:</b> {ia.ia_registration_number or 'N/A'}", cover_subtitle_style))
+        
+        # Get IA Identifiers
+        if ia_data:
+            entity_name = ia_data.get("name_of_entity") or ia_data.get("name_of_ia")
+            reg_no = ia_data.get("ia_registration_number") or "N/A"
+        elif ia:
+            entity_name = ia.name_of_entity or ia.name_of_ia
+            reg_no = ia.ia_registration_number or "N/A"
+        else:
+            entity_name = None
+            reg_no = None
+
+        if entity_name:
+            story.append(Paragraph(f"<b>ENTITY:</b> {entity_name}", cover_subtitle_style))
+        if reg_no:
+            story.append(Paragraph(f"<b>REGISTRATION NO:</b> {reg_no}", cover_subtitle_style))
+            
         story.append(Paragraph(f"<b>DATE:</b> __________________________", cover_subtitle_style))
         
         story.append(PageBreak())
@@ -1213,5 +1238,452 @@ class ReportService:
         story.append(sig_table)
 
         doc.build(story, onFirstPage=ReportService._draw_footer, onLaterPages=ReportService._draw_footer)
+        buffer.seek(0)
+        return buffer
+
+    @staticmethod
+    def generate_risk_profile_pdf_bridge(assessment_data: dict, client_data: dict, ia_data: dict, ia_logo_override: str = None) -> BytesIO:
+        """
+        Bridge-compatible version of generate_risk_profile_pdf.
+        Accepts dictionaries instead of DB model instances.
+        """
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(
+            buffer, 
+            pagesize=letter, 
+            topMargin=1.2*inch,
+            bottomMargin=0.7*inch, 
+            leftMargin=0.5*inch, 
+            rightMargin=0.5*inch
+        )
+        
+        story = []
+        styles = getSampleStyleSheet()
+
+        # Custom styles
+        title_style = ParagraphStyle(
+            'CustomTitle', parent=styles['Heading1'], fontSize=20, textColor=colors.HexColor('#1e3c72'),
+            spaceAfter=20, alignment=1, fontName='Helvetica-Bold'
+        )
+        heading_style = ParagraphStyle(
+            'CustomHeading', parent=styles['Heading2'], fontSize=14, textColor=colors.HexColor('#2a5298'),
+            spaceAfter=12, spaceBefore=15, fontName='Helvetica-Bold'
+        )
+        normal_style = ParagraphStyle(
+            'NormalCustom', parent=styles['Normal'], fontSize=9, spaceAfter=4, fontName='Helvetica'
+        )
+        bold_style = ParagraphStyle(
+            'BoldCustom', parent=styles['Normal'], fontSize=9, spaceAfter=4, fontName='Helvetica-Bold'
+        )
+
+        cover_title_style = ParagraphStyle('CoverTitle', parent=title_style, fontSize=28, alignment=TA_CENTER, spaceBefore=100)
+        cover_subtitle_style = ParagraphStyle('CoverSubtitle', parent=normal_style, fontSize=14, alignment=TA_CENTER, spaceBefore=30, textColor=colors.grey)
+        
+        # Logo handling for cover
+        resolved_logo = resolve_logo_path(ia_logo_override or ia_data.get('ia_logo_path'))
+        if resolved_logo:
+            try:
+                logo = Image(resolved_logo, width=2.5*inch, height=1.25*inch, kind='proportional')
+                story.append(Spacer(1, 50))
+                story.append(logo)
+                story.append(Spacer(1, 30))
+            except: pass
+        
+        story.append(Paragraph("RISK PROFILE ASSESSMENT REPORT", cover_title_style))
+        story.append(Spacer(1, 50))
+        
+        story.append(Paragraph(f"<b>CLIENT NAME:</b> {client_data.get('client_name', 'N/A')}", cover_subtitle_style))
+        story.append(Paragraph(f"<b>CLIENT CODE:</b> {client_data.get('client_code', 'N/A')}", cover_subtitle_style))
+        story.append(Paragraph(f"<b>ENTITY:</b> {ia_data.get('name_of_entity') or ia_data.get('name_of_ia', 'N/A')}", cover_subtitle_style))
+        
+        # Handle timestamp from bridge (string or datetime)
+        ts = assessment_data.get('assessment_timestamp')
+        date_str = "N/A"
+        if ts:
+            if isinstance(ts, str):
+                try: 
+                    # Try to parse ISO format
+                    from dateutil import parser
+                    ts_dt = parser.parse(ts)
+                    date_str = ts_dt.strftime('%B %d, %Y')
+                except: 
+                    date_str = str(ts)
+            elif hasattr(ts, 'strftime'):
+                date_str = ts.strftime('%B %d, %Y')
+        
+        story.append(Paragraph(f"<b>DATE:</b> {date_str}", cover_subtitle_style))
+        story.append(PageBreak())
+
+        # Summary
+        story.append(Paragraph("ASSESSMENT SUMMARY", heading_style))
+        summary_data = [
+            ["Client Name:", client_data.get('client_name')],
+            ["Client Code:", client_data.get('client_code')],
+            ["Date of Assessment:", date_str],
+            ["Total Score:", str(assessment_data.get('calculated_score', 0))],
+            ["Risk Category:", str(assessment_data.get('assigned_risk_tier', 'N/A'))]
+        ]
+        summary_table = Table(summary_data, colWidths=[2*inch, 4*inch])
+        summary_table.setStyle(TableStyle([
+            ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+            ('BACKGROUND', (0,0), (0,-1), colors.lightgrey),
+            ('FONTNAME', (0,0), (0,-1), 'Helvetica-Bold'),
+            ('PADDING', (0,0), (-1,-1), 8),
+        ]))
+        story.append(summary_table)
+        story.append(Spacer(1, 20))
+
+        # Questionnaire Responses
+        story.append(Paragraph("QUESTIONNAIRE RESPONSES", heading_style))
+        q_scores = assessment_data.get('question_scores') or {}
+        
+        from app.services.questionnaire_constants import QUESTIONNAIRE_DATA
+        for q_id, q_data in QUESTIONNAIRE_DATA.items():
+            s_info = q_scores.get(q_id, {})
+            score_text = f" (Score: {s_info.get('score', 0)}/{s_info.get('max', 0)})"
+            story.append(Paragraph(f"<b>{q_id.upper()}. {q_data['title']}{score_text}</b>", normal_style))
+            story.append(Paragraph(q_data['question'], normal_style))
+            
+            if q_id == 'q2':
+                q2_answers = assessment_data.get('q2_importance_factors') or {}
+                q2_scores = s_info.get('details', {})
+                table_data = [["Factor", "Importance", "Score"]]
+                for f_code, f_name in q_data['factors'].items():
+                    ans_code = q2_answers.get(f_code, "-")
+                    ans_text = q_data['options'].get(ans_code, ans_code)
+                    f_score = q2_scores.get(f_code, {}).get('score', 0)
+                    table_data.append([f_name, Paragraph(f"<b>{ans_text}</b>", bold_style), str(f_score)])
+                
+                q2_table = Table(table_data, colWidths=[3*inch, 2*inch, 1*inch])
+                q2_table.setStyle(TableStyle([
+                    ('GRID', (0,0), (-1,-1), 0.2, colors.lightgrey),
+                    ('FONTSIZE', (0,0), (-1,-1), 8),
+                    ('BACKGROUND', (0,0), (-1,0), colors.whitesmoke),
+                    ('PADDING', (0,0), (-1,-1), 4),
+                ]))
+                story.append(q2_table)
+            else:
+                field_map = {
+                    'q1': 'q1_interest_choice', 'q3': 'q3_probability_bet', 'q4': 'q4_portfolio_choice',
+                    'q5': 'q5_loss_behavior', 'q6': 'q6_market_reaction', 'q7': 'q7_fund_selection',
+                    'q8': 'q8_experience_level', 'q9': 'q9_time_horizon', 'q10': 'q10_net_worth',
+                    'q11': 'q11_age_range', 'q12': 'q12_income_range', 'q13': 'q13_expense_range',
+                    'q14': 'q14_dependents', 'q15': 'q15_active_loan', 'q16': 'q16_investment_objective'
+                }
+                selected_val = assessment_data.get(field_map.get(q_id, q_id), "N/A")
+                options_str = ""
+                for opt_code, opt_text in q_data['options'].items():
+                    is_selected = str(opt_code).lower() == str(selected_val).lower()
+                    prefix = f"<b>[✓]</b> " if is_selected else "[  ] "
+                    text_color = "#006400" if is_selected else "#000000"
+                    options_str += f"<font color='{text_color}'>{prefix}{opt_code}. {opt_text}</font><br/>"
+                story.append(Paragraph(options_str, ParagraphStyle('Options', parent=normal_style, leftIndent=20, leading=12)))
+            story.append(Spacer(1, 10))
+        
+        story.append(Paragraph(f"<b>TOTAL ASSESSMENT SCORE: {assessment_data.get('calculated_score', 0)} / 100</b>", bold_style))
+        story.append(Spacer(1, 15))
+
+        # References
+        story.append(Paragraph("SCORING REFERENCE", heading_style))
+        compact_ref = [["Question", "Scoring Rule (Option: Points)"]]
+        for q_id, rules in SCORING_RULES.items():
+            if q_id == 'q2': continue
+            rule_str = ", ".join([f"{opt.upper()}: {score}" for opt, score in rules.items()])
+            compact_ref.append([q_id.upper(), rule_str])
+        
+        ref_table = Table(compact_ref, colWidths=[1.5*inch, 4.5*inch])
+        ref_table.setStyle(TableStyle([
+            ('GRID', (0,0), (-1,-1), 0.2, colors.lightgrey),
+            ('FONTSIZE', (0,0), (-1,-1), 8),
+            ('BACKGROUND', (0,0), (-1,0), colors.whitesmoke),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ]))
+        story.append(ref_table)
+
+        story.append(Spacer(1, 10))
+        story.append(Paragraph("<b>Q2 Scoring Factors:</b> (A: Very, B: Somewhat, C: Not Important)", normal_style))
+        q2_rules_data = [["Factor", "A", "B", "C"]]
+        from app.services.questionnaire_constants import QUESTIONNAIRE_DATA as Q_DATA
+        for f_id, f_name in Q_DATA['q2']['factors'].items():
+            f_rules = SCORING_RULES['q2'].get(f_id, {})
+            q2_rules_data.append([f_name, str(f_rules.get('A', 0)), str(f_rules.get('B', 0)), str(f_rules.get('C', 0))])
+            
+        q2_ref_table = Table(q2_rules_data, colWidths=[3*inch, 1*inch, 1*inch, 1*inch])
+        q2_ref_table.setStyle(TableStyle([
+            ('GRID', (0,0), (-1,-1), 0.2, colors.lightgrey),
+            ('FONTSIZE', (0,0), (-1,-1), 7),
+            ('BACKGROUND', (0,0), (-1,0), colors.whitesmoke),
+            ('ALIGN', (1,0), (-1,-1), 'CENTER'),
+        ]))
+        story.append(q2_ref_table)
+        story.append(Spacer(1, 15))
+
+        # Recommendations
+        story.append(Paragraph("ADVISOR RECOMMENDATION", heading_style))
+        story.append(Paragraph(f"<b>Classification:</b> {assessment_data.get('assigned_risk_tier', 'N/A')}", normal_style))
+        story.append(Paragraph(assessment_data.get('tier_recommendation') or "No recommendation provided.", normal_style))
+        story.append(Spacer(1, 12))
+        story.append(Paragraph("Additional Advisor Guidance:", bold_style))
+        story.append(Spacer(1, 120))
+        
+        # Notes & Disclaimer
+        story.append(PageBreak())
+        if assessment_data.get('discussion_notes'):
+            story.append(Paragraph("DISCUSSION NOTES", heading_style))
+            story.append(Paragraph(assessment_data['discussion_notes'].replace('\n', '<br/>'), normal_style))
+
+        if assessment_data.get('disclaimer_text'):
+            story.append(Spacer(1, 20))
+            story.append(Paragraph("DISCLAIMER", bold_style))
+            story.append(Paragraph(assessment_data['disclaimer_text'].replace('\n', '<br/>'), ParagraphStyle('Disc', parent=normal_style, fontSize=7, textColor=colors.grey)))
+
+        # Signatures
+        story.append(Spacer(1, 40))
+        sig_data = [
+            [Paragraph("<b>__________________________</b><br/>Client Signature", normal_style), 
+             Paragraph("<b>__________________________</b><br/>IA Advisor Signature", normal_style)],
+            [Paragraph(f"Date: ________", normal_style),
+             Paragraph(f"Date: ________", normal_style)]
+        ]
+        sig_table = Table(sig_data, colWidths=[3*inch, 3*inch])
+        sig_table.setStyle(TableStyle([('TOPPADDING', (0,0), (-1,-1), 10), ('ALIGN', (0,0), (-1,-1), 'LEFT')]))
+        story.append(sig_table)
+
+        doc.build(story, onFirstPage=ReportService._draw_footer, onLaterPages=ReportService._draw_footer)
+        buffer.seek(0)
+        return buffer
+
+    @staticmethod
+    def generate_risk_profile_docx_bridge(assessment_data: dict, client_data: dict, ia_data: dict, ia_logo_override: str = None) -> BytesIO:
+        """DOCX version for Bridge assessments, matching PDF layout/content."""
+        doc = Document()
+        style = doc.styles['Normal']
+        style.font.name = 'Arial'
+        style.font.size = Pt(10)
+
+        # 3. Header and Footer (Strictly Confidential & Page Numbers)
+        section = doc.sections[0]
+        header = section.header
+        header_p = header.paragraphs[0]
+        header_p.text = "STRICTLY CONFIDENTIAL"
+        header_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        header_p.style.font.bold = True
+        header_p.style.font.size = Pt(8)
+
+        footer = section.footer
+        footer_p = footer.paragraphs[0]
+        footer_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = footer_p.add_run("Page ")
+        ReportService._add_page_number(footer_p.add_run())
+
+        # 3a. Cover Page logic
+        resolved_logo = resolve_logo_path(ia_logo_override or ia_data.get('ia_logo_path'))
+        if resolved_logo:
+            try:
+                doc.add_picture(resolved_logo, width=Inches(2.5))
+                doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+            except: pass
+
+        # Separator for cover titles
+        for _ in range(5): doc.add_paragraph()
+        
+        title = doc.add_heading('RISK PROFILE ASSESSMENT REPORT', 0)
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        subtitle = doc.add_paragraph()
+        subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = subtitle.add_run(f"\n\n\nCLIENT NAME: {client_data.get('client_name')}\n")
+        run.bold = True
+        run.font.size = Pt(14)
+        run = subtitle.add_run(f"CLIENT CODE: {client_data.get('client_code')}\n")
+        run.bold = True
+        run = subtitle.add_run(f"ENTITY: {ia_data.get('name_of_entity') or ia_data.get('name_of_ia')}\n")
+        
+        # Handle timestamp from bridge
+        ts = assessment_data.get('assessment_timestamp')
+        date_str = "N/A"
+        if ts:
+            if isinstance(ts, str):
+                try: 
+                    from dateutil import parser
+                    ts_dt = parser.parse(ts)
+                    date_str = ts_dt.strftime('%B %d, %Y')
+                except: date_str = str(ts)
+            elif hasattr(ts, 'strftime'):
+                date_str = ts.strftime('%B %d, %Y')
+        
+        run = subtitle.add_run(f"DATE: {date_str}")
+        
+        doc.add_page_break()
+
+        # 4. Summary Table
+        doc.add_heading('ASSESSMENT SUMMARY', level=1)
+        table = doc.add_table(rows=5, cols=2)
+        table.style = 'Table Grid'
+        
+        summary_rows = [
+            ("Client Name:", client_data.get('client_name')),
+            ("Client Code:", client_data.get('client_code')),
+            ("Date of Assessment:", date_str),
+            ("Total Score:", str(assessment_data.get('calculated_score', 0))),
+            ("Risk Category:", str(assessment_data.get('assigned_risk_tier', 'N/A')))
+        ]
+        
+        for i, (label, value) in enumerate(summary_rows):
+            table.cell(i, 0).text = label
+            table.cell(i, 1).text = str(value)
+            table.cell(i, 0).paragraphs[0].runs[0].bold = True
+
+        doc.add_paragraph().add_run().add_break()
+
+        # 5. Questionnaire Responses
+        doc.add_heading('QUESTIONNAIRE RESPONSES', level=1)
+        q_scores = assessment_data.get('question_scores') or {}
+        from app.services.questionnaire_constants import QUESTIONNAIRE_DATA
+        
+        for q_id, q_data in QUESTIONNAIRE_DATA.items():
+            s_info = q_scores.get(q_id, {})
+            score_text = f" (Score: {s_info.get('score', 0)}/{s_info.get('max', 0)})"
+            p = doc.add_paragraph()
+            p.add_run(f"{q_id.upper()}. {q_data['title']}{score_text}").bold = True
+            doc.add_paragraph(q_data['question'])
+            
+            if q_id == 'q2':
+                q2_answers = assessment_data.get('q2_importance_factors') or {}
+                q2_scores = s_info.get('details', {})
+                t2 = doc.add_table(rows=1, cols=3)
+                t2.style = 'Table Grid'
+                hdr_cells = t2.rows[0].cells
+                hdr_cells[0].text = 'Factor'
+                hdr_cells[1].text = 'Importance'
+                hdr_cells[2].text = 'Score'
+                
+                for f_code, f_name in q_data['factors'].items():
+                    ans_code = q2_answers.get(f_code, "-")
+                    ans_text = q_data['options'].get(ans_code, ans_code)
+                    f_score = q2_scores.get(f_code, {}).get('score', 0)
+                    row_cells = t2.add_row().cells
+                    row_cells[0].text = f_name
+                    row_cells[1].text = ans_text
+                    row_cells[1].paragraphs[0].runs[0].bold = True
+                    row_cells[2].text = str(f_score)
+            else:
+                field_map = {
+                    'q1': 'q1_interest_choice', 'q3': 'q3_probability_bet', 'q4': 'q4_portfolio_choice',
+                    'q5': 'q5_loss_behavior', 'q6': 'q6_market_reaction', 'q7': 'q7_fund_selection',
+                    'q8': 'q8_experience_level', 'q9': 'q9_time_horizon', 'q10': 'q10_net_worth',
+                    'q11': 'q11_age_range', 'q12': 'q12_income_range', 'q13': 'q13_expense_range',
+                    'q14': 'q14_dependents', 'q15': 'q15_active_loan', 'q16': 'q16_investment_objective'
+                }
+                selected_val = assessment_data.get(field_map.get(q_id, q_id), "N/A")
+
+                for opt_code, opt_text in q_data['options'].items():
+                    is_selected = str(opt_code).lower() == str(selected_val).lower()
+                    prefix = f"[✓] " if is_selected else "[  ] "
+                    option_p = doc.add_paragraph()
+                    option_p.paragraph_format.left_indent = Pt(20)
+                    run = option_p.add_run(f"{prefix}{opt_code}. {opt_text}")
+                    if is_selected:
+                        run.bold = True
+                        run.font.color.rgb = RGBColor(0, 100, 0) # Dark Green
+            
+            doc.add_paragraph() # Spacer
+        
+        # Total Score Summary
+        total_p = doc.add_paragraph()
+        total_run = total_p.add_run(f"TOTAL ASSESSMENT SCORE: {assessment_data.get('calculated_score', 0)} / 100")
+        total_run.bold = True
+        total_run.font.size = Pt(11)
+        doc.add_paragraph()
+
+        # 5a. Scoring Reference Chart
+        doc.add_heading('SCORING REFERENCE', level=1)
+        ref_table = doc.add_table(rows=1, cols=2)
+        ref_table.style = 'Table Grid'
+        hdr_cells = ref_table.rows[0].cells
+        hdr_cells[0].text = 'Question'
+        hdr_cells[1].text = 'Scoring Rule (Option: Points)'
+        hdr_cells[0].paragraphs[0].runs[0].bold = True
+        hdr_cells[1].paragraphs[0].runs[0].bold = True
+
+        from app.services.risk_profile_service import SCORING_RULES
+        for q_id, rules in SCORING_RULES.items():
+            if q_id == 'q2': continue
+            row_cells = ref_table.add_row().cells
+            row_cells[0].text = q_id.upper()
+            row_cells[1].text = ", ".join([f"{opt.upper()}: {score}" for opt, score in rules.items()])
+            row_cells[0].paragraphs[0].runs[0].font.size = Pt(9)
+            row_cells[1].paragraphs[0].runs[0].font.size = Pt(9)
+
+        doc.add_paragraph()
+        p = doc.add_paragraph()
+        p.add_run("Q2 Scoring Factors: (A: Very, B: Somewhat, C: Not Important)").bold = True
+        p.style.font.size = Pt(9)
+        
+        q2_table = doc.add_table(rows=1, cols=4)
+        q2_table.style = 'Table Grid'
+        hdr_cells = q2_table.rows[0].cells
+        hdr_cells[0].text = 'Factor'
+        hdr_cells[1].text = 'A'
+        hdr_cells[2].text = 'B'
+        hdr_cells[3].text = 'C'
+        for cell in hdr_cells: cell.paragraphs[0].runs[0].bold = True
+
+        for f_id, f_name in QUESTIONNAIRE_DATA['q2']['factors'].items():
+            f_rules = SCORING_RULES['q2'].get(f_id, {})
+            row_cells = q2_table.add_row().cells
+            row_cells[0].text = f_name
+            row_cells[1].text = str(f_rules.get('A', 0))
+            row_cells[2].text = str(f_rules.get('B', 0))
+            row_cells[3].text = str(f_rules.get('C', 0))
+            for cell in row_cells: cell.paragraphs[0].runs[0].font.size = Pt(8)
+
+        doc.add_paragraph()
+
+        # 6. Recommendation and Notes
+        doc.add_heading('ADVISOR RECOMMENDATION', level=1)
+        p = doc.add_paragraph()
+        p.add_run("Classification: ").bold = True
+        p.add_run(str(assessment_data.get('assigned_risk_tier', 'N/A')))
+        
+        doc.add_paragraph(assessment_data.get('tier_recommendation') or "No recommendation provided.")
+        
+        # Add free space for manual recommendation
+        doc.add_paragraph().add_run("Additional Advisor Guidance:").bold = True
+        for _ in range(8): doc.add_paragraph() # Significant blank space
+        
+        # DISCUSSION NOTES & DISCLAIMER
+        doc.add_page_break()
+
+        if assessment_data.get('discussion_notes'):
+            doc.add_heading('DISCUSSION NOTES', level=1)
+            p = doc.add_paragraph()
+            p.add_run(assessment_data['discussion_notes'])
+
+        if assessment_data.get('disclaimer_text'):
+            doc.add_paragraph()
+            p = doc.add_paragraph()
+            run = p.add_run("DISCLAIMER: ")
+            run.bold = True
+            p.add_run(assessment_data['disclaimer_text'])
+
+        # 7. Signature Section
+        doc.add_paragraph().add_run().add_break()
+        doc.add_paragraph().add_run().add_break()
+        
+        sig_table = doc.add_table(rows=2, cols=2)
+        sig_table.width = Inches(6)
+        
+        cells = sig_table.rows[0].cells
+        cells[0].text = "__________________________\nClient Signature"
+        cells[1].text = "__________________________\nIA Advisor Signature"
+        
+        cells = sig_table.rows[1].cells
+        cells[0].text = f"Date: ________"
+        cells[1].text = f"Date: ________"
+
+        # 8. Save to Buffer
+        buffer = BytesIO()
+        doc.save(buffer)
         buffer.seek(0)
         return buffer

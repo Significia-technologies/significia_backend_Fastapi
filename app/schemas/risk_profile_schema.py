@@ -4,14 +4,14 @@ from uuid import UUID
 from datetime import datetime
 
 class Q2Factors(BaseModel):
-    a: str = Field(..., description="Short-term appreciation (A/B/C)")
-    b: str = Field(..., description="Long-term appreciation (A/B/C)")
-    c: str = Field(..., description="Takeover potential (A/B/C)")
-    d: str = Field(..., description="6-month price trend (A/B/C)")
-    e: str = Field(..., description="5-year price trend (A/B/C)")
-    f: str = Field(..., description="Peer recommendation (A/B/C)")
-    g: str = Field(..., description="Price drop risk (A/B/C)")
-    h: str = Field(..., description="Dividend potential (A/B/C)")
+    a: Optional[str] = Field("B", description="Short-term appreciation (A/B/C)")
+    b: Optional[str] = Field("B", description="Long-term appreciation (A/B/C)")
+    c: Optional[str] = Field("B", description="Takeover potential (A/B/C)")
+    d: Optional[str] = Field("B", description="6-month price trend (A/B/C)")
+    e: Optional[str] = Field("B", description="5-year price trend (A/B/C)")
+    f: Optional[str] = Field("B", description="Peer recommendation (A/B/C)")
+    g: Optional[str] = Field("B", description="Price drop risk (A/B/C)")
+    h: Optional[str] = Field("B", description="Dividend potential (A/B/C)")
 
 class RiskAssessmentAnswers(BaseModel):
     q1: str
@@ -32,7 +32,7 @@ class RiskAssessmentAnswers(BaseModel):
     q16: str
 
 class RiskAssessmentCreate(BaseModel):
-    client_code: str = Field(..., pattern="^[A-Z]{1,10}[0-9]{1,10}$")
+    client_code: str = Field(..., pattern=r"^[A-Z0-9\-_]{1,50}$")
     answers: RiskAssessmentAnswers
     include_ai: bool = False
     disclaimer_text: Optional[str] = None
