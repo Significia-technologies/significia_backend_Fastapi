@@ -37,10 +37,13 @@ async def save_asset_allocation_bridge(
 
 @router.get("/bridge/allocations", response_model=list)
 async def list_allocations_bridge(
+    client_id: Optional[str] = None,
     bridge: BridgeClient = Depends(get_bridge_client),
 ):
-    """List all asset allocations via the Bridge."""
-    return await bridge.get("/asset-allocations")
+    """List all asset allocations via the Bridge, optionally filtered by client_id."""
+    params = {"client_id": client_id} if client_id else None
+    return await bridge.get("/asset-allocations", params=params)
+
 
 
 @router.get("/bridge/allocation/{allocation_id}", response_model=dict)
@@ -146,7 +149,8 @@ async def download_allocation_pdf(
             except:
                 allocation_data["created_at"] = datetime.now()
 
-        ia = MockObject(name_of_ia=ia_name, ia_registration_number=ia_reg_no)
+        ia_email = ia_data.get("registered_email_id") or ""
+        ia = MockObject(name_of_ia=ia_name, ia_registration_number=ia_reg_no, registered_email_id=ia_email)
         allocation = MockObject(**allocation_data)
         
         # 3. Generate PDF
@@ -197,7 +201,8 @@ async def download_allocation_docx(
             except:
                 allocation_data["created_at"] = datetime.now()
 
-        ia = MockObject(name_of_ia=ia_name, ia_registration_number=ia_reg_no)
+        ia_email = ia_data.get("registered_email_id") or ""
+        ia = MockObject(name_of_ia=ia_name, ia_registration_number=ia_reg_no, registered_email_id=ia_email)
         allocation = MockObject(**allocation_data)
         
         # 3. Generate DOCX
