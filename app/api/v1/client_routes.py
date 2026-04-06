@@ -91,12 +91,7 @@ async def get_client_by_code_bridge(
     bridge: BridgeClient = Depends(get_bridge_client),
 ):
     """Get client by client code via the Bridge."""
-    result = await bridge.get("/clients", params={"search": code})
-    clients = result.get("clients", [])
-    for c in clients:
-        if c.get("client_code", "").upper() == code.upper():
-            return c
-    raise HTTPException(status_code=404, detail="Client not found")
+    return await bridge.get(f"/clients/code/{code}")
 
 
 @router.put("/clients/{client_id}", response_model=dict)
