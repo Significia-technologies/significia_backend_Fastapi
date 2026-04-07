@@ -27,15 +27,13 @@ class SystemCommentaryGenerator:
             <p><strong>Analysis Date:</strong> {datetime.now().strftime("%d %B, %Y")}</p>
 
             <h5><strong>FINANCIAL PROFILE OVERVIEW</strong></h5>
-            <p>This financial analysis examines the current financial position with a health score of {financial_score}/100. The assessment covers insurance coverage, retirement planning, medical expense projection, and child goal funding. Income replacement HLV is calculated at Rs {hlv_income:,}, while expense replacement HLV is Rs {hlv_expense:,}. Retirement corpus requirement at retirement age is Rs {retirement_corpus:,}. Medical corpus projections indicate Rs {medical_corpus_retirement:,} needed at retirement and Rs {medical_corpus_life_expectancy:,} at life expectancy. Current net worth stands at Rs {net_worth:,} with a savings rate of {savings_rate}% of income.</p>
+            <p>The following summary presents computed outputs and derived matrics based on input data and assumptions. The assessment covers insurance coverage, retirement planning, medical expense projection, and child goal funding. Income replacement HLV is calculated at Rs {hlv_income:,}, while expense replacement HLV is Rs {hlv_expense:,}. Retirement corpus requirement at retirement age is Rs {retirement_corpus:,}. Medical corpus projections indicate Rs {medical_corpus_retirement:,} needed at retirement and Rs {medical_corpus_life_expectancy:,} at life expectancy. Current net worth stands at Rs {net_worth:,} with a savings rate of {savings_rate}% of income.</p>
 
             <h5><strong>INFORMATION PRESENTATION</strong></h5>
             <p>The analysis presents two HLV calculation methodologies: income replacement covering {years_to_retirement} years until retirement, and expense replacement based on spouse life expectancy considerations. Medical inflation at 10% annually is factored into healthcare cost projections. Retirement planning assumes {savings_rate}% current savings rate with pre-retirement return assumptions. Child education and marriage goals are evaluated with current cost estimates and time horizons. Monthly investment requirements are calculated as Rs {monthly_investments.get('total_income_method', 0):,} (Income Method) or Rs {monthly_investments.get('total_expense_method', 0):,} (Expense Method) across all financial objectives.</p>
 
             <h5><strong>KEY INFORMATION HIGHLIGHTS</strong></h5>
             <p>Insurance analysis reveals current coverage levels relative to calculated HLV values. Medical coverage assessment includes current cover amount and bonus accumulation features. Retirement readiness is measured against target corpus requirements. Child education and marriage goals are quantified with inflation-adjusted future values. Emergency fund requirements are calculated based on monthly expense levels. Existing asset allocation includes designated percentages for specific child goals.</p>
-
-            <p><em>This 300-word executive brief summarizes the comprehensive financial analysis results based on client-provided information.</em></p>
         </div>
         """
 
@@ -47,7 +45,6 @@ class SystemCommentaryGenerator:
             f"<strong>Insight 1:</strong> The gross HLV of Rs {hlv_income:,} represents 10.2 years of income replacement.",
             f"<strong>Insight 2:</strong> Existing financial assets of Rs {existing_assets:,} provide a 23% buffer against total protection needs, resulting in net insurance requirement of Rs {net_hlv:,}.",
             f"<strong>Insight 3:</strong> Current liabilities of Rs {current_liabilities:,} are factored into the net HLV calculation.",
-            f"<strong>Insight 4:</strong> The current life cover of Rs {current_cover:,} addresses 42% of the identified gap based on income replacement method.",
         ]
 
     @staticmethod
@@ -68,9 +65,8 @@ class SystemCommentaryGenerator:
         """Generate 4 comments for retirement analysis."""
         return [
             f"<strong>Insight 1:</strong> Retirement corpus requirement of Rs {corpus_retirement:,} assumes lifestyle maintenance at 80% of pre-retirement expenses.",
-            f"<strong>Insight 2:</strong> Monthly investment requirement of Rs {monthly_investment:,} represents 22% of current income.",
+            f"<strong>Insight 2:</strong> Monthly contribution requirement of Rs {monthly_investment:,} ",
             f"<strong>Insight 3:</strong> With {years_remaining} years remaining until retirement, the compounding period is factored into calculations.",
-            f"<strong>Insight 4:</strong> Retirement readiness score of {readiness_score}% indicates current progress toward retirement corpus.",
         ]
 
     @staticmethod
@@ -129,7 +125,7 @@ class SystemCommentaryGenerator:
             <p>This analysis presents a comprehensive evaluation of financial objectives. Current health score of {financial_score}/100 reflects the assessed position across multiple financial dimensions. Insurance protection evaluation indicates gaps of Rs {min(hlv_gap_income, hlv_gap_expense):,} based on selected methodology. Medical inflation at 10% annually versus general inflation at 6% creates differential in healthcare purchasing power projections. Retirement corpus assessment shows gap of Rs {retirement_gap:,} requiring systematic monthly investments over {max(0, retirement_gap // safe_years):,} years. Child education (Rs {child_education_gap:,}) and marriage (Rs {child_marriage_gap:,}) gaps are presented with corresponding time horizons. Current Rs {net_worth:,} net worth and {savings_rate}% savings rate form the foundation for financial planning.</p>
 
             <h5><strong>KEY FINDINGS</strong></h5>
-            <p>Insurance protection gap of Rs {min(hlv_gap_income, hlv_gap_expense):,} represents a significant financial consideration. Medical inflation at 10% annually creates healthcare purchasing power considerations. Retirement corpus gap of Rs {retirement_gap:,} is presented with {years_to_retirement} years available for accumulation. Child education (Rs {child_education_gap:,}) and marriage (Rs {child_marriage_gap:,}) goals are quantified with current assumptions. Emergency fund shortfall of Rs {emergency_fund_gap:,} is calculated based on six-month expense coverage standard.</p>
+            <p>Insurance protection gap is Rs {min(hlv_gap_income, hlv_gap_expense):,} . Medical inflation at 10% annually creates healthcare purchasing power considerations. Retirement corpus gap of Rs {retirement_gap:,} is presented with {years_to_retirement} years available for accumulation. Child education (Rs {child_education_gap:,}) and marriage (Rs {child_marriage_gap:,}) goals are quantified with current assumptions. Emergency fund shortfall of Rs {emergency_fund_gap:,} is calculated based on six-month expense coverage standard.</p>
 
             <h5><strong>FINANCIAL POSITION OVERVIEW</strong></h5>
             <p>This analysis provides a structured overview of the current financial position. Insurance protection gaps are quantified using standard actuarial methods. Medical expense projections incorporate healthcare-specific inflation assumptions. Retirement planning calculations utilize pre and post-retirement return rates. Child goal funding requirements are adjusted for inflation over specified time horizons. Emergency fund adequacy is measured against standard financial planning benchmarks.</p>
