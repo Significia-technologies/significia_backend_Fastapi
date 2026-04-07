@@ -4,10 +4,47 @@ from datetime import datetime, date
 from fpdf import FPDF
 from typing import List, Optional
 
+class BaseReportPDF(FPDF):
+    def __init__(self, *args, **kwargs):
+        self.advisor_name = kwargs.pop('advisor_name', "")
+        self.entity_name = kwargs.pop('entity_name', "")
+        self.ia_reg_no = kwargs.pop('ia_reg_no', "")
+        super().__init__(*args, **kwargs)
+        self.set_auto_page_break(auto=True, margin=15)
+        self.alias_nb_pages()
+
+    def footer(self):
+        # Position at 1.5 cm from bottom
+        self.set_y(-15)
+        self.set_font('helvetica', 'I', 7)
+        self.set_text_color(128, 128, 128)
+        
+        # Footer text: Prepared by, Entity, Reg No
+        footer_parts = []
+        if self.advisor_name: footer_parts.append(f"Prepared by: {self.advisor_name}")
+        if self.entity_name: footer_parts.append(f"Entity: {self.entity_name}")
+        if self.ia_reg_no: footer_parts.append(f"Reg No: {self.ia_reg_no}")
+        footer_text = " , ".join(footer_parts)
+        
+        # Determine width for footer text based on orientation
+        # Use getattr for compatibility between fpdf and fpdf2
+        orientation = getattr(self, 'cur_orientation', getattr(self, 'orientation', 'P'))
+        w = 230 if orientation == 'L' else 150
+        
+        # Left side
+        self.cell(w, 10, footer_text, 0, 0, 'L')
+        
+        # Page number on the right
+        self.cell(0, 10, f'Page {self.page_no()} / {{nb}}', 0, 0, 'R')
+
 class IAPDFGenerator:
     @staticmethod
     def generate_ia_report(ia_data: dict, employees: List[dict], logo_path: Optional[str] = None) -> bytes:
-        pdf = FPDF()
+        pdf = BaseReportPDF(
+            advisor_name=ia_data.get('name_of_ia', ''),
+            entity_name=ia_data.get('name_of_entity', ''),
+            ia_reg_no=ia_data.get('ia_registration_number', '')
+        )
         pdf.add_page()
         
         # Set font
@@ -110,9 +147,12 @@ class IAPDFGenerator:
 
 class ClientPDFGenerator:
     @staticmethod
-    def generate_client_report(client_data: dict) -> bytes:
-        pdf = FPDF()
-        pdf.set_auto_page_break(auto=True, margin=5)
+    def generate_client_report(client_data: dict, ia_data: Optional[dict] = None) -> bytes:
+        pdf = BaseReportPDF(
+            advisor_name=ia_data.get('name_of_ia') if ia_data else client_data.get('advisor_name'),
+            entity_name=ia_data.get('name_of_entity') if ia_data else None,
+            ia_reg_no=ia_data.get('ia_registration_number') if ia_data else client_data.get('advisor_registration_number')
+        )
         pdf.add_page()
         
         accent_grey = (248, 249, 250)
@@ -126,6 +166,14 @@ class ClientPDFGenerator:
         pdf.set_text_color(*text_black)
         pdf.cell(0, 10, "CLIENT REGISTRATION REPORT", ln=True, align="L")
         
+        if ia_data:
+            entity_name = ia_data.get('name_of_entity') or ia_data.get('name_of_ia', 'N/A')
+            ia_reg = ia_data.get('ia_registration_number', 'N/A')
+            pdf.set_font("helvetica", "B", 10)
+            pdf.set_text_color(*text_muted)
+            pdf.cell(0, 5, f"ENTITY: {entity_name.upper()}", ln=True, align="L")
+            pdf.cell(0, 5, f"REGISTRATION NO: {ia_reg}", ln=True, align="L")
+
         pdf.set_font("helvetica", "B", 10)
         pdf.set_text_color(*primary_blue)
         pdf.cell(0, 5, f"REFERENCE: {client_data.get('client_code')}", ln=True, align="L")
@@ -135,7 +183,8 @@ class ClientPDFGenerator:
         current_date = datetime.now().strftime('%d-%m-%Y %H:%M:%S')
         pdf.set_xy(10, 10)
         pdf.cell(0, 10, f"DATE: {current_date}", ln=True, align="R")
-        pdf.set_y(25)
+        # Shift Y down if header is present
+        pdf.set_y(40 if ia_data else 25)
 
         def render_compact_section(title, fields, row_h=7.5, is_last=False):
             temp_fields = [f for f in fields if f[1] is not None]
@@ -248,7 +297,7 @@ class ClientPDFGenerator:
                 ("Objectives", client_data.get("investment_objectives"), True),
             ]),
             ("Declaration", [
-                ("Reg. Date", client_data.get("declaration_date")),
+                ("Agreement Date", client_data.get("agreement_date")),
                 ("IA Master", client_data.get("advisor_name")),
                 ("Statement", "I hereby confirm that all details provided are accurate to the best of my knowledge and comply with SEBI Investment Advisor guidelines. The client's identity has been verified via KYC documents.", True),
             ])
@@ -258,22 +307,16 @@ class ClientPDFGenerator:
             is_last = (i == len(sections) - 1)
             render_compact_section(title, fields, is_last=is_last)
 
-        pdf.set_y(-12)
-        pdf.set_x(margin)
-        pdf.set_draw_color(*primary_blue)
-        pdf.cell(0, 0.2, "", ln=True, fill=True)
-        pdf.set_font("helvetica", "B", 6)
-        pdf.set_text_color(*text_muted)
-        pdf.cell(0, 6, "OFFICIAL CLIENT RECORD - SIGNIFICIA SECURE PLATFORM", ln=False, align="L")
-        pdf.set_font("helvetica", "I", 6)
-        pdf.cell(0, 6, "Page 1 / 1", ln=False, align="R")
-
         return bytes(pdf.output())
 
     @staticmethod
-    def generate_client_master_report(clients: List[dict]) -> bytes:
-        pdf = FPDF(orientation="L") 
-        pdf.set_auto_page_break(auto=True, margin=10)
+    def generate_client_master_report(clients: List[dict], ia_data: Optional[dict] = None) -> bytes:
+        pdf = BaseReportPDF(
+            orientation="L",
+            advisor_name=ia_data.get('name_of_ia') if ia_data else None,
+            entity_name=ia_data.get('name_of_entity') if ia_data else None,
+            ia_reg_no=ia_data.get('ia_registration_number') if ia_data else None
+        )
         pdf.add_page()
         
         accent_grey = (248, 249, 250)
@@ -286,18 +329,30 @@ class ClientPDFGenerator:
         pdf.set_text_color(*text_black)
         current_date_str = datetime.now().strftime('%d-%m-%Y')
         pdf.cell(0, 10, f"ACTIVE CLIENT CODE MASTER UPDATE STATUS AS ON {current_date_str}", ln=True, align="C")
-        pdf.ln(10)
+        
+        if ia_data:
+            entity_name = ia_data.get('name_of_entity') or ia_data.get('name_of_ia', 'N/A')
+            ia_reg = ia_data.get('ia_registration_number', 'N/A')
+            pdf.set_font("helvetica", "B", 11)
+            pdf.set_text_color(*text_muted)
+            pdf.cell(0, 6, f"ENTITY: {entity_name.upper()}", ln=True, align="C")
+            pdf.set_font("helvetica", "B", 10)
+            pdf.cell(0, 6, f"IA REGISTRATION NO: {ia_reg}", ln=True, align="C")
+            pdf.ln(2)
+
+        pdf.ln(5)
         
         headers = [
-            ("Client Code", 25),
-            ("Client Name", 45),
-            ("PAN Number", 30),
-            ("DOB", 25),
-            ("Reg No", 35),
-            ("Advisor Name", 40),
+            ("SL No", 12),
+            ("Client Code", 22),
+            ("Client Name", 38),
+            ("PAN Number", 25),
+            ("DOB", 20),
+            ("Reg No", 30),
+            ("Advisor Name", 33),
             ("Relation", 15),
-            ("Assigned Employee", 40),
-            ("Created At", 25)
+            ("Assigned Employee", 35),
+            ("Created At", 30)
         ]
         
         pdf.set_font("helvetica", "B", 9)
@@ -313,7 +368,7 @@ class ClientPDFGenerator:
         pdf.set_text_color(*text_black)
         
         alternate = False
-        for client in clients:
+        for idx, client in enumerate(clients, 1):
             if alternate:
                 pdf.set_fill_color(*accent_grey)
             else:
@@ -321,19 +376,28 @@ class ClientPDFGenerator:
             
             def fmt_date(d):
                 if isinstance(d, (datetime, date)):
-                    return d.strftime('%d-%m-%Y')
+                    return d.strftime('%d-%m-%Y %H:%M')
+                if isinstance(d, str) and 'T' in d:
+                    try:
+                        # Attempt to parse ISO format and extracted date + HH:MM
+                        dt_obj = datetime.fromisoformat(d.replace('Z', '+00:00'))
+                        return dt_obj.strftime('%d-%m-%Y %H:%M')
+                    except:
+                        # Fallback parsing YYYY-MM-DD
+                        return d[:16].replace('T', ' ') # Simple fallback: YYYY-MM-DD HH:MM
                 return str(d) if d else ""
 
             row_data = [
-                (client.get("client_code", ""), 25),
-                (client.get("client_name", "")[:25], 45),
-                (client.get("pan_number", "").upper(), 30),
-                (fmt_date(client.get("date_of_birth")), 25),
-                (client.get("advisor_registration_number", ""), 35),
-                (client.get("advisor_name", "")[:20], 40),
+                (idx, 12),
+                (client.get("client_code", ""), 22),
+                (client.get("client_name", "")[:20], 38),
+                (client.get("pan_number", "").upper(), 25),
+                (fmt_date(client.get("date_of_birth")), 20),
+                (client.get("advisor_registration_number", ""), 30),
+                (client.get("advisor_name", "")[:20], 33),
                 (client.get("relation", "self"), 15),
-                (client.get("employee_name", "Unassigned")[:20], 40),
-                (fmt_date(client.get("created_at")), 25)
+                (client.get("employee_name", "Unassigned")[:20], 35),
+                (fmt_date(client.get("created_at")), 30)
             ]
             
             for val, width in row_data:

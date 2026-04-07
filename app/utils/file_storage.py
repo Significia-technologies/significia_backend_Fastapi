@@ -6,8 +6,6 @@ from fastapi import UploadFile
 from sqlalchemy.orm import Session
 from werkzeug.utils import secure_filename
 
-from app.services.storage_service import StorageService
-
 async def save_upload_file(
     upload_file: UploadFile, 
     folder_path: str, 
@@ -27,16 +25,7 @@ async def save_upload_file(
     base_name = f"{prefix}_{timestamp}_{uuid.uuid4().hex[:8]}"
     filename = secure_filename(f"{base_name}{ext}")
 
-    # 2. Check for Cloud Storage
-    if db:
-        storage_driver = StorageService.get_tenant_storage(db)
-        if storage_driver:
-            # Cloud Path: folder_path/filename
-            cloud_key = f"{folder_path}/{filename}"
-            await storage_driver.upload_file(upload_file, cloud_key)
-            return cloud_key
-
-    # 3. Fallback to Local Storage
+    # 2. Local Storage
     UPLOAD_DIR = "uploads"
     target_dir = os.path.join(UPLOAD_DIR, folder_path)
     os.makedirs(target_dir, exist_ok=True)

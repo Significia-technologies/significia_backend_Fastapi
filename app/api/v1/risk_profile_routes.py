@@ -1,9 +1,20 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+"""
+Risk Profile Routes — Bridge Architecture
+──────────────────────────────────────────
+Risk assessments are now managed through the Bridge.
+The scoring calculation logic remains on the backend (it's pure math, no DB needed).
+"""
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import uuid
+import asyncio
 
-from app.database.remote_session import get_remote_session
+from app.api.deps import get_bridge_client, get_db
+from app.services.bridge_client import BridgeClient
+from app.services.report_service import ReportService
+
 from app.schemas.risk_profile_schema import (
     RiskAssessmentCreate, 
     RiskAssessmentCalculateRequest, 
@@ -20,339 +31,413 @@ from app.schemas.custom_risk_profile_schema import (
 )
 from app.services.risk_profile_service import RiskProfileService
 from app.services.custom_risk_profile_service import CustomRiskProfileService
-from app.models.risk_profile import RiskAssessment
-from app.models.client import ClientProfile
-from app.models.ia_master import IAMaster
-from app.utils.file_utils import resolve_logo_to_local_path
-from sqlalchemy import select
 
 router = APIRouter()
 
-@router.post("/{connector_id}/calculate", response_model=RiskAssessmentCalculateResponse)
-def calculate_risk_profile(
-    connector_id: uuid.UUID,
+
+# ════════════════════════════════════════════════════════════════════
+#  BRIDGE-POWERED ROUTES (no connector_id)
+# ════════════════════════════════════════════════════════════════════
+
+@router.post("/bridge/calculate", response_model=RiskAssessmentCalculateResponse)
+def calculate_risk_profile_bridge(
     payload: RiskAssessmentCalculateRequest,
-    remote_db: Session = Depends(get_remote_session)
 ):
     """
-    Dry-run calculation of risk score and tier based on provided answers.
+    Dry-run calculation. This is pure math — no Bridge call needed.
     """
-    try:
-        total_score, question_scores = RiskProfileService.calculate_scores(payload.answers)
-        risk_tier, recommendation = RiskProfileService.determine_risk_tier(total_score)
-        
-        return {
-            "success": True,
-            "total_score": total_score,
-            "question_scores": question_scores,
-            "risk_tier": risk_tier,
-            "recommendation": recommendation
-        }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    total_score, question_scores = RiskProfileService.calculate_scores(payload.answers)
+    risk_tier, recommendation = RiskProfileService.determine_risk_tier(total_score)
+    return {
+        "success": True,
+        "total_score": total_score,
+        "question_scores": question_scores,
+        "risk_tier": risk_tier,
+        "recommendation": recommendation
+    }
 
-@router.post("/{connector_id}/save", response_model=SaveAssessmentResponse)
-def save_risk_assessment(
-    connector_id: uuid.UUID,
-    request: Request,
+
+@router.post("/bridge/save", response_model=dict)
+async def save_risk_assessment_bridge(
     payload: RiskAssessmentCreate,
-    remote_db: Session = Depends(get_remote_session)
+    bridge: BridgeClient = Depends(get_bridge_client),
 ):
-    """
-    Persist a risk assessment record and update the client's risk master profile.
-    """
-    try:
-        user_ip = request.client.host
-        user_agent = request.headers.get("User-Agent", "Unknown")
-        
-        assessment_id, risk_id, total_score, risk_tier, client_code, ia_reg = RiskProfileService.save_assessment(
-            remote_db, payload, user_ip, user_agent
-        )
-        
-        return {
-            "success": True,
-            "assessment_id": assessment_id,
-            "risk_id": risk_id,
-            "total_score": total_score,
-            "risk_tier": risk_tier,
-            "client_code": client_code,
-            "ia_registration_number": ia_reg
-        }
-    except ValueError as ve:
-        raise HTTPException(status_code=404, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save assessment: {str(e)}")
-
-@router.get("/{connector_id}/client/{client_code}/latest", response_model=RiskAssessmentResponse)
-def get_latest_risk_assessment(
-    connector_id: uuid.UUID,
-    client_code: str,
-    remote_db: Session = Depends(get_remote_session)
-):
-    """
-    Fetch the most recent risk assessment for a specific client code.
-    """
-    # Find client first
-    client = remote_db.execute(
-        select(ClientProfile).where(ClientProfile.client_code == client_code)
-    ).scalar_one_or_none()
-    
+    """Save a risk assessment via the Bridge."""
+    # 1. Resolve client_code to client_id from Bridge
+    client = await bridge.get(f"/clients/code/{payload.client_code}")
     if not client:
-        raise HTTPException(status_code=404, detail="Client not found")
-
-    # Get latest assessment
-    assessment = remote_db.execute(
-        select(RiskAssessment)
-        .where(RiskAssessment.client_id == client.id)
-        .order_by(RiskAssessment.created_at.desc())
-    ).first()
-    
-    if not assessment:
-        raise HTTPException(status_code=404, detail="No risk assessment found for this client")
+        raise HTTPException(status_code=404, detail="Client not found in Bridge")
         
-    return assessment[0]
+    client_id = client.get("id")
+    if not client_id:
+        raise HTTPException(status_code=500, detail="Bridge client record is missing a valid ID")
 
-@router.get("/{connector_id}/assessment/{assessment_id}/pdf")
-async def download_risk_profile_pdf(
-    connector_id: uuid.UUID,
-    assessment_id: uuid.UUID,
-    remote_db: Session = Depends(get_remote_session)
+    # 2. Calculate score on the backend (it's business logic, not data)
+    total_score, question_scores = RiskProfileService.calculate_scores(payload.answers)
+    risk_tier, recommendation = RiskProfileService.determine_risk_tier(total_score)
+
+    data = {
+        "client_id": client_id,
+        "q1_interest_choice": payload.answers.q1,
+        "q2_importance_factors": payload.answers.q2.model_dump(),
+        "q3_probability_bet": payload.answers.q3,
+        "q4_portfolio_choice": payload.answers.q4,
+        "q5_loss_behavior": payload.answers.q5,
+        "q6_market_reaction": payload.answers.q6,
+        "q7_fund_selection": payload.answers.q7,
+        "q8_experience_level": payload.answers.q8,
+        "q9_time_horizon": payload.answers.q9,
+        "q10_net_worth": payload.answers.q10,
+        "q11_age_range": payload.answers.q11,
+        "q12_income_range": payload.answers.q12,
+        "q13_expense_range": payload.answers.q13,
+        "q14_dependents": payload.answers.q14,
+        "q15_active_loan": payload.answers.q15,
+        "q16_investment_objective": payload.answers.q16,
+        "calculated_score": total_score,
+        "question_scores": question_scores,
+        "assigned_risk_tier": risk_tier,
+        "tier_recommendation": recommendation,
+        "disclaimer_text": payload.disclaimer_text,
+        "discussion_notes": payload.discussion_notes,
+        "form_name": payload.form_name,
+    }
+    return await bridge.post("/risk-assessments", data)
+
+
+@router.get("/bridge/assessments")
+@router.get("/bridge/assessments/{client_id}", response_model=list)
+async def get_risk_assessments_bridge(
+    client_id: Optional[str] = None,
+    bridge: BridgeClient = Depends(get_bridge_client),
 ):
-    """
-    Generate and download a PDF report for a specific risk assessment.
-    """
+    """Get risk assessments for a client via the Bridge."""
+    path = f"/risk-assessments/{client_id}" if client_id else "/risk-assessments"
+    return await bridge.get(path)
+
+
+@router.get("/bridge/questionnaires", response_model=list)
+async def list_questionnaires_bridge(
+    bridge: BridgeClient = Depends(get_bridge_client),
+):
+    """List all risk questionnaires via the Bridge."""
+    return await bridge.get("/risk-questionnaires")
+
+
+@router.post("/bridge/questionnaires", response_model=dict)
+async def create_questionnaire_bridge(
+    payload: RiskQuestionnaireCreate,
+    bridge: BridgeClient = Depends(get_bridge_client),
+):
+    """Create a risk questionnaire via the Bridge."""
+    return await bridge.post("/risk-questionnaires", payload.model_dump())
+
+
+@router.get("/bridge/questionnaires/{q_id}", response_model=dict)
+async def get_questionnaire_bridge(
+    q_id: str,
+    bridge: BridgeClient = Depends(get_bridge_client),
+):
+    """Get a risk questionnaire by ID via the Bridge."""
+    return await bridge.get(f"/risk-questionnaires/{q_id}")
+
+
+@router.put("/bridge/questionnaires/{q_id}", response_model=dict)
+async def update_questionnaire_bridge(
+    q_id: str,
+    payload: RiskQuestionnaireUpdate,
+    bridge: BridgeClient = Depends(get_bridge_client),
+):
+    """Update a risk questionnaire via the Bridge."""
+    return await bridge.patch(f"/risk-questionnaires/{q_id}", payload.model_dump(exclude_unset=True))
+
+
+@router.post("/bridge/custom-save", response_model=dict)
+async def save_custom_risk_assessment_bridge(
+    payload: CustomRiskAssessmentCreate,
+    bridge: BridgeClient = Depends(get_bridge_client),
+):
+    """Save a custom risk assessment via the Bridge."""
+    # 1. Resolve Client
+    client = await bridge.get(f"/clients/code/{payload.client_code}")
+    client_id = client.get("id")
+    if not client_id:
+        raise HTTPException(status_code=404, detail=f"Client with code {payload.client_code} not found in Bridge")
+
+    # 2. Fetch Questionnaire for scoring rules
+    questionnaire = await bridge.get(f"/risk-questionnaires/{payload.questionnaire_id}")
+    if not questionnaire:
+        raise HTTPException(status_code=404, detail="Questionnaire not found in Bridge")
+
+    # 3. Calculate scores (Business Logic)
+    from app.services.risk_profile_service import RiskProfileService
+    total_score, category_name = RiskProfileService.calculate_custom_scores(payload.responses, questionnaire)
+
+    # 4. Prepare Bridge payload
+    data = {
+        "client_id": client_id,
+        "questionnaire_id": str(payload.questionnaire_id),
+        "portfolio_name": questionnaire.get("portfolio_name"),
+        "category_name": category_name,
+        "total_score": total_score,
+        "responses": payload.responses,
+        "discussion_notes": payload.discussion_notes
+    }
+
+    return await bridge.post("/custom-risk-assessments", data)
+
+
+@router.get("/bridge/custom-assessments")
+@router.get("/bridge/custom-assessments/{client_id}", response_model=list)
+async def get_custom_assessments_bridge(
+    client_id: Optional[str] = None,
+    bridge: BridgeClient = Depends(get_bridge_client),
+):
+    """Get custom risk assessments for a client via the Bridge."""
+    path = f"/custom-risk-assessments/{client_id}" if client_id else "/custom-risk-assessments"
+    return await bridge.get(path)
+
+
+# ════════════════════════════════════════════════════════════════════
+#  BRIDGE-POWERED PDF/DOCX REPORTS
+# ════════════════════════════════════════════════════════════════════
+
+@router.get("/bridge/questionnaires/{q_id}/pdf")
+async def download_blank_risk_form_bridge(
+    q_id: str,
+    bridge: BridgeClient = Depends(get_bridge_client),
+    db: Session = Depends(get_db),
+):
+    """Download a blank risk profile form via the Bridge."""
     try:
-        from app.services.report_service import ReportService
-        from fastapi.responses import StreamingResponse
+        # 1. Fetch IA Master and Questionnaire info from Bridge
+        ia_data = await bridge.get("/ia-master")
+        q_data = await bridge.get(f"/risk-questionnaires/{q_id}")
         
-        # Resolve IA logo path if available
-        ia_logo_path = None
-        ia_master = remote_db.execute(select(IAMaster)).first()
-        if ia_master:
-            ia_master = ia_master[0]
-            ia_logo_path = await resolve_logo_to_local_path(ia_master.ia_logo_path, remote_db)
-        
-        pdf_buffer = ReportService.generate_risk_profile_pdf(remote_db, assessment_id, ia_logo_path)
-        
-        return StreamingResponse(
-            pdf_buffer,
-            media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename=Risk_Assessment_{assessment_id}.pdf"}
+        # 2. Resolve Logo from Bridge storage
+        logo_path = None
+        ia_logo_key = ia_data.get("ia_logo_path")
+        if ia_logo_key:
+            try:
+                from app.utils.file_utils import resolve_logo_to_local_path
+                url_resp = await bridge.get("/storage/url", params={"key": ia_logo_key})
+                signed_url = url_resp.get("url")
+                if signed_url:
+                    logo_path = await resolve_logo_to_local_path(signed_url, db)
+            except Exception as e:
+                import logging
+                logging.getLogger("significia.risk").warning(f"Failed to resolve IA logo for risk form: {e}")
+
+        # 3. Generate PDF
+        pdf_buffer = ReportService.generate_blank_risk_form_pdf(
+            db=db,
+            questionnaire_id=q_id,
+            ia_logo_override=logo_path,
+            ia_data=ia_data,
+            questionnaire_data=q_data
         )
-    except ValueError as ve:
-        raise HTTPException(status_code=404, detail=str(ve))
+
+        return Response(
+            content=pdf_buffer.getvalue(),
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename=Risk_Assessment_Form_{q_id}.pdf"
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate blank form: {str(e)}")
+
+
+@router.get("/bridge/assessment/{assessment_id}/pdf")
+async def download_risk_assessment_pdf_bridge(
+    assessment_id: str,
+    bridge: BridgeClient = Depends(get_bridge_client),
+    db: Session = Depends(get_db),
+):
+    """Download a completed risk assessment as PDF via the Bridge."""
+    try:
+        # 1. Fetch assessment data from Bridge
+        assessment = await bridge.get(f"/risk-assessments/id/{assessment_id}")
+        if not assessment:
+            raise HTTPException(status_code=404, detail="Assessment not found")
+        
+        # 2. Fetch Client and IA data in parallel
+        client_id = assessment.get("client_id")
+        client_task = bridge.get(f"/clients/{client_id}")
+        ia_task = bridge.get("/ia-master")
+        
+        client_data, ia_data = await asyncio.gather(client_task, ia_task)
+
+        # 3. Resolve Logo
+        logo_path = None
+        ia_logo_key = ia_data.get("ia_logo_path")
+        if ia_logo_key:
+            try:
+                from app.utils.file_utils import resolve_logo_to_local_path
+                url_resp = await bridge.get("/storage/url", params={"key": ia_logo_key})
+                logo_path = await resolve_logo_to_local_path(url_resp.get("url"), db)
+            except: pass
+
+        # 4. Generate PDF
+        pdf_buffer = ReportService.generate_risk_profile_pdf_bridge(
+            assessment_data=assessment,
+            client_data=client_data,
+            ia_data=ia_data,
+            ia_logo_override=logo_path
+        )
+
+        return Response(
+            content=pdf_buffer.getvalue(),
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename=Risk_Assessment_{client_data.get('client_name', 'Client')}.pdf"
+            }
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate PDF: {str(e)}")
 
-@router.get("/{connector_id}/assessment/{assessment_id}/docx")
-async def download_risk_profile_docx(
-    connector_id: uuid.UUID,
-    assessment_id: uuid.UUID,
-    remote_db: Session = Depends(get_remote_session)
+
+@router.get("/bridge/assessment/{assessment_id}/docx")
+async def download_risk_assessment_docx_bridge(
+    assessment_id: str,
+    bridge: BridgeClient = Depends(get_bridge_client),
+    db: Session = Depends(get_db),
 ):
-    """
-    Generate and download a DOCX report for a specific risk assessment.
-    """
+    """Download a completed risk assessment as DOCX via the Bridge."""
     try:
-        from app.services.report_service import ReportService
-        from fastapi.responses import StreamingResponse
-        
-        # Resolve IA logo path if available
-        ia_logo_path = None
-        ia_master = remote_db.execute(select(IAMaster)).first()
-        if ia_master:
-            ia_master = ia_master[0]
-            ia_logo_path = await resolve_logo_to_local_path(ia_master.ia_logo_path, remote_db)
-            
-        docx_buffer = ReportService.generate_risk_profile_docx(remote_db, assessment_id, ia_logo_path)
-        
-        return StreamingResponse(
-            docx_buffer,
-            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            headers={"Content-Disposition": f"attachment; filename=Risk_Assessment_{assessment_id}.docx"}
+        assessment = await bridge.get(f"/risk-assessments/id/{assessment_id}")
+        client_data = await bridge.get(f"/clients/{assessment.get('client_id')}")
+        ia_data = await bridge.get("/ia-master")
+
+        # Resolve Logo
+        logo_path = None
+        ia_logo_key = ia_data.get("ia_logo_path")
+        if ia_logo_key:
+            try:
+                from app.utils.file_utils import resolve_logo_to_local_path
+                url_resp = await bridge.get("/storage/url", params={"key": ia_logo_key})
+                logo_path = await resolve_logo_to_local_path(url_resp.get("url"), db)
+            except: pass
+
+        docx_buffer = ReportService.generate_risk_profile_docx_bridge(
+            assessment_data=assessment,
+            client_data=client_data,
+            ia_data=ia_data,
+            ia_logo_override=logo_path
         )
-    except ValueError as ve:
-        raise HTTPException(status_code=404, detail=str(ve))
+
+        return Response(
+            content=docx_buffer.getvalue(),
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={
+                "Content-Disposition": f"attachment; filename=Risk_Assessment_{client_data.get('client_name', 'Client')}.docx"
+            }
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate DOCX: {str(e)}")
 
-@router.get("/{connector_id}/assessments", response_model=List[RiskAssessmentResponse])
-def list_risk_assessments(
-    connector_id: uuid.UUID,
-    remote_db: Session = Depends(get_remote_session)
+
+@router.get("/bridge/custom-assessment/{assessment_id}/pdf")
+async def download_custom_risk_assessment_pdf_bridge(
+    assessment_id: str,
+    bridge: BridgeClient = Depends(get_bridge_client),
+    db: Session = Depends(get_db),
 ):
-    """
-    Get all risk assessments for this connector.
-    """
+    """Download a completed CUSTOM risk assessment as PDF via the Bridge."""
     try:
-        assessments = RiskProfileService.list_assessments(remote_db)
-        return assessments
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch assessments: {str(e)}")
-
-# --- Custom Risk Questionnaire Endpoints ---
-
-@router.post("/{connector_id}/questionnaires", response_model=RiskQuestionnaireResponse)
-def create_questionnaire(
-    connector_id: uuid.UUID,
-    payload: RiskQuestionnaireCreate,
-    remote_db: Session = Depends(get_remote_session)
-):
-    try:
-        return CustomRiskProfileService.create_questionnaire(remote_db, payload)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/{connector_id}/questionnaires", response_model=List[RiskQuestionnaireResponse])
-def list_questionnaires(
-    connector_id: uuid.UUID,
-    status: Optional[str] = None,
-    remote_db: Session = Depends(get_remote_session)
-):
-    return CustomRiskProfileService.list_questionnaires(remote_db, status)
-
-@router.get("/{connector_id}/questionnaires/{q_id}", response_model=RiskQuestionnaireResponse)
-def get_questionnaire(
-    connector_id: uuid.UUID,
-    q_id: uuid.UUID,
-    remote_db: Session = Depends(get_remote_session)
-):
-    q = CustomRiskProfileService.get_questionnaire(remote_db, q_id)
-    if not q:
-        raise HTTPException(status_code=404, detail="Questionnaire not found")
-    return q
-
-@router.put("/{connector_id}/questionnaires/{q_id}", response_model=RiskQuestionnaireResponse)
-def update_questionnaire(
-    connector_id: uuid.UUID,
-    q_id: uuid.UUID,
-    payload: RiskQuestionnaireUpdate,
-    remote_db: Session = Depends(get_remote_session)
-):
-    q = CustomRiskProfileService.update_questionnaire(remote_db, q_id, payload)
-    if not q:
-        raise HTTPException(status_code=404, detail="Questionnaire not found")
-    return q
-
-@router.post("/{connector_id}/custom-save", response_model=CustomRiskAssessmentResponse)
-def save_custom_risk_assessment(
-    connector_id: uuid.UUID,
-    request: Request,
-    payload: CustomRiskAssessmentCreate,
-    remote_db: Session = Depends(get_remote_session)
-):
-    try:
-        user_ip = request.client.host
-        user_agent = request.headers.get("User-Agent", "Unknown")
-        return CustomRiskProfileService.submit_assessment(remote_db, payload, user_ip, user_agent)
-    except ValueError as ve:
-        raise HTTPException(status_code=404, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/{connector_id}/custom-assessments", response_model=List[CustomRiskAssessmentResponse])
-def list_custom_assessments(
-    connector_id: uuid.UUID,
-    client_id: Optional[uuid.UUID] = None,
-    remote_db: Session = Depends(get_remote_session)
-):
-    return CustomRiskProfileService.list_client_assessments(remote_db, client_id)
-    
-@router.get("/{connector_id}/custom-assessment/{assessment_id}/pdf")
-async def download_custom_risk_profile_pdf(
-    connector_id: uuid.UUID,
-    assessment_id: uuid.UUID,
-    remote_db: Session = Depends(get_remote_session)
-):
-    """
-    Generate and download a PDF report for a custom risk assessment.
-    """
-    try:
-        from app.services.report_service import ReportService
-        from fastapi.responses import StreamingResponse
+        # 1. Fetch assessment data from Bridge
+        assessment = await bridge.get(f"/custom-risk-assessments/id/{assessment_id}")
+        if not assessment:
+            raise HTTPException(status_code=404, detail="Custom Assessment not found")
         
-        ia_logo_path = None
-        ia_master = remote_db.execute(select(IAMaster)).first()
-        if ia_master:
-            ia_master = ia_master[0]
-            ia_logo_path = await resolve_logo_to_local_path(ia_master.ia_logo_path, remote_db)
+        # 2. Fetch Questionnaire, Client and IA data
+        q_id = assessment.get("questionnaire_id")
+        client_id = assessment.get("client_id")
         
-        pdf_buffer = ReportService.generate_custom_risk_profile_pdf(remote_db, assessment_id, ia_logo_path)
+        client_task = bridge.get(f"/clients/{client_id}")
+        ia_task = bridge.get("/ia-master")
+        q_task = bridge.get(f"/risk-questionnaires/{q_id}")
         
-        return StreamingResponse(
-            pdf_buffer,
-            media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename=Custom_Risk_Assessment_{assessment_id}.pdf"}
-        )
-    except ValueError as ve:
-        raise HTTPException(status_code=404, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate custom PDF: {str(e)}")
+        client_data, ia_data, q_data = await asyncio.gather(client_task, ia_task, q_task)
 
-@router.get("/{connector_id}/custom-assessment/{assessment_id}/docx")
-async def download_custom_risk_profile_docx(
-    connector_id: uuid.UUID,
-    assessment_id: uuid.UUID,
-    remote_db: Session = Depends(get_remote_session)
-):
-    """
-    Generate and download a DOCX report for a custom risk assessment.
-    """
-    try:
-        from app.services.report_service import ReportService
-        from fastapi.responses import StreamingResponse
-        
-        ia_logo_path = None
-        ia_master = remote_db.execute(select(IAMaster)).first()
-        if ia_master:
-            ia_master = ia_master[0]
-            ia_logo_path = await resolve_logo_to_local_path(ia_master.ia_logo_path, remote_db)
-            
-        docx_buffer = ReportService.generate_custom_risk_profile_docx(remote_db, assessment_id, ia_logo_path)
-        
-        return StreamingResponse(
-            docx_buffer,
-            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            headers={"Content-Disposition": f"attachment; filename=Custom_Risk_Assessment_{assessment_id}.docx"}
-        )
-    except ValueError as ve:
-        raise HTTPException(status_code=404, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate custom DOCX: {str(e)}")
-
-@router.get("/{connector_id}/questionnaires/{questionnaire_id}/pdf")
-async def download_blank_risk_profile_pdf(
-    connector_id: uuid.UUID,
-    questionnaire_id: str,
-    remote_db: Session = Depends(get_remote_session)
-):
-    """
-    Generate a blank, printable PDF for a custom risk questionnaire.
-    """
-    try:
-        from app.services.report_service import ReportService
-        from fastapi.responses import StreamingResponse
-        
-        ia_logo_path = None
-        ia_master = remote_db.execute(select(IAMaster)).first()
-        if ia_master:
-            ia_master = ia_master[0]
-            # Try to resolve logo to a local path for ReportLab
+        # 3. Resolve Logo
+        logo_path = None
+        ia_logo_key = ia_data.get("ia_logo_path")
+        if ia_logo_key:
             try:
-                ia_logo_path = await resolve_logo_to_local_path(ia_master.ia_logo_path, remote_db)
-            except:
-                ia_logo_path = None
-            
-        pdf_buffer = ReportService.generate_blank_risk_form_pdf(remote_db, questionnaire_id, ia_logo_path)
-        
-        return StreamingResponse(
-            pdf_buffer,
-            media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename=Blank_Risk_Form_{questionnaire_id}.pdf"}
+                from app.utils.file_utils import resolve_logo_to_local_path
+                url_resp = await bridge.get("/storage/url", params={"key": ia_logo_key})
+                logo_path = await resolve_logo_to_local_path(url_resp.get("url"), db)
+            except: pass
+
+        # 4. Generate PDF
+        pdf_buffer = ReportService.generate_risk_profile_pdf_bridge(
+            assessment_data=assessment,
+            client_data=client_data,
+            ia_data=ia_data,
+            ia_logo_override=logo_path,
+            questionnaire_data=q_data
         )
-    except ValueError as ve:
-        raise HTTPException(status_code=404, detail=str(ve))
+
+        return Response(
+            content=pdf_buffer.getvalue(),
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename=Custom_Risk_Assessment_{client_data.get('client_name', 'Client')}.pdf"
+            }
+        )
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to generate blank PDF: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate PDF: {str(e)}")
+
+
+@router.get("/bridge/custom-assessment/{assessment_id}/docx")
+async def download_custom_risk_assessment_docx_bridge(
+    assessment_id: str,
+    bridge: BridgeClient = Depends(get_bridge_client),
+    db: Session = Depends(get_db),
+):
+    """Download a completed CUSTOM risk assessment as Word via the Bridge."""
+    try:
+        # 1. Fetch assessment data from Bridge
+        assessment = await bridge.get(f"/custom-risk-assessments/id/{assessment_id}")
+        if not assessment:
+            raise HTTPException(status_code=404, detail="Custom Assessment not found")
+        
+        # 2. Fetch Questionnaire, Client and IA data
+        q_id = assessment.get("questionnaire_id")
+        client_id = assessment.get("client_id")
+        
+        client_task = bridge.get(f"/clients/{client_id}")
+        ia_task = bridge.get("/ia-master")
+        q_task = bridge.get(f"/risk-questionnaires/{q_id}")
+        
+        client_data, ia_data, q_data = await asyncio.gather(client_task, ia_task, q_task)
+
+        # 3. Resolve Logo
+        logo_path = None
+        ia_logo_key = ia_data.get("ia_logo_path")
+        if ia_logo_key:
+            try:
+                from app.utils.file_utils import resolve_logo_to_local_path
+                url_resp = await bridge.get("/storage/url", params={"key": ia_logo_key})
+                logo_path = await resolve_logo_to_local_path(url_resp.get("url"), db)
+            except: pass
+
+        # 4. Generate Word
+        docx_buffer = ReportService.generate_risk_profile_docx_bridge(
+            assessment_data=assessment,
+            client_data=client_data,
+            ia_data=ia_data,
+            ia_logo_override=logo_path,
+            questionnaire_data=q_data
+        )
+
+        return Response(
+            content=docx_buffer.getvalue(),
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={
+                "Content-Disposition": f"attachment; filename=Custom_Risk_Assessment_{client_data.get('client_name', 'Client')}.docx"
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate Word: {str(e)}")

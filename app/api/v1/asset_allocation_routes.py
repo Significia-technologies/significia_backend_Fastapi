@@ -1,266 +1,223 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from typing import List, Optional
 import uuid
+from sqlalchemy.orm import Session
+from datetime import datetime
 
-from app.database.remote_session import get_remote_session
-from app.schemas.asset_allocation import (
-    AssetAllocationCreate,
-    AssetAllocationResponse,
-    ClientValidateResponse,
-    AssetAllocationSaveResponse
-)
-from app.services.asset_allocation_service import AssetAllocationService
-from app.models.ia_master import IAMaster
-from app.utils.file_utils import resolve_logo_to_local_path
+from app.api.deps import get_bridge_client, get_db
+from app.services.bridge_client import BridgeClient
+from app.schemas.asset_allocation import AssetAllocationCreate
 from app.utils.reports.asset_allocation_report import AssetAllocationReportUtils
-from sqlalchemy import select
+from app.utils.encryption import decrypt_string
 
 router = APIRouter()
 
-@router.post("/{connector_id}/validate-client", response_model=ClientValidateResponse)
-def validate_client(
-    connector_id: uuid.UUID,
+
+# ════════════════════════════════════════════════════════════════════
+#  BRIDGE-POWERED ROUTES (no connector_id)
+# ════════════════════════════════════════════════════════════════════
+
+@router.post("/bridge/validate-client", response_model=dict)
+async def validate_client_bridge(
     payload: dict,
-    remote_db: Session = Depends(get_remote_session)
+    bridge: BridgeClient = Depends(get_bridge_client),
 ):
-    """
-    Validate client code and return profile/risk data.
-    """
-    client_code = payload.get("client_code")
-    if not client_code:
-        raise HTTPException(status_code=400, detail="Client code is required")
-        
-    result = AssetAllocationService.validate_client_for_allocation(remote_db, client_code)
-    return result
+    """Validate a client via the Bridge."""
+    return await bridge.post("/asset-allocations/validate-client", payload)
 
-@router.post("/{connector_id}/save", response_model=AssetAllocationSaveResponse)
-def save_asset_allocation(
-    connector_id: uuid.UUID,
-    request: Request,
+
+@router.post("/bridge/save", response_model=dict)
+async def save_asset_allocation_bridge(
     payload: AssetAllocationCreate,
-    remote_db: Session = Depends(get_remote_session)
+    bridge: BridgeClient = Depends(get_bridge_client),
 ):
-    """
-    Persist an asset allocation record.
-    """
-    from sqlalchemy import text
+    """Save an asset allocation via the Bridge."""
+    return await bridge.post("/asset-allocations", payload.model_dump())
 
-    # Ensure table exists before saving (idempotent for existing connectors)
-    try:
-        remote_db.execute(text("""
-            CREATE TABLE IF NOT EXISTS significia_core.asset_allocations (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                client_id UUID NOT NULL REFERENCES significia_core.clients(id) ON DELETE CASCADE,
-                ia_registration_number VARCHAR(100) NOT NULL,
-                assigned_risk_tier VARCHAR(100) NOT NULL,
-                tier_recommendation TEXT NOT NULL,
-                equities_percentage DOUBLE PRECISION DEFAULT 0.0,
-                debt_securities_percentage DOUBLE PRECISION DEFAULT 0.0,
-                commodities_percentage DOUBLE PRECISION DEFAULT 0.0,
-                stocks_percentage DOUBLE PRECISION DEFAULT 0.0,
-                mutual_fund_equity_percentage DOUBLE PRECISION DEFAULT 0.0,
-                ulip_equity_percentage DOUBLE PRECISION DEFAULT 0.0,
-                fixed_deposits_bonds_percentage DOUBLE PRECISION DEFAULT 0.0,
-                mutual_fund_debt_percentage DOUBLE PRECISION DEFAULT 0.0,
-                ulip_debt_percentage DOUBLE PRECISION DEFAULT 0.0,
-                gold_etf_percentage DOUBLE PRECISION DEFAULT 0.0,
-                silver_etf_percentage DOUBLE PRECISION DEFAULT 0.0,
-                system_conclusion TEXT,
-                generate_system_conclusion BOOLEAN DEFAULT TRUE,
-                discussion_notes TEXT,
-                disclaimer_text TEXT,
-                total_allocation DOUBLE PRECISION DEFAULT 100.0,
-                created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
-            );
-        """))
-        remote_db.commit()
-    except Exception:
-        remote_db.rollback()
 
+@router.get("/bridge/allocations", response_model=list)
+async def list_allocations_bridge(
+    client_id: Optional[str] = None,
+    bridge: BridgeClient = Depends(get_bridge_client),
+):
+    """List all asset allocations via the Bridge, optionally filtered by client_id."""
+    params = {"client_id": client_id} if client_id else None
+    return await bridge.get("/asset-allocations", params=params)
+
+
+
+@router.get("/bridge/allocation/{allocation_id}", response_model=dict)
+async def get_allocation_bridge(
+    allocation_id: str,
+    bridge: BridgeClient = Depends(get_bridge_client),
+):
+    """Get a specific allocation via the Bridge."""
+    return await bridge.get(f"/asset-allocations/{allocation_id}")
+
+
+@router.get("/bridge/blank-form/pdf")
+async def download_blank_form_pdf(
+    bridge: BridgeClient = Depends(get_bridge_client),
+    db: Session = Depends(get_db)
+):
+    """Generate and download a blank asset allocation form."""
     try:
-        user_ip = request.client.host
-        user_agent = request.headers.get("User-Agent", "Unknown")
+        # 1. Fetch IA Master info from Bridge for branding
+        ia_data = await bridge.get("/ia-master")
         
-        allocation = AssetAllocationService.create_allocation(
-            remote_db, payload, user_ip, user_agent
-        )
+        # IA branding details
+        ia_name = ia_data.get("name_of_ia") or "____________________________"
+        ia_entity = ia_data.get("entity_name") or "____________________________"
+        ia_reg_no = ia_data.get("registration_no") or "________________"
+        ia_logo_key = ia_data.get("ia_logo_path")
         
-        return {
-            "success": True,
-            "allocation_id": allocation.id,
-            "message": "Asset allocation saved successfully"
-        }
-    except ValueError as ve:
-        raise HTTPException(status_code=404, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save allocation: {str(e)}")
-
-@router.get("/{connector_id}/allocations", response_model=List[AssetAllocationResponse])
-def list_allocations(
-    connector_id: uuid.UUID,
-    remote_db: Session = Depends(get_remote_session)
-):
-    """
-    List all asset allocations. Auto-creates the table if it does not exist yet
-    (for connectors initialized before this feature was added).
-    """
-    from sqlalchemy import text
-    from sqlalchemy.exc import ProgrammingError
-
-    # Ensure the table exists (idempotent migration for existing connectors)
-    try:
-        remote_db.execute(text("""
-            CREATE TABLE IF NOT EXISTS significia_core.asset_allocations (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                client_id UUID NOT NULL REFERENCES significia_core.clients(id) ON DELETE CASCADE,
-                ia_registration_number VARCHAR(100) NOT NULL,
-                assigned_risk_tier VARCHAR(100) NOT NULL,
-                tier_recommendation TEXT NOT NULL,
-                equities_percentage DOUBLE PRECISION DEFAULT 0.0,
-                debt_securities_percentage DOUBLE PRECISION DEFAULT 0.0,
-                commodities_percentage DOUBLE PRECISION DEFAULT 0.0,
-                stocks_percentage DOUBLE PRECISION DEFAULT 0.0,
-                mutual_fund_equity_percentage DOUBLE PRECISION DEFAULT 0.0,
-                ulip_equity_percentage DOUBLE PRECISION DEFAULT 0.0,
-                fixed_deposits_bonds_percentage DOUBLE PRECISION DEFAULT 0.0,
-                mutual_fund_debt_percentage DOUBLE PRECISION DEFAULT 0.0,
-                ulip_debt_percentage DOUBLE PRECISION DEFAULT 0.0,
-                gold_etf_percentage DOUBLE PRECISION DEFAULT 0.0,
-                silver_etf_percentage DOUBLE PRECISION DEFAULT 0.0,
-                system_conclusion TEXT,
-                generate_system_conclusion BOOLEAN DEFAULT TRUE,
-                discussion_notes TEXT,
-                disclaimer_text TEXT,
-                total_allocation DOUBLE PRECISION DEFAULT 100.0,
-                created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
-            );
-        """))
-        remote_db.execute(text(
-            "CREATE INDEX IF NOT EXISTS idx_asset_allocations_client ON significia_core.asset_allocations(client_id);"
-        ))
-        remote_db.commit()
-    except Exception as migration_err:
-        remote_db.rollback()
-        print(f"[AssetAllocation] Migration warning (non-fatal): {migration_err}")
-
-    try:
-        return AssetAllocationService.list_allocations(remote_db)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch allocations: {str(e)}")
-
-@router.get("/{connector_id}/allocation/{allocation_id}", response_model=AssetAllocationResponse)
-def get_allocation(
-    connector_id: uuid.UUID,
-    allocation_id: uuid.UUID,
-    remote_db: Session = Depends(get_remote_session)
-):
-    """
-    Get a specific asset allocation by ID.
-    """
-    allocation = AssetAllocationService.get_allocation_by_id(remote_db, allocation_id)
-    if not allocation:
-        raise HTTPException(status_code=404, detail="Allocation not found")
-    return allocation
-
-@router.get("/{connector_id}/allocation/{allocation_id}/pdf")
-async def download_allocation_pdf(
-    connector_id: uuid.UUID,
-    allocation_id: uuid.UUID,
-    remote_db: Session = Depends(get_remote_session)
-):
-    """
-    Generate and download a PDF report for a specific asset allocation.
-    """
-    try:
-        allocation = AssetAllocationService.get_allocation_by_id(remote_db, allocation_id)
-        if not allocation:
-            raise HTTPException(status_code=404, detail="Allocation not found")
-            
-        ia_master = remote_db.execute(select(IAMaster).where(IAMaster.ia_registration_number == allocation.ia_registration_number)).scalar_one_or_none()
-        if not ia_master:
-            # Fallback to first IA if specific one not found or lookup failed
-            ia_master = remote_db.execute(select(IAMaster)).first()
-            if ia_master:
-                ia_master = ia_master[0]
-        
-        ia_logo_path = None
-        if ia_master:
+        # 2. Resolve Logo from Bridge storage
+        logo_path = None
+        if ia_logo_key:
             try:
-                ia_logo_path = await resolve_logo_to_local_path(ia_master.ia_logo_path, remote_db)
-            except:
-                ia_logo_path = None
+                from app.utils.file_utils import resolve_logo_to_local_path
+                url_resp = await bridge.get("/storage/url", params={"key": ia_logo_key})
+                signed_url = url_resp.get("url")
+                if signed_url:
+                    logo_path = await resolve_logo_to_local_path(signed_url, db)
+            except: pass
+
+        # 3. Create mock IA object (since we don't have direct DB access to IAMaster)
+        class MockIA: pass
+        ia = MockIA()
+        ia.name_of_ia = ia_name
+        ia.name_of_entity = ia_entity
+        ia.ia_registration_number = ia_reg_no
+        ia.ia_reg_no = ia_reg_no # Support multiple attribute names
+
+        # 4. Generate PDF
+        pdf_buffer = AssetAllocationReportUtils.generate_blank_pdf(ia, ia_logo_path=logo_path)
         
-        pdf_buffer = AssetAllocationReportUtils.generate_pdf(allocation, ia_master, ia_logo_path)
-        
-        return StreamingResponse(
-            pdf_buffer,
+        return Response(
+            content=pdf_buffer.getvalue(),
             media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename=Asset_Allocation_{allocation_id}.pdf"}
+            headers={
+                "Content-Disposition": "attachment; filename=Asset_Allocation_Blank_Form.pdf"
+            }
         )
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to generate PDF: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate blank form: {str(e)}")
 
-@router.get("/{connector_id}/allocation/{allocation_id}/docx")
-async def download_allocation_docx(
-    connector_id: uuid.UUID,
-    allocation_id: uuid.UUID,
-    remote_db: Session = Depends(get_remote_session)
+
+@router.get("/bridge/allocation/{allocation_id}/pdf")
+async def download_allocation_pdf(
+    allocation_id: str,
+    bridge: BridgeClient = Depends(get_bridge_client),
+    db: Session = Depends(get_db)
 ):
-    """
-    Generate and download a DOCX report for a specific asset allocation.
-    """
+    """Generate and download a PDF report for an allocation."""
     try:
-        allocation = AssetAllocationService.get_allocation_by_id(remote_db, allocation_id)
-        if not allocation:
-            raise HTTPException(status_code=404, detail="Allocation not found")
-            
-        ia_master = remote_db.execute(select(IAMaster).where(IAMaster.ia_registration_number == allocation.ia_registration_number)).scalar_one_or_none()
-        if not ia_master:
-            ia_master = remote_db.execute(select(IAMaster)).first()
-            if ia_master:
-                ia_master = ia_master[0]
+        # 1. Fetch allocation and IA data
+        import asyncio
+        allocation_task = bridge.get(f"/asset-allocations/{allocation_id}")
+        ia_task = bridge.get("/ia-master")
+        allocation_data, ia_data = await asyncio.gather(allocation_task, ia_task)
         
-        docx_buffer = AssetAllocationReportUtils.generate_docx(allocation, ia_master)
+        # 2. Prepare branding - IA data comes plain from the Bridge
+        ia_name = ia_data.get("name_of_ia")
+        ia_entity = ia_data.get("entity_name")
+        ia_reg_no = ia_data.get("registration_no")
+        ia_logo_key = ia_data.get("ia_logo_path")
         
-        return StreamingResponse(
-            docx_buffer,
-            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            headers={"Content-Disposition": f"attachment; filename=Asset_Allocation_{allocation_id}.docx"}
+        logo_path = None
+        if ia_logo_key:
+            try:
+                from app.utils.file_utils import resolve_logo_to_local_path
+                url_resp = await bridge.get("/storage/url", params={"key": ia_logo_key})
+                if url_resp.get("url"):
+                    logo_path = await resolve_logo_to_local_path(url_resp["url"], db)
+            except: pass
+
+        class MockObject:
+            def __init__(self, **kwargs):
+                for k, v in kwargs.items():
+                    if isinstance(v, dict): setattr(self, k, MockObject(**v))
+                    else: setattr(self, k, v)
+        
+        # Ensure allocation has client object for the report util
+        if "client" not in allocation_data:
+            allocation_data["client"] = {
+                "client_name": allocation_data.get("client_name") or "Client",
+                "client_code": allocation_data.get("client_code") or "N/A"
+            }
+        
+        # Convert created_at string to datetime for utility
+        if "created_at" in allocation_data and isinstance(allocation_data["created_at"], str):
+            try:
+                allocation_data["created_at"] = datetime.fromisoformat(allocation_data["created_at"].replace("Z", "+00:00"))
+            except:
+                allocation_data["created_at"] = datetime.now()
+
+        ia_email = ia_data.get("registered_email_id") or ""
+        ia = MockObject(name_of_ia=ia_name, ia_registration_number=ia_reg_no, registered_email_id=ia_email)
+        allocation = MockObject(**allocation_data)
+        
+        # 3. Generate PDF
+        pdf_buffer = AssetAllocationReportUtils.generate_pdf(allocation, ia, ia_logo_path=logo_path)
+        
+        filename = f"Asset_Allocation_{allocation_data.get('client_code') or allocation_id}.pdf"
+        return Response(
+            content=pdf_buffer.getvalue(),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate DOCX: {str(e)}")
-@router.get("/{connector_id}/blank-form/pdf")
-async def download_blank_pdf(
-    connector_id: uuid.UUID,
-    remote_db: Session = Depends(get_remote_session)
-):
-    """
-    Generate and download a blank Asset Allocation PDF template.
-    """
-    # Get IA Master for branding (Fetch the first/primary IA record)
-    ia_master = remote_db.execute(select(IAMaster)).first()
-    if ia_master:
-        ia_master = ia_master[0]
-    
-    ia_logo_path = ia_master.ia_logo_path if ia_master else None
-    
-    # Resolve logo path if possible
-    if ia_logo_path:
-        try:
-            ia_logo_path = await resolve_logo_to_local_path(ia_logo_path, remote_db)
-        except:
-            ia_logo_path = None
+        raise HTTPException(status_code=500, detail=str(e))
 
-    pdf_buffer = AssetAllocationReportUtils.generate_blank_pdf(ia_master, ia_logo_path)
-    
-    return StreamingResponse(
-        pdf_buffer,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename=Asset_Allocation_Blank_Form.pdf"}
-    )
+
+@router.get("/bridge/allocation/{allocation_id}/docx")
+async def download_allocation_docx(
+    allocation_id: str,
+    bridge: BridgeClient = Depends(get_bridge_client),
+):
+    """Generate and download a DOCX report for an allocation."""
+    try:
+        # 1. Fetch data
+        import asyncio
+        allocation_task = bridge.get(f"/asset-allocations/{allocation_id}")
+        ia_task = bridge.get("/ia-master")
+        allocation_data, ia_data = await asyncio.gather(allocation_task, ia_task)
+        
+        # 2. Prepare mock objects - IA data comes plain from the Bridge
+        ia_name = ia_data.get("name_of_ia")
+        ia_entity = ia_data.get("entity_name")
+        ia_reg_no = ia_data.get("registration_no")
+
+        class MockObject:
+            def __init__(self, **kwargs):
+                for k, v in kwargs.items():
+                    if isinstance(v, dict): setattr(self, k, MockObject(**v))
+                    else: setattr(self, k, v)
+        
+        if "client" not in allocation_data:
+            allocation_data["client"] = {
+                "client_name": allocation_data.get("client_name") or "Client",
+                "client_code": allocation_data.get("client_code") or "N/A"
+            }
+        
+        if "created_at" in allocation_data and isinstance(allocation_data["created_at"], str):
+            try:
+                allocation_data["created_at"] = datetime.fromisoformat(allocation_data["created_at"].replace("Z", "+00:00"))
+            except:
+                allocation_data["created_at"] = datetime.now()
+
+        ia_email = ia_data.get("registered_email_id") or ""
+        ia = MockObject(name_of_ia=ia_name, ia_registration_number=ia_reg_no, registered_email_id=ia_email)
+        allocation = MockObject(**allocation_data)
+        
+        # 3. Generate DOCX
+        docx_buffer = AssetAllocationReportUtils.generate_docx(allocation, ia)
+        
+        filename = f"Asset_Allocation_{allocation_data.get('client_code') or allocation_id}.docx"
+        return Response(
+            content=docx_buffer.getvalue(),
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

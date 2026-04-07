@@ -7,7 +7,6 @@ from app.schemas.client_schema import ClientCreate, ClientUpdate
 from app.models.ia_master import IAMaster
 from app.models.client import ClientProfile
 from app.core.security import get_password_hash
-from app.services.storage_service import StorageService
 
 class ClientService:
     @staticmethod
@@ -42,17 +41,12 @@ class ClientService:
     async def sign_client_urls(client: any, db: Session):
         if not client:
             return client
-        driver = StorageService.get_tenant_storage(db)
-        if not driver:
-            return client
             
         async def get_url(path: str):
             if not path:
                 return None
-            if not path.startswith(('http://', 'https://')):
-                return await driver.get_file_url(path)
             return path
-
+            
         if hasattr(client, 'documents') and client.documents:
             for doc in client.documents:
                 doc.file_path = await get_url(doc.file_path)
@@ -74,6 +68,10 @@ class ClientService:
         
         if ia_master.current_client_count >= ia_master.max_client_permit:
             raise ValueError(f"Maximum client permit ({ia_master.max_client_permit}) reached.")
+ 
+        # KYC Validation
+        if not client_in.kyc_verified:
+            raise ValueError("Please validate the KYC then Reenter the Client data")
  
         # Check existing
         existing = db.query(ClientProfile).filter(

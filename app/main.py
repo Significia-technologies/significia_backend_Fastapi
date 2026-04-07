@@ -5,6 +5,7 @@ import os
 
 from app.core.config import settings
 from app.api.router import api_router
+from app.core.domain_guard import DomainGuardMiddleware
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -27,11 +28,15 @@ origins = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_origin_regex=r"https://.*\.vercel\.app|http://localhost:3000",
+    # Allow any IA custom domain + Vercel preview deployments
+    allow_origin_regex=r"https://.*\.vercel\.app|http://localhost:3000|https?://.*",
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
+
+# Domain-based access guard (restricts Super Admin routes to Significia domains)
+app.add_middleware(DomainGuardMiddleware)
 
 # Static files for uploads
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")

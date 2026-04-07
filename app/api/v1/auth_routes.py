@@ -30,3 +30,16 @@ def refresh_token(request: RefreshTokenRequest, db: Session = Depends(get_db)):
 @router.get("/me", response_model=UserResponse)
 def get_user_me(current_user: User = Depends(get_current_user)):
     return current_user
+
+@router.post("/logout-others")
+def logout_others(
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Forcefully sign out all devices by incrementing the refresh token version.
+    This will invalidate the current device's session as well.
+    """
+    current_user.refresh_token_version += 1
+    db.commit()
+    return {"message": "All other sessions have been invalidated. Please log in again."}

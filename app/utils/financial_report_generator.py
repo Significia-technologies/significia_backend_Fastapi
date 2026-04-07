@@ -21,8 +21,11 @@ try:
     PDF_AVAILABLE = True
     
     class NumberedCanvas(canvas.Canvas):
-        """Custom PDF Canvas class with 'Page x of y' in footer."""
+        """Custom PDF Canvas class with 'Page x of y' in footer and Entity Name in header."""
         def __init__(self, *args, **kwargs):
+            self.entity_name = kwargs.pop('entity_name', "")
+            self.advisor_name = kwargs.pop('advisor_name', "")
+            self.ia_reg_no = kwargs.pop('ia_reg_no', "")
             canvas.Canvas.__init__(self, *args, **kwargs)
             self._saved_page_states = []
 
@@ -42,8 +45,26 @@ try:
             # Footer: Page numbers
             self.setFont("Helvetica", 9)
             current_page = self._pageNumber
-            text = f"Page {current_page} of {page_count}"
-            self.drawCentredString(300, 20, text)
+            page_text = f"Page {current_page} of {page_count}"
+            self.drawRightString(570, 20, page_text)
+            
+            # Footer: Prepared by / Entity Name / Reg No (left-aligned)
+            if any([self.advisor_name, self.entity_name, self.ia_reg_no]):
+                self.setFont("Helvetica-Oblique", 7)
+                self.setFillColor(colors.grey)
+                footer_parts = []
+                if self.advisor_name: footer_parts.append(f"Prepared by: {self.advisor_name}")
+                if self.entity_name: footer_parts.append(f"Entity: {self.entity_name}")
+                if self.ia_reg_no: footer_parts.append(f"Reg No: {self.ia_reg_no}")
+                footer_text = " , ".join(footer_parts)
+                self.drawString(30, 20, footer_text)
+            
+            # Header: Entity Name (top-left)
+            if self.entity_name:
+                self.setFont("Helvetica-Bold", 8)
+                self.setFillColor(colors.HexColor('#1e293b'))
+                self.drawString(30, 820, self.entity_name.upper())
+
             # Header: STRICTLY CONFIDENTIAL (top-right, every page)
             self.setFont("Helvetica-Oblique", 7)
             self.setFillColor(colors.grey)
@@ -115,47 +136,93 @@ class FinancialReportGenerator:
     """
 
     @staticmethod
-    def generate_pdf(result: Any, profile: Any, client_name: str, ia_logo_path: Optional[str] = None) -> io.BytesIO:
-        """Generate PDF report as a byte stream with 15 sections."""
+    def _parse_professional_text(text: str) -> List[Dict[str, str]]:
+        """
+        Parses unformatted AI text into structured segments.
+        Identifies ALL CAPS headers and separates them from paragraphs.
+        """
+        if not text:
+            return []
+            
+        # Clean up common AI formatting artifacts
+        text = text.replace("**", "").replace("__", "")
+        
+        # Regex to find potential ALL CAPS headers
+        # Matches sequences of uppercase letters and spaces (at least 5 chars) 
+        # that are followed by a newline, colon, or just standalone at the start/end of a block.
+        pattern = r'([A-Z\s]{8,}(?::|\n|$))'
+        parts = re.split(pattern, text)
+        
+        sections = []
+        for part in parts:
+            part = part.strip()
+            if not part:
+                continue
+                
+            # Heuristic for headers: All caps (with some common allowed chars) and length > 5
+            is_header = re.match(r'^[A-Z\s\(\)\d\:\-\,]+$', part) and len(part) > 5
+            
+            # Special case for "Prepared for" or "Analysis Date" - those are meta-data, not section headers
+            if is_header and any(meta in part.lower() for meta in ["prepared for", "analysis date"]):
+                is_header = False # Treat as normal text or metadata
+            
+            if is_header:
+                sections.append({"type": "header", "content": part.rstrip(':')})
+            else:
+                # If it's normal text, treat as paragraph
+                sections.append({"type": "paragraph", "content": part})
+                
+        return sections
+
+    @staticmethod
+    def generate_pdf(
+        result: Any,
+        profile: Any,
+        client_name: str,
+        ia_logo_path: Optional[str] = None,
+        ia_name: Optional[str] = None
+    ) -> io.BytesIO:
+        """Generate a professionally formatted PDF Financial Analysis report."""
         if not PDF_AVAILABLE:
             raise ImportError("reportlab is not installed.")
 
         buffer = io.BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=A4)
-        elements = []
-        styles = getSampleStyleSheet()
-
-        # Styles matching legacy
-        title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], fontSize=24, alignment=1, spaceAfter=30)
-        subtitle_style = ParagraphStyle('CustomSubtitle', parent=styles['Heading2'], fontSize=18, alignment=1, spaceAfter=20)
-        section_style = ParagraphStyle('CustomSection', parent=styles['Heading2'], fontSize=16, spaceBefore=20, spaceAfter=10)
-        subsection_style = ParagraphStyle('CustomSubsection', parent=styles['Heading3'], fontSize=14, spaceBefore=15, spaceAfter=8)
-        normal_style = ParagraphStyle('CustomNormal', parent=styles['Normal'], fontSize=10, spaceAfter=6)
-        bold_style = ParagraphStyle('CustomBold', parent=styles['Normal'], fontSize=10, spaceAfter=6, fontName='Helvetica-Bold')
-
-        # --- PREMIUM COVER PAGE ---
-        elements.append(Spacer(1, 2*inch))
         
-        # Centered Logo on Cover (Robust Path Resolution)
+        # Factory for canvas with ia_name and advisor_name
+        def canvas_factory(*args, **kwargs):
+            advisor_name = profile.client.advisor_name if hasattr(profile, 'client') and profile.client else None
+            ia_reg_no = profile.client.advisor_registration_number if hasattr(profile, 'client') and profile.client else None
+            return NumberedCanvas(*args, entity_name=ia_name, advisor_name=advisor_name, ia_reg_no=ia_reg_no, **kwargs)
+
+        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=50, bottomMargin=40)
+        elements = []
+        
+        # Styles
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle('ReportTitle', parent=styles['Heading1'], fontSize=24, alignment=1, spaceAfter=20)
+        section_style = ParagraphStyle('SectionHeader', parent=styles['Heading2'], fontSize=14, spaceBefore=20, spaceAfter=10, textColor=colors.HexColor('#1e293b'))
+        subsection_style = ParagraphStyle('SubSectionHeader', parent=styles['Heading3'], fontSize=11, spaceBefore=10, spaceAfter=5, textColor=colors.HexColor('#334155'), fontName='Helvetica-Bold')
+        normal_style = styles['Normal']
+        normal_style.fontSize = 10
+        normal_style.leading = 14
+
+        # Cover Page
+        elements.append(Spacer(1, 100))
         resolved_logo = resolve_logo_path(ia_logo_path)
         if resolved_logo:
             try:
-                logo = Image(resolved_logo, width=2.5*inch, height=2.5*inch)
+                logo = Image(resolved_logo, width=1.5*inch, height=1.5*inch)
                 elements.append(logo)
-                elements.append(Spacer(1, 0.4*inch))
             except Exception as e:
-                print(f"Error rendering logo in PDF cover: {e}")
-                elements.append(Paragraph(f"[Logo Error: {e}]", normal_style))
-
-        # Premium Cover Title (Dark Blue)
-        premium_title_style = ParagraphStyle('PremiumTitle', parent=title_style, textColor=colors.HexColor('#0369a1'), fontSize=28)
-        elements.append(Paragraph("COMPREHENSIVE FINANCIAL ANALYSIS REPORT", premium_title_style))
-        elements.append(Spacer(1, 1.2*inch))
+                print(f"Error rendering logo: {e}")
         
-        # Details Table (Professional Layout)
+        elements.append(Spacer(1, 20))
+        elements.append(Paragraph('FINANCIAL ANALYSIS REPORT', title_style))
+        elements.append(Spacer(1, 10))
+        prepared_by = ia_name or profile.client.advisor_name or 'INVESTMENT ADVISOR'
         cover_details = [
             [Paragraph(f"<b>CLIENT NAME:</b> {client_name.upper()}", normal_style)],
-            [Paragraph(f"<b>PREPARED BY:</b> {profile.client.advisor_name or 'INVESTMENT ADVISOR'}", normal_style)],
+            [Paragraph(f"<b>PREPARED BY:</b> {prepared_by.upper()}", normal_style)],
             [Paragraph(f"<b>REPORT DATE:</b> {datetime.now().strftime('%d %B, %Y').upper()}", normal_style)]
         ]
         if profile.client.client_code:
@@ -389,15 +456,25 @@ class FinancialReportGenerator:
         t = Table(ass_data, colWidths=[300, 200])
         t.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.grey), ('GRID', (0,0), (-1,-1), 1, colors.black)]))
         elements.append(t)
-        elements.append(PageBreak())
+        elements.append(Paragraph("", normal_style))
 
         # 3. Executive Brief
         if not profile.exclude_ai and result.ai_analysis and 'executive_brief' in result.ai_analysis:
             elements.append(Paragraph('Executive Summary & Insights', section_style))
             brief = result.ai_analysis['executive_brief']
-            # Remove any HTML tags if they exist (though usually they don't in PDF generator)
+            # Remove any HTML tags if they exist
             brief = re.sub(r'<[^>]*>', '', brief)
-            elements.append(Paragraph(brief, normal_style))
+            
+            sections = FinancialReportGenerator._parse_professional_text(brief)
+            for sec in sections:
+                if sec['type'] == 'header':
+                    elements.append(Paragraph(sec['content'], subsection_style))
+                else:
+                    # Handle internal line breaks within paragraphs
+                    para_text = sec['content'].replace('\n', '<br/>')
+                    elements.append(Paragraph(para_text, normal_style))
+                    elements.append(Spacer(1, 6))
+            
             elements.append(Spacer(1, 12))
 
         # 4. HLV
@@ -470,7 +547,6 @@ class FinancialReportGenerator:
 
         # 7. Cash Flow Table
         if result.cash_flow_analysis:
-            elements.append(PageBreak())
             elements.append(Paragraph('7. Retirement Cash Flow Analysis', section_style))
             cf = result.cash_flow_analysis
             cf_data = [['Year', 'Age', 'Opening Bal (Rs)', 'Growth (Rs)', 'Withdrawal (Rs)', 'Closing Bal (Rs)']]
@@ -567,11 +643,20 @@ class FinancialReportGenerator:
             elements.append(Paragraph('13. OVERALL CONCLUSION', section_style))
             conc = result.ai_analysis['overall_conclusion']
             conc = re.sub(r'<[^>]*>', '', conc)
-            elements.append(Paragraph(conc, normal_style))
+            
+            sections = FinancialReportGenerator._parse_professional_text(conc)
+            for sec in sections:
+                if sec['type'] == 'header':
+                    elements.append(Paragraph(sec['content'], subsection_style))
+                else:
+                    para_text = sec['content'].replace('\n', '<br/>')
+                    elements.append(Paragraph(para_text, normal_style))
+                    elements.append(Spacer(1, 6))
+            
             elements.append(Spacer(1, 20))
 
         # 14. Disclaimer
-        elements.append(PageBreak())
+        elements.append(Paragraph("", normal_style))
         elements.append(Paragraph('14. DISCLAIMER', section_style))
         disc = profile.disclaimer_text or "This report is generated based on data provided by the client..."
         elements.append(Paragraph(disc, normal_style))
@@ -587,7 +672,7 @@ class FinancialReportGenerator:
         elements.append(Spacer(1, 40))
 
         # 16. Signatures (Very last)
-        elements.append(PageBreak())
+        elements.append(Spacer(1, 10))
         elements.append(Paragraph('16. SIGNATURES', section_style))
         elements.append(Spacer(1, 40))
         sig_data = [
@@ -603,12 +688,12 @@ class FinancialReportGenerator:
         ]))
         elements.append(sig_table)
 
-        doc.build(elements, canvasmaker=NumberedCanvas)
+        doc.build(elements, canvasmaker=canvas_factory)
         buffer.seek(0)
         return buffer
 
     @staticmethod
-    def generate_blank_form(ia_logo_path: Optional[str] = None) -> io.BytesIO:
+    def generate_blank_form(ia_logo_path: Optional[str] = None, ia_name: Optional[str] = None, advisor_name: Optional[str] = None, ia_reg_no: Optional[str] = None) -> io.BytesIO:
         """Generate a professionally styled, grid-based blank Financial Analysis Form."""
         if not PDF_AVAILABLE:
             raise ImportError("reportlab is not installed.")
@@ -657,9 +742,9 @@ class FinancialReportGenerator:
 
         # Advisor Info Grid
         info_data = [
-            [Paragraph("Advisor Name", label_style), "____________________________", Paragraph("Advisor ID", label_style), "________________"],
-            [Paragraph("Client Name", label_style), "____________________________", Paragraph("Date", label_style), datetime.now().strftime('%d/%m/%Y')],
-            [Paragraph("Client Code", label_style), "____________________________", "", ""]
+            [Paragraph("Advisor Name", label_style), "", Paragraph("Advisor ID", label_style), ""],
+            [Paragraph("Client Name", label_style), "", Paragraph("Date", label_style), datetime.now().strftime('%d/%m/%Y')],
+            [Paragraph("Client Code", label_style), "", "", ""]
         ]
         t_info = Table(info_data, colWidths=[110, 230, 90, 105], rowHeights=25)
         t_info.setStyle(TableStyle([
@@ -673,12 +758,12 @@ class FinancialReportGenerator:
         # 1. PERSONAL INFORMATION
         add_section_header("1. Personal & Family Profile")
         personal_data = [
-            [Paragraph("Full Name (Client)", label_style), "________________________________________", Paragraph("DOB", label_style), "___________"],
-            [Paragraph("Occupation", label_style), "________________________________________", Paragraph("PAN", label_style), "___________"],
-            [Paragraph("Email ID", label_style), "________________________________________", Paragraph("Contact", label_style), "___________"],
-            [Paragraph("Annual Income", label_style), "Rs. ____________________", "", ""],
-            [Paragraph("Full Name (Spouse)", label_style), "________________________________________", Paragraph("DOB", label_style), "___________"],
-            [Paragraph("Occupation", label_style), "________________________________________", "", ""]
+            [Paragraph("Full Name (Client)", label_style), "", Paragraph("DOB", label_style), ""],
+            [Paragraph("Occupation", label_style), "", Paragraph("PAN", label_style), ""],
+            [Paragraph("Email ID", label_style), "", Paragraph("Contact", label_style), ""],
+            [Paragraph("Annual Income", label_style), "Rs.", "", ""],
+            [Paragraph("Full Name (Spouse)", label_style), "", Paragraph("DOB", label_style), ""],
+            [Paragraph("Occupation", label_style), "", "", ""]
         ]
         t_personal = Table(personal_data, colWidths=[120, 255, 50, 110], rowHeights=28)
         t_personal.setStyle(TableStyle([
@@ -695,9 +780,9 @@ class FinancialReportGenerator:
         add_section_header("2. Children Details")
         child_data = [
             [Paragraph("No.", label_style), Paragraph("Child Full Name", label_style), Paragraph("Date of Birth", label_style), Paragraph("Occupation / Status", label_style)],
-            ["1", "________________________________________", "________________", "________________________"],
-            ["2", "________________________________________", "________________", "________________________"],
-            ["3", "________________________________________", "________________", "________________________"],
+            ["1", "", "", ""],
+            ["2", "", "", ""],
+            ["3", "", "", ""],
         ]
         t_child = Table(child_data, colWidths=[40, 240, 100, 155], rowHeights=30)
         t_child.setStyle(TableStyle([
@@ -725,7 +810,7 @@ class FinancialReportGenerator:
             row = []
             for item in pair:
                 row.append(Paragraph(item, label_style))
-                row.append("Rs. __________")
+                row.append("Rs. ")
             exp_rows.append(row)
         
         t_exp = Table(exp_rows, colWidths=[160, 107.5, 160, 107.5], rowHeights=30)
@@ -741,12 +826,12 @@ class FinancialReportGenerator:
         add_section_header("4. Assets & 5. Liabilities (Rs.)")
         al_data = [
             [Paragraph("<b>ASSET DESCRIPTION</b>", label_style), Paragraph("<b>VALUE (Rs.)</b>", label_style), Paragraph("<b>LIABILITY DESCRIPTION</b>", label_style), Paragraph("<b>OUTSTANDING (Rs.)</b>", label_style)],
-            ["Real Estate (Res)", "___________", "Home / Housing Loan", "___________"],
-            ["Real Estate (Other)", "___________", "Personal / Top-up Loan", "___________"],
-            ["Mutual Funds / Equity", "___________", "Credit Card Dues", "___________"],
-            ["Fixed Dep / Bank Bal", "___________", "Vehicle Loan", "___________"],
-            ["Retirement (PF/PPF)", "___________", "Others LIAB", "___________"],
-            ["Others ASSETS", "___________", "", ""],
+            ["Real Estate (Res)", "", "Home / Housing Loan", ""],
+            ["Real Estate (Other)", "", "Personal / Top-up Loan", ""],
+            ["Mutual Funds / Equity", "", "Credit Card Dues", ""],
+            ["Fixed Dep / Bank Bal", "", "Vehicle Loan", ""],
+            ["Retirement (PF/PPF)", "", "Others LIAB", ""],
+            ["Others ASSETS", "", "", ""],
         ]
         t_al = Table(al_data, colWidths=[175, 92.5, 175, 92.5], rowHeights=32)
         t_al.setStyle(TableStyle([
@@ -762,10 +847,10 @@ class FinancialReportGenerator:
         add_section_header("6. Insurance Information")
         ins_data = [
             [Paragraph("Insurance Type", label_style), Paragraph("Sum Assured / Cover", label_style), Paragraph("Annual Premium Paid", label_style)],
-            ["Life Insurance (Term/Endow)", "Rs. ________________", "Rs. ________________"],
-            ["Health Insurance (Mediclaim)", "Rs. ________________", "Rs. ________________"],
-            ["Critical Illness / PA", "Rs. ________________", "Rs. ________________"],
-            ["Motor / Asset Insurance", "Rs. ________________", "Rs. ________________"],
+            ["Life Insurance (Term/Endow)", "Rs. ", "Rs. "],
+            ["Health Insurance (Mediclaim)", "Rs. ", "Rs. "],
+            ["Critical Illness / PA", "Rs. ", "Rs. "],
+            ["Motor / Asset Insurance", "Rs. ", "Rs. "],
         ]
         t_ins = Table(ins_data, colWidths=[185, 175, 175], rowHeights=32)
         t_ins.setStyle(TableStyle([
@@ -777,7 +862,7 @@ class FinancialReportGenerator:
         elements.append(t_ins)
         
         elements.append(Spacer(1, 5))
-        mb_data = [[Paragraph("<b>Medical Bonus Years:</b> ____", label_style), Paragraph("<b>Avg. Bonus Percentage (%):</b> ____", label_style)]]
+        mb_data = [[Paragraph("<b>Medical Bonus Years:</b> ", label_style), Paragraph("<b>Avg. Bonus Percentage (%):</b> ", label_style)]]
         t_mb = Table(mb_data, colWidths=[267.5, 267.5], rowHeights=28)
         t_mb.setStyle(TableStyle([('GRID', (0,0), (-1,-1), 0.5, colors.lightgrey), ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('PADDING', (0,0), (-1,-1), 6)]))
         elements.append(t_mb)
@@ -786,11 +871,11 @@ class FinancialReportGenerator:
         # 7. ASSUMPTIONS & GOALS
         add_section_header("7. Financial Assumptions & Major Goals")
         ass_data = [
-            [Paragraph("Retirement Age", label_style), "_________", Paragraph("Inflation Rate (%)", label_style), "_________"],
-            [Paragraph("Life Exp (Client)", label_style), "_________", Paragraph("Life Exp (Spouse)", label_style), "_________"],
-            [Paragraph("Med. Inflation (%)", label_style), "_________", Paragraph("Pre-Ret Return (%)", label_style), "_________"],
-            [Paragraph("Income Increment (%)", label_style), "_________", Paragraph("Post-Ret Return (%)", label_style), "_________"],
-            [Paragraph("SOL for HLV (%)", label_style), "_________", Paragraph("SOL for Retire (%)", label_style), "_________"],
+            [Paragraph("Retirement Age", label_style), "", Paragraph("Inflation Rate (%)", label_style), ""],
+            [Paragraph("Life Exp (Client)", label_style), "", Paragraph("Life Exp (Spouse)", label_style), ""],
+            [Paragraph("Med. Inflation (%)", label_style), "", Paragraph("Pre-Ret Return (%)", label_style), ""],
+            [Paragraph("Income Increment (%)", label_style), "", Paragraph("Post-Ret Return (%)", label_style), ""],
+            [Paragraph("SOL for HLV (%)", label_style), "", Paragraph("SOL for Retire (%)", label_style), ""],
         ]
         t_ass = Table(ass_data, colWidths=[160, 107.5, 160, 107.5], rowHeights=28)
         t_ass.setStyle(TableStyle([
@@ -803,9 +888,9 @@ class FinancialReportGenerator:
 
         goal_data = [
             ["", Paragraph("<b>Education Goal (Children)</b>", label_style), Paragraph("<b>Marriage Goal (Children)</b>", label_style)],
-            [Paragraph("Corpus Needed", label_style), "Rs. ____________________", "Rs. ____________________"],
-            [Paragraph("Years to Goal", label_style), "________________________", "________________________"],
-            [Paragraph("Allocation (%)", label_style), "________________________", "________________________"],
+            [Paragraph("Corpus Needed", label_style), "Rs. ", "Rs. "],
+            [Paragraph("Years to Goal", label_style), "", ""],
+            [Paragraph("Allocation (%)", label_style), "", ""],
         ]
         t_goals = Table(goal_data, colWidths=[145, 195, 195], rowHeights=[25, 32, 32, 32])
         t_goals.setStyle(TableStyle([
@@ -835,34 +920,52 @@ class FinancialReportGenerator:
         t_sig.setStyle(TableStyle([('ALIGN', (0,0), (-1,-1), 'CENTER'), ('VALIGN', (0,0), (-1,-1), 'MIDDLE')]))
         elements.append(t_sig)
 
-        doc.build(elements, canvasmaker=NumberedCanvas)
+        def canvas_factory(*args, **kwargs):
+            return NumberedCanvas(*args, entity_name=ia_name, advisor_name=advisor_name, ia_reg_no=ia_reg_no, **kwargs)
+
+        doc.build(elements, canvasmaker=canvas_factory)
         buffer.seek(0)
         return buffer
 
     @staticmethod
-    def generate_docx(result: Any, profile: Any, client_name: str, ia_logo_path: Optional[str] = None) -> io.BytesIO:
-        """Generate Word report as a byte stream with 15 sections."""
+    def generate_docx(
+        result: Any,
+        profile: Any,
+        client_name: str,
+        ia_logo_path: Optional[str] = None,
+        ia_name: Optional[str] = None
+    ) -> io.BytesIO:
+        """Generate a professionally formatted Word Financial Analysis report."""
         if not WORD_AVAILABLE:
             raise ImportError("python-docx is not installed.")
 
         doc = Document()
-        # Add Header: STRICTLY CONFIDENTIAL
+        
+        # Add Header with Entity Name and "Strictly Confidential"
         section = doc.sections[0]
         header = section.header
-        htab = header.paragraphs[0]
-        htab.text = "STRICTLY CONFIDENTIAL"
-        from docx.enum.text import WD_ALIGN_PARAGRAPH
-        htab.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        # --- PREMIUM COVER PAGE ---
+        htable = header.add_table(1, 2, width=Inches(6))
+        
+        # Left side: IA Name
+        if ia_name:
+            htable.cell(0, 0).text = ia_name.upper()
+            htable.cell(0, 0).paragraphs[0].runs[0].font.size = Pt(8)
+            htable.cell(0, 0).paragraphs[0].runs[0].bold = True
+            
+        # Right side: Strictly Confidential
+        htable.cell(0, 1).text = "STRICTLY CONFIDENTIAL"
+        htable.cell(0, 1).paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        htable.cell(0, 1).paragraphs[0].runs[0].font.size = Pt(8)
+        htable.cell(0, 1).paragraphs[0].runs[0].italic = True
+
+        # Cover Page
         for _ in range(5): doc.add_paragraph()
         
-        # Center the logo if available (Robust Path Resolution)
         resolved_logo = resolve_logo_path(ia_logo_path)
         if resolved_logo:
             try:
                 doc.add_picture(resolved_logo, width=Inches(2.5))
-                last_paragraph = doc.paragraphs[-1]
-                last_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
             except Exception as e:
                 print(f"Error rendering logo in Word report: {e}")
         
@@ -870,7 +973,6 @@ class FinancialReportGenerator:
         
         title = doc.add_heading("COMPREHENSIVE FINANCIAL ANALYSIS REPORT", 0)
         title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        # Dark Blue Title in Word (closest style for Headings if possible)
         
         for _ in range(4): doc.add_paragraph()
         
@@ -880,7 +982,9 @@ class FinancialReportGenerator:
         run.bold = True
         if profile.client.client_code:
             p.add_run(f"CLIENT CODE: {profile.client.client_code}\n")
-        p.add_run(f"PREPARED BY: {profile.client.advisor_name or 'INVESTMENT ADVISOR'}\n")
+        
+        prepared_by = ia_name or profile.client.advisor_name or 'INVESTMENT ADVISOR'
+        p.add_run(f"PREPARED BY: {prepared_by}\n")
         p.add_run(f"REPORT DATE: {datetime.now().strftime('%d %B, %Y').upper()}")
         
         doc.add_page_break()
@@ -987,7 +1091,7 @@ class FinancialReportGenerator:
             ass_data.append([label, val_str])
         add_table("2. Financial Assumptions", ass_data)
 
-        # 2. Net Worth Summary (Renamed to 3 for consistency with PDF order if needed, but keeping labels for now)
+        # 3. Net Worth Summary
         add_table("3. Net Worth Summary", [
             ["Particulars", "Value"],
             ["Total Assets", format_currency(total_ast)],
@@ -995,16 +1099,29 @@ class FinancialReportGenerator:
             ["NET WORTH", format_currency(total_ast - total_lib)]
         ])
 
-        # 3. Insurance
+        # 4. Executive Summary & Insights
+        if not profile.exclude_ai and result.ai_analysis and 'executive_brief' in result.ai_analysis:
+            doc.add_heading("4. Executive Summary & Insights", level=1)
+            brief = result.ai_analysis['executive_brief']
+            brief = re.sub(r'<[^>]*>', '', brief)
+            sections = FinancialReportGenerator._parse_professional_text(brief)
+            for sec in sections:
+                if sec['type'] == 'header':
+                    doc.add_heading(sec['content'], level=2)
+                else:
+                    doc.add_paragraph(sec['content'])
+            doc.add_page_break()
+
+        # 5. Insurance
         ins = profile.insurance
-        add_table("3. Insurance Coverage", [
+        add_table("5. Insurance Coverage", [
             ["Type", "Coverage", "Premium"],
             ["Life", format_currency(ins.get('life_cover')), format_currency(ins.get('life_premium'))],
             ["Medical", format_currency(ins.get('medical_cover')), format_currency(ins.get('medical_premium'))],
             ["Vehicle", format_currency(ins.get('vehicle_cover')), format_currency(ins.get('vehicle_premium'))]
         ])
 
-        # 4. HLV
+        # 6. HLV
         hlv = result.hlv_data
         hlv_info = [
             ["Description", "Value (Rs)"],
@@ -1014,9 +1131,9 @@ class FinancialReportGenerator:
             ["Additional Life Cover Needed (Income)", format_number(hlv.get('additional_life_cover_needed_income'))],
             ["Current Life Cover", format_number(profile.insurance.get('life_cover', 0))],
         ]
-        add_table("4. Human Life Value Analysis", hlv_info)
+        add_table("6. Human Life Value Analysis", hlv_info)
 
-        # 5/6. Retirement & Medical
+        # 7/8. Retirement & Medical
         ret = result.calculations
         med = result.medical_data
         rm_info = [
@@ -1026,17 +1143,17 @@ class FinancialReportGenerator:
             ["Medical Corpus at Retirement", format_number(med.get('medical_corpus_at_retirement'))],
             ["Retirement Readiness", f"{ret.get('retirement_readiness', 0)}%"]
         ]
-        add_table("5/6. Retirement & Medical Analysis", rm_info)
+        add_table("7/8. Retirement & Medical Analysis", rm_info)
 
-        # 7. Cash Flow
+        # 9. Cash Flow
         if result.cash_flow_analysis:
             cf_data = [["Year", "Age", "Opening Bal (Rs)", "Growth (Rs)", "Withdrawal (Rs)", "Closing Bal (Rs)"]]
             for row in result.cash_flow_analysis:
                 cf_data.append([str(row['year']), str(row['retirement_age_year']), format_number(row['opening_balance']), 
                                 format_number(row['investment_growth']), format_number(row['annual_withdrawal']), format_number(row['closing_balance'])])
-            add_table("7. Retirement Cash Flow Analysis", cf_data)
+            add_table("9. Retirement Cash Flow Analysis", cf_data)
 
-        # 10. Summary
+        # 10. Monthly Investment Summary
         sum_data = [
             ['Goal', 'Monthly Investment (Rs)'],
             ['Retirement', format_number(ret.get('monthly_investment_retirement', 0))],
@@ -1056,27 +1173,60 @@ class FinancialReportGenerator:
             score_data.append(["TOTAL SCORE", "", f"{result.financial_health_score}/100"])
             add_table("12. Financial Health Score", score_data)
 
+        # 13. Overall Conclusion
+        if not profile.exclude_ai and result.ai_analysis and 'overall_conclusion' in result.ai_analysis:
+            doc.add_heading("13. OVERALL CONCLUSION", level=1)
+            conc = result.ai_analysis['overall_conclusion']
+            conc = re.sub(r'<[^>]*>', '', conc)
+            
+            sections = FinancialReportGenerator._parse_professional_text(conc)
+            for sec in sections:
+                if sec['type'] == 'header':
+                    doc.add_heading(sec['content'], level=2)
+                else:
+                    doc.add_paragraph(sec['content'])
+            doc.add_page_break()
+
         # 14. Disclaimer
-        doc.add_heading("14. Disclaimer", level=1)
-        doc.add_paragraph(profile.disclaimer_text or "Disclaimer content...")
+        doc.add_heading("14. DISCLAIMER", level=1)
+        disc = profile.disclaimer_text or "This report is generated based on data provided by the client..."
+        doc.add_paragraph(disc)
+        doc.add_paragraph()
         
         # 15. Discussion Notes
-        doc.add_heading("15. Discussion Notes", level=1)
+        doc.add_heading("15. DISCUSSION NOTES", level=1)
         if profile.discussion_notes:
             doc.add_paragraph(profile.discussion_notes)
         else:
-            # Add blank space
-            for _ in range(10):
-                doc.add_paragraph("")
+            for _ in range(10): doc.add_paragraph("__________________________________________________________________")
+        
+        doc.add_paragraph()
         
         # 16. Signatures
-        doc.add_page_break()
         doc.add_heading("16. Signatures", level=1)
         doc.add_paragraph()
         doc.add_paragraph("__________________________            __________________________")
         doc.add_paragraph("Signature of Client                   Signature of IA")
         doc.add_paragraph(f"Date: {datetime.now().strftime('%d %B, %Y')}            Date: {datetime.now().strftime('%d %B, %Y')}")
         doc.add_paragraph()
+
+        # Add Page Footer
+        section = doc.sections[0]
+        footer = section.footer
+        f_p = footer.paragraphs[0] if footer.paragraphs else footer.add_paragraph()
+        f_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        # Resolve data
+        prepared_by = ia_name or (profile.client.advisor_name if hasattr(profile, 'client') and profile.client else 'INVESTMENT ADVISOR')
+        ia_reg_no = profile.client.advisor_registration_number if hasattr(profile, 'client') and profile.client else 'N/A'
+        
+        footer_parts = [f"Prepared by: {prepared_by}", f"Entity: {ia_name or 'N/A'}", f"Reg No: {ia_reg_no}"]
+        footer_text = " | ".join(footer_parts)
+        
+        f_run = f_p.add_run(footer_text)
+        f_run.font.size = Pt(8)
+        f_run.font.color.rgb = RGBColor(0x80, 0x80, 0x80)
+        f_run.italic = True
 
         buffer = io.BytesIO()
         doc.save(buffer)

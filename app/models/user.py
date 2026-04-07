@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID, INET
 
 from app.database.base import Base
+from app.core.timezone import get_now_ist
 
 class User(Base):
     __tablename__ = "users"
@@ -15,29 +16,61 @@ class User(Base):
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
 
     tenant = relationship("Tenant", lazy="joined")
+    staff_profile = relationship("StaffProfile", back_populates="user", uselist=False, cascade="all, delete-orphan")
 
     @property
     def company_name(self) -> str:
+        """Proxy company name from the associated Tenant."""
         return self.tenant.name if self.tenant else ""
+
+    @property
+    def is_profile_completed(self) -> bool:
+        """Proxy profile completion status from the associated Tenant."""
+        return self.tenant.is_profile_completed if self.tenant else False
+
+    @property
+    def max_client_permit(self) -> int:
+        """Proxy client limit from the associated Tenant."""
+        return self.tenant.max_client_permit if self.tenant else 5
+
+    @property
+    def plan_expiry_date(self) -> Optional[str]:
+        """Proxy plan expiry from the associated Tenant as ISO string."""
+        if self.tenant and self.tenant.plan_expiry_date:
+            return self.tenant.plan_expiry_date.isoformat()
+        return None
 
     email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     email_normalized: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
-    email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
 
     phone_number: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     phone_verified: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    password_hash: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     role: Mapped[str] = mapped_column(String(50), default="user")
     status: Mapped[str] = mapped_column(String(50), default="active")
 
-    two_factor_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False) # Renamed from two_factor_enabled
+    mfa_secret: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     
     failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     
-    last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     last_login_ip = mapped_column(INET, nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    reset_token: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    reset_token_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    
+    verification_token: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    verify_token_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    
+    refresh_token: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    refresh_token_version: Mapped[int] = mapped_column(Integer, default=1)
+    
+    password_changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=get_now_ist)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=get_now_ist)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=get_now_ist, onupdate=get_now_ist)
