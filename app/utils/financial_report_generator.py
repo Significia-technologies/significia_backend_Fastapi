@@ -478,7 +478,7 @@ class FinancialReportGenerator:
             elements.append(Spacer(1, 12))
 
         # 4. HLV
-        elements.append(Paragraph('4. Human Life Value Analysis', section_style))
+        elements.append(Paragraph('4. Indicative Human Life Value Analysis', section_style))
         hlv = result.hlv_data
         hlv_info = [
             ['Description', 'Value (Rs)'],
@@ -524,13 +524,13 @@ class FinancialReportGenerator:
             elements.append(Spacer(1, 6))
 
         # 6. Retirement
-        elements.append(Paragraph('6. Retirement Corpus Analysis', section_style))
+        elements.append(Paragraph('6. Indicative Retirement Corpus Analysis', section_style))
         ret = result.calculations
         ret_info = [
             ['Description', 'Value (Rs)'],
             ['Retirement Corpus Needed', format_number(ret.get('retirement_corpus_at_retirement'))],
             ['Net Corpus Needed', format_number(ret.get('net_retirement_corpus_needed'))],
-            ['Retirement Readiness', f"{ret.get('retirement_readiness', 0)}%"],
+            # ['Retirement Readiness', f"{ret.get('retirement_readiness', 0)}%"],
         ]
         t = Table(ret_info, colWidths=[300, 200])
         t.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.grey), ('GRID', (0,0), (-1,-1), 1, colors.black)]))
@@ -547,7 +547,7 @@ class FinancialReportGenerator:
 
         # 7. Cash Flow Table
         if result.cash_flow_analysis:
-            elements.append(Paragraph('7. Retirement Cash Flow Analysis', section_style))
+            elements.append(Paragraph('7. Illustrative Retirement Cash Flow Analysis', section_style))
             cf = result.cash_flow_analysis
             cf_data = [['Year', 'Age', 'Opening Bal (Rs)', 'Growth (Rs)', 'Withdrawal (Rs)', 'Closing Bal (Rs)']]
             for row in result.cash_flow_analysis:
@@ -567,7 +567,7 @@ class FinancialReportGenerator:
             ['Education Today Value (Rs)', format_number(result.calculations.get('child_education_corpus_today', 0))],
             ['Education Future Needed (Rs)', format_number(result.calculations.get('child_education_future_needed', 0))],
             ['Education Net Corpus (Rs)', format_number(result.calculations.get('education_net_corpus', 0))],
-            ['Education Monthly Investment (Rs)', format_number(result.calculations.get('monthly_investment_education', 0))],
+            ['Indicative Monthly Contribution (Rs)', format_number(result.calculations.get('monthly_investment_education', 0))],
         ]
         t = Table(edu_info, colWidths=[300, 200])
         t.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.lightgrey), ('GRID', (0,0), (-1,-1), 1, colors.black)]))
@@ -578,7 +578,7 @@ class FinancialReportGenerator:
             ['Marriage Today Value (Rs)', format_number(result.calculations.get('marriage_corpus_today', 0))],
             ['Marriage Future Needed (Rs)', format_number(result.calculations.get('marriage_future_needed', 0))],
             ['Marriage Net Corpus (Rs)', format_number(result.calculations.get('marriage_net_corpus', 0))],
-            ['Marriage Monthly Investment (Rs)', format_number(result.calculations.get('monthly_investment_marriage', 0))],
+            ['Indicative Monthly Contribution (Rs)', format_number(result.calculations.get('monthly_investment_marriage', 0))],
         ]
         t = Table(marr_info, colWidths=[300, 200])
         t.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.lightgrey), ('GRID', (0,0), (-1,-1), 1, colors.black)]))
@@ -586,11 +586,11 @@ class FinancialReportGenerator:
         elements.append(Spacer(1, 12))
 
         # 9. Emergency Fund Analysis
-        elements.append(Paragraph('9. Emergency Fund Analysis', section_style))
+        elements.append(Paragraph('9. Indicative Emergency Fund Analysis', section_style))
         em_info = [
             ['Emergency Fund Needed (6 months) (Rs)', format_number(result.calculations.get('emergency_fund_needed', 0))],
             ['Shortfall (Rs)', format_number(result.calculations.get('emergency_fund_shortfall', 0))],
-            ['Monthly Investment Required (Rs)', format_number(result.calculations.get('monthly_investment_emergency', 0))],
+            ['Indicative Monthly Contribution Required (Rs)', format_number(result.calculations.get('monthly_investment_emergency', 0))],
         ]
         t = Table(em_info, colWidths=[300, 200])
         t.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.lightgrey), ('GRID', (0,0), (-1,-1), 1, colors.black)]))
@@ -598,9 +598,9 @@ class FinancialReportGenerator:
         elements.append(Spacer(1, 12))
 
         # 10. Summary Table
-        elements.append(Paragraph('10. Monthly Investment Summary', section_style))
+        elements.append(Paragraph('10. Indicative Monthly Contribution Summary', section_style))
         inv_data = [
-            ['Investment Goal', 'Monthly Investment', 'Months'],
+            ['Investment Goal', 'Monthly Contribution', 'Months'],
             ['Retirement', format_currency(ret.get('monthly_investment_retirement')), str(int(ret.get('years_to_retirement', 0)*12))],
             ['Education', format_currency(ret.get('monthly_investment_education')), str(int(profile.assumptions.get('education_years', 0)*12))],
             ['Marriage', format_currency(ret.get('monthly_investment_marriage')), str(int(profile.assumptions.get('marriage_years', 0)*12))],
@@ -623,24 +623,9 @@ class FinancialReportGenerator:
         elements.append(t)
         elements.append(Spacer(1, 12))
 
-        # 12. Financial Health Score
-        elements.append(Paragraph('12. Financial Health Score', section_style))
-        score_data = [['Component', 'Status/Value', 'Points Awarded']]
-        for component, status, points in result.calculations.get('financial_health_score_details', []):
-            score_data.append([component, str(status), str(points)])
-        score_data.append(['TOTAL SCORE', '', f"{result.financial_health_score}/100"])
-        t = Table(score_data, colWidths=[200, 200, 100])
-        t.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), colors.grey),
-            ('FONTNAME', (0,-1), (-1,-1), 'Helvetica-Bold'),
-            ('GRID', (0,0), (-1,-1), 1, colors.black)
-        ]))
-        elements.append(t)
-        elements.append(Spacer(1, 12))
-
-        # 13. Conclusion
+        # 12. Conclusion
         if not profile.exclude_ai and result.ai_analysis and 'overall_conclusion' in result.ai_analysis:
-            elements.append(Paragraph('13. OVERALL CONCLUSION', section_style))
+            elements.append(Paragraph('12. OVERALL CONCLUSION', section_style))
             conc = result.ai_analysis['overall_conclusion']
             conc = re.sub(r'<[^>]*>', '', conc)
             
@@ -655,15 +640,15 @@ class FinancialReportGenerator:
             
             elements.append(Spacer(1, 20))
 
-        # 14. Disclaimer
+        # 13. Disclaimer
         elements.append(Paragraph("", normal_style))
-        elements.append(Paragraph('14. DISCLAIMER', section_style))
+        elements.append(Paragraph('13. DISCLAIMER', section_style))
         disc = profile.disclaimer_text or "This report is generated based on data provided by the client..."
         elements.append(Paragraph(disc, normal_style))
         elements.append(Spacer(1, 40))
 
-        # 15. Discussion Notes
-        elements.append(Paragraph('15. DISCUSSION NOTES', section_style))
+        # 14. Discussion Notes
+        elements.append(Paragraph('14. DISCUSSION NOTES', section_style))
         if profile.discussion_notes:
             elements.append(Paragraph(profile.discussion_notes, normal_style))
         else:
@@ -671,9 +656,9 @@ class FinancialReportGenerator:
             elements.append(Spacer(1, 200))
         elements.append(Spacer(1, 40))
 
-        # 16. Signatures (Very last)
+        # 15. Signatures (Very last)
         elements.append(Spacer(1, 10))
-        elements.append(Paragraph('16. SIGNATURES', section_style))
+        elements.append(Paragraph('15. SIGNATURES', section_style))
         elements.append(Spacer(1, 40))
         sig_data = [
             ["__________________________", "__________________________"],
