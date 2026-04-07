@@ -26,6 +26,12 @@ from app.services.questionnaire_constants import QUESTIONNAIRE_DATA
 from app.services.risk_profile_service import SCORING_RULES
 from app.utils.encryption import decrypt_string
 
+DEFAULT_RISK_DISCLAIMER = """This risk profile analysis report is generated based on data and assumptions provided by the Investment Adviser (RIA)/ Financial Advisor. This report provides computational and illustrative financial analysis based on inputs and assumptions provided by the Investment Adviser and/or client. It does not constitute investment advice, recommendation, or opinion on any investment products, strategies, or asset allocation. Any advisory services, interpretation, or recommendations are provided separately by the Investment Adviser. This report should be read in conjunction with advisory services provided separately by the Investment Adviser.
+This report is for information and illustrative purposes only and does not constitute investment advice, insurance recommendation, or financial planning advice.
+All projections and calculations are based on assumptions and are not guaranteed. Actual results may vary due to market conditions and other factors beyond the scope of this analysis.
+The Investment Adviser is responsible for reviewing, interpreting, and validating the data, assumptions, and outputs of this report.
+This document does not constitute legal or tax advice."""
+
 def resolve_logo_path(logo_path: Optional[str]) -> Optional[str]:
     """Try multiple strategies to find the logo file on disk, matching financial_report_generator.py logic."""
     if not logo_path:
@@ -878,6 +884,15 @@ class ReportService:
             notes_html = assessment.discussion_notes.replace('\n', '<br/>')
             story.append(Paragraph(notes_html, normal_style))
 
+        # 6a. Disclaimer Section
+        story.append(Spacer(1, 20))
+        story.append(Paragraph("DISCLAIMER", bold_style))
+        story.append(Paragraph(DEFAULT_RISK_DISCLAIMER, normal_style))
+        
+        if questionnaire.disclaimer:
+            story.append(Spacer(1, 10))
+            story.append(Paragraph(questionnaire.disclaimer, normal_style))
+
         # 7. Signature Section
         story.append(Spacer(1, 40))
         sig_date = assessment.submitted_at.strftime("%Y-%m-%d")
@@ -1044,6 +1059,17 @@ class ReportService:
         if assessment.discussion_notes:
             doc.add_paragraph().add_run("DISCUSSION NOTES:").bold = True
             doc.add_paragraph(assessment.discussion_notes)
+
+        # Disclaimer Section
+        doc.add_paragraph()
+        p = doc.add_paragraph()
+        run = p.add_run("DISCLAIMER: ")
+        run.bold = True
+        doc.add_paragraph(DEFAULT_RISK_DISCLAIMER)
+        
+        if questionnaire.disclaimer:
+            doc.add_paragraph().add_run().add_break()
+            doc.add_paragraph(questionnaire.disclaimer)
 
         # Signatures
         doc.add_paragraph().add_run().add_break()
@@ -1263,9 +1289,12 @@ class ReportService:
             story.append(Spacer(1, 10))
 
         # 7. Disclaimer Section
+        story.append(Spacer(1, 20))
+        story.append(Paragraph("DISCLAIMER", bold_style))
+        story.append(Paragraph(DEFAULT_RISK_DISCLAIMER, normal_style))
+        
         if questionnaire.disclaimer:
-            story.append(Spacer(1, 20))
-            story.append(Paragraph("DISCLAIMER", bold_style))
+            story.append(Spacer(1, 10))
             story.append(Paragraph(questionnaire.disclaimer, normal_style))
             story.append(Spacer(1, 10))
 
@@ -1482,9 +1511,16 @@ class ReportService:
             story.append(Paragraph("DISCUSSION NOTES", heading_style))
             story.append(Paragraph(assessment_data['discussion_notes'].replace('\n', '<br/>'), normal_style))
 
+        # 8. Disclaimer Section
+        story.append(Spacer(1, 20))
+        story.append(Paragraph("DISCLAIMER", bold_style))
+        
+        # Always include the default disclaimer
+        story.append(Paragraph(DEFAULT_RISK_DISCLAIMER, ParagraphStyle('DiscDefault', parent=normal_style, fontSize=7, textColor=colors.grey)))
+        
+        # Include custom disclaimer if it exists
         if assessment_data.get('disclaimer_text'):
-            story.append(Spacer(1, 20))
-            story.append(Paragraph("DISCLAIMER", bold_style))
+            story.append(Spacer(1, 10))
             story.append(Paragraph(assessment_data['disclaimer_text'].replace('\n', '<br/>'), ParagraphStyle('Disc', parent=normal_style, fontSize=7, textColor=colors.grey)))
 
         # Signatures
