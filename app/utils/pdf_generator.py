@@ -4,10 +4,45 @@ from datetime import datetime, date
 from fpdf import FPDF
 from typing import List, Optional
 
+class BaseReportPDF(FPDF):
+    def __init__(self, *args, **kwargs):
+        self.advisor_name = kwargs.pop('advisor_name', "")
+        self.entity_name = kwargs.pop('entity_name', "")
+        self.ia_reg_no = kwargs.pop('ia_reg_no', "")
+        super().__init__(*args, **kwargs)
+        self.set_auto_page_break(auto=True, margin=15)
+        self.alias_nb_pages()
+
+    def footer(self):
+        # Position at 1.5 cm from bottom
+        self.set_y(-15)
+        self.set_font('helvetica', 'I', 7)
+        self.set_text_color(128, 128, 128)
+        
+        # Footer text: Prepared by, Entity, Reg No
+        footer_parts = []
+        if self.advisor_name: footer_parts.append(f"Prepared by: {self.advisor_name}")
+        if self.entity_name: footer_parts.append(f"Entity: {self.entity_name}")
+        if self.ia_reg_no: footer_parts.append(f"Reg No: {self.ia_reg_no}")
+        footer_text = " , ".join(footer_parts)
+        
+        # Determine width for footer text based on orientation
+        w = 230 if self.cur_orientation == 'L' else 150
+        
+        # Left side
+        self.cell(w, 10, footer_text, 0, 0, 'L')
+        
+        # Page number on the right
+        self.cell(0, 10, f'Page {self.page_no()} / {{nb}}', 0, 0, 'R')
+
 class IAPDFGenerator:
     @staticmethod
     def generate_ia_report(ia_data: dict, employees: List[dict], logo_path: Optional[str] = None) -> bytes:
-        pdf = FPDF()
+        pdf = BaseReportPDF(
+            advisor_name=ia_data.get('name_of_ia', ''),
+            entity_name=ia_data.get('name_of_entity', ''),
+            ia_reg_no=ia_data.get('ia_registration_number', '')
+        )
         pdf.add_page()
         
         # Set font
@@ -111,8 +146,11 @@ class IAPDFGenerator:
 class ClientPDFGenerator:
     @staticmethod
     def generate_client_report(client_data: dict, ia_data: Optional[dict] = None) -> bytes:
-        pdf = FPDF()
-        pdf.set_auto_page_break(auto=True, margin=5)
+        pdf = BaseReportPDF(
+            advisor_name=ia_data.get('name_of_ia') if ia_data else client_data.get('advisor_name'),
+            entity_name=ia_data.get('name_of_entity') if ia_data else None,
+            ia_reg_no=ia_data.get('ia_registration_number') if ia_data else client_data.get('advisor_registration_number')
+        )
         pdf.add_page()
         
         accent_grey = (248, 249, 250)
@@ -267,22 +305,16 @@ class ClientPDFGenerator:
             is_last = (i == len(sections) - 1)
             render_compact_section(title, fields, is_last=is_last)
 
-        pdf.set_y(-12)
-        pdf.set_x(margin)
-        pdf.set_draw_color(*primary_blue)
-        pdf.cell(0, 0.2, "", ln=True, fill=True)
-        pdf.set_font("helvetica", "B", 6)
-        pdf.set_text_color(*text_muted)
-        pdf.cell(0, 6, "OFFICIAL CLIENT RECORD", ln=False, align="L")
-        pdf.set_font("helvetica", "I", 6)
-        pdf.cell(0, 6, "Page 1 / 1", ln=False, align="R")
-
         return bytes(pdf.output())
 
     @staticmethod
     def generate_client_master_report(clients: List[dict], ia_data: Optional[dict] = None) -> bytes:
-        pdf = FPDF(orientation="L") 
-        pdf.set_auto_page_break(auto=True, margin=10)
+        pdf = BaseReportPDF(
+            orientation="L",
+            advisor_name=ia_data.get('name_of_ia') if ia_data else None,
+            entity_name=ia_data.get('name_of_entity') if ia_data else None,
+            ia_reg_no=ia_data.get('ia_registration_number') if ia_data else None
+        )
         pdf.add_page()
         
         accent_grey = (248, 249, 250)
