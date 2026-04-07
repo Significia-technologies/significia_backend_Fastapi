@@ -65,8 +65,9 @@ async def download_blank_form_pdf(
         # 1. Fetch IA Master info from Bridge for branding
         ia_data = await bridge.get("/ia-master")
         
-        # IA branding details now arrive as plain text from the Bridge
-        ia_name = ia_data.get("entity_name") or ia_data.get("name_of_ia") or "____________________________"
+        # IA branding details
+        ia_name = ia_data.get("name_of_ia") or "____________________________"
+        ia_entity = ia_data.get("entity_name") or "____________________________"
         ia_reg_no = ia_data.get("registration_no") or "________________"
         ia_logo_key = ia_data.get("ia_logo_path")
         
@@ -85,7 +86,9 @@ async def download_blank_form_pdf(
         class MockIA: pass
         ia = MockIA()
         ia.name_of_ia = ia_name
+        ia.name_of_entity = ia_entity
         ia.ia_registration_number = ia_reg_no
+        ia.ia_reg_no = ia_reg_no # Support multiple attribute names
 
         # 4. Generate PDF
         pdf_buffer = AssetAllocationReportUtils.generate_blank_pdf(ia, ia_logo_path=logo_path)
@@ -116,7 +119,8 @@ async def download_allocation_pdf(
         allocation_data, ia_data = await asyncio.gather(allocation_task, ia_task)
         
         # 2. Prepare branding - IA data comes plain from the Bridge
-        ia_name = ia_data.get("entity_name") or ia_data.get("name_of_ia")
+        ia_name = ia_data.get("name_of_ia")
+        ia_entity = ia_data.get("entity_name")
         ia_reg_no = ia_data.get("registration_no")
         ia_logo_key = ia_data.get("ia_logo_path")
         
@@ -180,7 +184,8 @@ async def download_allocation_docx(
         allocation_data, ia_data = await asyncio.gather(allocation_task, ia_task)
         
         # 2. Prepare mock objects - IA data comes plain from the Bridge
-        ia_name = ia_data.get("entity_name") or ia_data.get("name_of_ia")
+        ia_name = ia_data.get("name_of_ia")
+        ia_entity = ia_data.get("entity_name")
         ia_reg_no = ia_data.get("registration_no")
 
         class MockObject:

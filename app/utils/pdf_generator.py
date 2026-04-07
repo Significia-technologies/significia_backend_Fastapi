@@ -27,7 +27,9 @@ class BaseReportPDF(FPDF):
         footer_text = " , ".join(footer_parts)
         
         # Determine width for footer text based on orientation
-        w = 230 if self.cur_orientation == 'L' else 150
+        # Use getattr for compatibility between fpdf and fpdf2
+        orientation = getattr(self, 'cur_orientation', getattr(self, 'orientation', 'P'))
+        w = 230 if orientation == 'L' else 150
         
         # Left side
         self.cell(w, 10, footer_text, 0, 0, 'L')

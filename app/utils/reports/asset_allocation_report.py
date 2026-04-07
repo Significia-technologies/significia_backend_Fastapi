@@ -42,16 +42,41 @@ class AssetAllocationReportUtils:
 
     @staticmethod
     def add_page_number(canvas, doc):
-        """Add page number to each page in center footer"""
-        page_num = canvas.getPageNumber()
-        text = f"Page {page_num}"
+        """Add unified footer and page number to each page"""
+        canvas.saveState()
+        canvas.setFont("Helvetica-Oblique", 7)
+        canvas.setFillColor(colors.grey)
+        
+        # Resolve data from doc object
+        advisor_name = getattr(doc, 'advisor_name', '')
+        entity_name = getattr(doc, 'entity_name', '')
+        ia_reg_no = getattr(doc, 'ia_reg_no', '')
+        
+        footer_parts = []
+        if advisor_name: footer_parts.append(f"Prepared by: {advisor_name}")
+        if entity_name: footer_parts.append(f"Entity: {entity_name}")
+        if ia_reg_no: footer_parts.append(f"Reg No: {ia_reg_no}")
+        footer_text = " , ".join(footer_parts)
+        
+        # Footer text on left
+        canvas.drawString(0.5 * inch, 0.4 * inch, footer_text)
+        
+        # Page Number on right
         canvas.setFont("Helvetica", 8)
-        canvas.drawCentredString(letter[0] / 2, 0.75 * inch, text)
+        page_num = canvas.getPageNumber()
+        page_text = f"Page {page_num}"
+        canvas.drawRightString(letter[0] - 0.5 * inch, 0.4 * inch, page_text)
+        canvas.restoreState()
 
     @staticmethod
     def generate_blank_pdf(ia_master: Optional[IAMaster], ia_logo_path: Optional[str] = None) -> io.BytesIO:
         buffer = io.BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=1*inch)
+        doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.8*inch)
+        
+        # Attach footer data to doc
+        doc.advisor_name = getattr(ia_master, 'name_of_ia', None) if ia_master else None
+        doc.entity_name = getattr(ia_master, 'name_of_entity', None) if ia_master else None
+        doc.ia_reg_no = getattr(ia_master, 'ia_registration_number', None) if ia_master else None
         story = []
         styles = getSampleStyleSheet()
 
@@ -181,7 +206,12 @@ class AssetAllocationReportUtils:
     @staticmethod
     def generate_pdf(allocation: AssetAllocation, ia_master: Optional[IAMaster], ia_logo_path: Optional[str] = None) -> io.BytesIO:
         buffer = io.BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=1*inch)
+        doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.8*inch)
+        
+        # Attach footer data to doc
+        doc.advisor_name = getattr(ia_master, 'name_of_ia', None) if ia_master else None
+        doc.entity_name = getattr(ia_master, 'name_of_entity', None) if ia_master else None
+        doc.ia_reg_no = getattr(ia_master, 'ia_registration_number', None) if ia_master else None
         story = []
         styles = getSampleStyleSheet()
 
@@ -645,6 +675,22 @@ class AssetAllocationReportUtils:
         stable.cell(0, 1).text = "__________________________\n\nAdvisor Signature\n\nDate: ________________"
         stable.cell(1, 0).text = allocation.client.client_name
         stable.cell(1, 1).text = ia_master.name_of_ia if ia_master else "Investment Advisor"
+
+        # Add Page Footer
+        section = doc.sections[0]
+        footer = section.footer
+        f_p = footer.paragraphs[0] if footer.paragraphs else footer.add_paragraph()
+        f_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        prepared_by = getattr(ia_master, 'name_of_ia', 'INVESTMENT ADVISOR') if ia_master else 'INVESTMENT ADVISOR'
+        ia_entity = getattr(ia_master, 'name_of_entity', 'N/A') if ia_master else 'N/A'
+        ia_reg = getattr(ia_master, 'ia_registration_number', 'N/A') if ia_master else 'N/A'
+        
+        footer_text = f"Prepared by: {prepared_by} , Entity: {ia_entity} , Reg No: {ia_reg}"
+        f_run = f_p.add_run(footer_text)
+        f_run.font.size = Pt(8)
+        f_run.font.color.rgb = RGBColor(0x80, 0x80, 0x80)
+        f_run.italic = True
 
         buffer = io.BytesIO()
         doc.save(buffer)
