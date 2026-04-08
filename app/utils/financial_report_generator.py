@@ -895,6 +895,8 @@ class FinancialReportGenerator:
         elements.append(t_notes)
         elements.append(Spacer(1, 30))
 
+        elements.append(Paragraph("All inputs provided above have been discussed with and confirmed by the client", styles['Normal']))
+        elements.append(Spacer(1, 15))
         sig_data = [
             ["_________________________", "_________________________"],
             [Paragraph("<b>Client Signature</b>", label_style), Paragraph("<b>Advisor Signature</b>", label_style)],

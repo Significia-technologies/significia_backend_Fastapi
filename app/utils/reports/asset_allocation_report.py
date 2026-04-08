@@ -188,6 +188,8 @@ class AssetAllocationReportUtils:
         story.append(Paragraph("DISCLAIMER", heading_style))
         story.append(Paragraph(DEFAULT_ASSET_ALLOCATION_DISCLAIMER, styles['Italic']))
 
+        story.append(Paragraph("All inputs provided above have been discussed with and confirmed by the client", normal_label_style))
+        story.append(Spacer(1, 15))
         # Signatures
         story.append(Spacer(1, 0.5*inch))
         sig_data = [

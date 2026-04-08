@@ -256,6 +256,7 @@ def generate_client_blank_form(
     elements.append(t_docs)
     elements.append(Spacer(1, 15))
 
+
     # 9. SIGNATURES
     add_section_header("9. Declarations & Signatures")
     elements.append(Spacer(1, 10))
@@ -267,6 +268,9 @@ def generate_client_blank_form(
     )
     elements.append(Paragraph(declaration_text, normal_label_style))
     elements.append(Spacer(1, 40))
+
+    elements.append(Paragraph("All inputs provided above have been discussed with and confirmed by the client", normal_label_style))
+    elements.append(Spacer(1, 15))
     
     sig_data = [
         ["__________________________", "__________________________"],
