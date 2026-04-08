@@ -291,6 +291,92 @@ def check_and_update_profile_completion(db: Session, tenant: Tenant, bridge_data
 #  SEBI-SAFE COMPLIANCE — Bridge Proxy Endpoints
 # ══════════════════════════════════════════════════════════════════
 
+@router.get("/sebi/audit-trail/export")
+async def export_sebi_audit_trail(
+    format: str = "csv",
+    table_name: str = None,
+    record_id: str = None,
+    from_date: str = None,
+    to_date: str = None,
+    request: Request = None,
+    bridge: BridgeClient = Depends(get_bridge_client),
+    current_user: Any = Depends(get_current_user),
+):
+    """
+    Export full SEBI audit trail as CSV or JSON.
+    Supports date range filtering (from_date, to_date as YYYY-MM-DD)
+    and table/record filtering.
+    """
+    from app.utils.reports.audit_trail_report import AuditTrailReportGenerator
+
+    try:
+        # 1. Fetch bulk audit data from Bridge
+        params = {}
+        if table_name:
+            params["table_name"] = table_name
+        if record_id:
+            params["record_id"] = record_id
+        if from_date:
+            params["from_date"] = from_date
+        if to_date:
+            params["to_date"] = to_date
+
+        export_data = await bridge.get("/sebi/audit-trail/export", params=params)
+
+        entries = export_data.get("entries", [])
+        filters = export_data.get("filters", {})
+
+        # 2. Fetch IA Master metadata for report header
+        ia_data = None
+        try:
+            ia_data = await bridge.get("/ia-master")
+        except Exception:
+            pass
+
+        # 3. Generate export file
+        if format.lower() == "json":
+            file_bytes = AuditTrailReportGenerator.generate_json(entries, filters, ia_data)
+            media_type = "application/json"
+        else:
+            file_bytes = AuditTrailReportGenerator.generate_csv(entries, filters, ia_data)
+            media_type = "text/csv"
+
+        filename = AuditTrailReportGenerator.get_filename(
+            format.lower() if format.lower() in ("csv", "json") else "csv",
+            from_date, to_date
+        )
+
+        # 4. Audit the export action
+        try:
+            await bridge.post("/sebi/audit", {
+                "action_type": "EXPORT",
+                "table_name": "audit_trail",
+                "record_id": "bulk_export",
+                "change_reason_type": "report_generation",
+                "change_reason_text": f"Audit Trail exported as {format.upper()} ({len(entries)} entries)",
+            }, headers={
+                "X-User-Id": str(current_user.id),
+                "X-User-IP": request.client.host if request and request.client else "0.0.0.0",
+                "X-User-Agent": request.headers.get("User-Agent", "Unknown") if request else "Unknown",
+            })
+        except Exception as e:
+            logger.warning(f"Failed to log audit export event: {e}")
+
+        return Response(
+            content=file_bytes,
+            media_type=media_type,
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}"
+            },
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Audit trail export failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to export audit trail")
+
+
 @router.get("/sebi/audit-trail")
 async def get_sebi_audit_trail(
     table_name: str = None,
