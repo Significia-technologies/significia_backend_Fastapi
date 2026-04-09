@@ -408,8 +408,9 @@ class FinancialReportGenerator:
         ins_data = [
             ['Insurance Type', 'Cover Amount (Rs)', 'Premium (Rs)'],
             ['Life Insurance', format_number(profile.insurance.get('life_cover', 0)), format_number(profile.insurance.get('life_premium', 0))],
-            ['Medical Cover', format_number(profile.insurance.get('medical_cover', 0)), format_number(profile.insurance.get('medical_premium', 0))],
-            ['Vehicle insurance', format_number(profile.insurance.get('vehicle_cover', 0)), format_number(profile.insurance.get('vehicle_premium', 0))],
+            ['Medical Cover', format_number(profile.insurance.get('med_cover', 0)), format_number(profile.insurance.get('med_premium', 0))],
+            ['Vehicle Insurance', format_number(profile.insurance.get('veh_cover', 0)), format_number(profile.insurance.get('veh_premium', 0))],
+            ['Other General Insurance', format_number(profile.insurance.get('other_cover', 0)), format_number(profile.insurance.get('other_premium', 0))],
         ]
         t = Table(ins_data, colWidths=[200, 150, 150])
         t.setStyle(TableStyle([
@@ -1054,8 +1055,9 @@ class FinancialReportGenerator:
         add_table("1.9 Insurance Coverage", [
             ["Type", "Coverage", "Premium"],
             ["Life", format_currency(ins.get('life_cover')), format_currency(ins.get('life_premium'))],
-            ["Medical", format_currency(ins.get('medical_cover')), format_currency(ins.get('medical_premium'))],
-            ["Vehicle", format_currency(ins.get('vehicle_cover')), format_currency(ins.get('vehicle_premium'))]
+            ["Medical", format_currency(ins.get('med_cover')), format_currency(ins.get('med_premium'))],
+            ["Vehicle", format_currency(ins.get('veh_cover')), format_currency(ins.get('veh_premium'))],
+            ["Other General", format_currency(ins.get('other_cover')), format_currency(ins.get('other_premium'))]
         ])
 
         # 2. Financial Assumptions

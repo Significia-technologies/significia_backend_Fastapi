@@ -263,7 +263,7 @@ class FinancialAnalysisService:
                     'step': 1,
                     'description': 'Future Medical Corpus Required at Retirement',
                     'formula': 'Medical Corpus at Retirement = Current Cover × (1 + Medical Inflation)^{years_to_retirement}',
-                    'calculation': f'Current Cover: Rs {insurance.get("medical_cover", 0):,}\nMedical Inflation: {assumptions.get("medical_inflation", 10)}%\nYears to Retirement: {calculations.get("years_to_retirement", 0)} years',
+                    'calculation': f'Current Cover: Rs {insurance.get("med_cover", 0):,}\nMedical Inflation: {assumptions.get("medical_inflation", 10)}%\nYears to Retirement: {calculations.get("years_to_retirement", 0)} years',
                     'result': f'Required at Retirement: Rs {calculations.get("medical_corpus_at_retirement", 0):,}',
                 },
                 {
