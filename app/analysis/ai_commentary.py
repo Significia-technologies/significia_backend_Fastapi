@@ -130,9 +130,6 @@ class SystemCommentaryGenerator:
             <h4 style="color: #854d0e;"><strong>OVERALL CONCLUSION</strong></h4>
             <h5><strong>FINANCIAL GOALS SUMMARY</strong></h5>
             <p>This analysis presents a comprehensive evaluation of financial objectives. Insurance protection evaluation indicates gaps of Rs {min(hlv_gap_income, hlv_gap_expense):,} based on selected methodology. Medical inflation at {medical_inflation}% annually versus general inflation at {inflation}% creates differential in healthcare purchasing power projections. Retirement corpus assessment shows gap of Rs {retirement_gap:,} requiring systematic monthly investments over {years_remaining:,} years. Child education (Rs {child_education_gap:,}) and marriage (Rs {child_marriage_gap:,}) gaps are presented with corresponding time horizons. Current Rs {net_worth:,} net worth and {savings_rate}% savings rate form the foundation for financial planning.</p>
- 
-            <h5><strong>KEY FINDINGS</strong></h5>
-            <p>Insurance protection gap is Rs {min(hlv_gap_income, hlv_gap_expense):,} . Medical inflation at {medical_inflation}% annually reflects projected healthcare cost impact based on assumptions. Retirement corpus gap of Rs {retirement_gap:,} is presented with {years_to_retirement} years available for accumulation. Child education (Rs {child_education_gap:,}) and marriage (Rs {child_marriage_gap:,}) goals are quantified with current assumptions.</p>
 
             <h5><strong>FINANCIAL POSITION OVERVIEW</strong></h5>
             <p>This analysis provides a structured overview of the current financial position. Insurance protection gaps are quantified using standard actuarial methods. Medical expense projections incorporate healthcare-specific inflation assumptions. Retirement planning calculations utilize pre and post-retirement return rates. Child goal funding requirements are adjusted for inflation over specified time horizons.</p>
