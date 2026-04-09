@@ -211,8 +211,16 @@ async def download_blank_risk_form_bridge(
     """Download a blank risk profile form via the Bridge."""
     try:
         # 1. Fetch IA Master and Questionnaire info from Bridge
-        ia_data = await bridge.get("/ia-master")
-        q_data = await bridge.get(f"/risk-questionnaires/{q_id}")
+        # We bypass Bridge questionnaire fetch for the system-default 'sample-form'
+        # because the Bridge database expects a UUID for lookups.
+        if q_id == "sample-form":
+            ia_data = await bridge.get("/ia-master")
+            q_data = None
+        else:
+            ia_data, q_data = await asyncio.gather(
+                bridge.get("/ia-master"),
+                bridge.get(f"/risk-questionnaires/{q_id}")
+            )
         
         # 2. Resolve Logo from Bridge storage
         logo_path = None
@@ -261,12 +269,19 @@ async def download_risk_assessment_pdf_bridge(
         if not assessment:
             raise HTTPException(status_code=404, detail="Assessment not found")
         
-        # 2. Fetch Client and IA data in parallel
+        # 2. Fetch Client, IA and Questionnaire data in parallel
         client_id = assessment.get("client_id")
+        q_id = assessment.get("questionnaire_id")
+        
         client_task = bridge.get(f"/clients/{client_id}")
         ia_task = bridge.get("/ia-master")
+        # Bypass Bridge fetch for legacy 'sample-form' ID
+        if q_id == "sample-form":
+            q_task = asyncio.sleep(0, result=None)
+        else:
+            q_task = bridge.get(f"/risk-questionnaires/{q_id}") if q_id else asyncio.sleep(0, result=None)
         
-        client_data, ia_data = await asyncio.gather(client_task, ia_task)
+        client_data, ia_data, q_data = await asyncio.gather(client_task, ia_task, q_task)
 
         # 3. Resolve Logo
         logo_path = None
@@ -283,7 +298,8 @@ async def download_risk_assessment_pdf_bridge(
             assessment_data=assessment,
             client_data=client_data,
             ia_data=ia_data,
-            ia_logo_override=logo_path
+            ia_logo_override=logo_path,
+            questionnaire_data=q_data
         )
 
         return Response(
@@ -305,11 +321,26 @@ async def download_risk_assessment_docx_bridge(
 ):
     """Download a completed risk assessment as DOCX via the Bridge."""
     try:
+        # 1. Fetch assessment data from Bridge
         assessment = await bridge.get(f"/risk-assessments/id/{assessment_id}")
-        client_data = await bridge.get(f"/clients/{assessment.get('client_id')}")
-        ia_data = await bridge.get("/ia-master")
+        if not assessment:
+            raise HTTPException(status_code=404, detail="Assessment not found")
+            
+        # 2. Fetch Client, IA and Questionnaire data in parallel
+        client_id = assessment.get("client_id")
+        q_id = assessment.get("questionnaire_id")
+        
+        client_task = bridge.get(f"/clients/{client_id}")
+        ia_task = bridge.get("/ia-master")
+        # Bypass Bridge fetch for legacy 'sample-form' ID
+        if q_id == "sample-form":
+            q_task = asyncio.sleep(0, result=None)
+        else:
+            q_task = bridge.get(f"/risk-questionnaires/{q_id}") if q_id else asyncio.sleep(0, result=None)
+        
+        client_data, ia_data, q_data = await asyncio.gather(client_task, ia_task, q_task)
 
-        # Resolve Logo
+        # 3. Resolve Logo
         logo_path = None
         ia_logo_key = ia_data.get("ia_logo_path")
         if ia_logo_key:
@@ -319,11 +350,13 @@ async def download_risk_assessment_docx_bridge(
                 logo_path = await resolve_logo_to_local_path(url_resp.get("url"), db)
             except: pass
 
+        # 4. Generate DOCX
         docx_buffer = ReportService.generate_risk_profile_docx_bridge(
             assessment_data=assessment,
             client_data=client_data,
             ia_data=ia_data,
-            ia_logo_override=logo_path
+            ia_logo_override=logo_path,
+            questionnaire_data=q_data
         )
 
         return Response(
