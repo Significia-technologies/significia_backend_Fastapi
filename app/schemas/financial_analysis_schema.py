@@ -150,6 +150,7 @@ class FinancialAnalysisCreate(BaseModel):
     disclaimer_text: Optional[str] = None
     discussion_notes: Optional[str] = None
     record_version_control_statement: Optional[str] = None
+    previous_profile_id: Optional[uuid.UUID] = None
 
 
 # ─── Response Schemas ───
@@ -162,6 +163,8 @@ class FinancialAnalysisSummary(BaseModel):
     calculations: Optional[dict] = None
     hlv_data: Optional[dict] = None
     financial_health_score: int = 0
+    version_number: Optional[int] = 1
+    root_profile_id: Optional[uuid.UUID] = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -180,6 +183,9 @@ class FinancialAnalysisResponse(BaseModel):
     cash_flow_analysis: Optional[List[dict]] = None
     ai_analysis: Optional[dict] = None
     financial_health_score: int
+    version_number: Optional[int] = 1
+    parent_profile_id: Optional[uuid.UUID] = None
+    root_profile_id: Optional[uuid.UUID] = None
 
     # Profile snapshot
     occupation: Optional[str] = None

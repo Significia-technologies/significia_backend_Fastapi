@@ -131,6 +131,9 @@ async def create_analysis_bridge(
                 if isinstance(child.get("dob"), (date, date)):
                     child["dob"] = child["dob"].isoformat()
 
+        if "previous_profile_id" in profile_data:
+            profile_data["parent_profile_id"] = profile_data.pop("previous_profile_id")
+
         profile_resp = await bridge.post("/financial-analysis/profiles", profile_data)
         profile_id = profile_resp.get("id")
         if not profile_id:
@@ -172,7 +175,6 @@ async def list_analyses_bridge(
     path = f"/financial-analysis/profiles/{client_id}" if client_id else "/financial-analysis/profiles"
     return await bridge.get(path, params=params)
 
-
 @router.get("/bridge/analysis/{id}", response_model=dict)
 async def get_analysis_bridge(
     id: str,
@@ -197,6 +199,18 @@ async def get_analysis_bridge(
         }
         
     return result
+
+
+@router.get("/bridge/analysis/profiles/id/{profile_id}", response_model=dict)
+async def get_profile_bridge(
+    profile_id: str,
+    bridge: BridgeClient = Depends(get_bridge_client),
+):
+    """Fetch a specific profile snapshot from the Bridge by ID."""
+    profile = await bridge.get(f"/financial-analysis/profiles/id/{profile_id}")
+    if not profile:
+        raise HTTPException(404, f"Financial profile not found for ID: {profile_id}")
+    return profile
 
 
 def dict_to_obj(d, preserve_keys=None):
