@@ -576,6 +576,15 @@ class FinancialReportGenerator:
             t = Table(cf_data, colWidths=[40, 40, 100, 100, 100, 100])
             t.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.grey), ('FONTSIZE', (0,0), (-1,-1), 8), ('GRID', (0,0), (-1,-1), 0.5, colors.black)]))
             elements.append(t)
+            elements.append(Spacer(1, 6))
+
+            # AI Cash Flow Comments
+            if not profile.exclude_ai and result.ai_analysis and 'cash_flow_analysis' in result.ai_analysis:
+                elements.append(Paragraph('Insights (Cash Flow):', subsection_style))
+                for comment in result.ai_analysis['cash_flow_analysis']:
+                    clean_comment = comment.replace('AI Insight', 'Insight')
+                    elements.append(Paragraph(f"• {clean_comment}", normal_style))
+                elements.append(Spacer(1, 12))
 
         # 8. Child Goals
         elements.append(Paragraph('8. Child Goals Analysis', section_style))
@@ -1191,6 +1200,15 @@ class FinancialReportGenerator:
                 cf_data.append([str(row['year']), str(row['retirement_age_year']), format_number(row['opening_balance']), 
                                 format_number(row['investment_growth']), format_number(row['annual_withdrawal']), format_number(row['closing_balance'])])
             add_table("9. Retirement Cash Flow Analysis", cf_data)
+
+            # Cash Flow Insights
+            if not profile.exclude_ai and result.ai_analysis and 'cash_flow_analysis' in result.ai_analysis:
+                doc.add_heading("Insights (Cash Flow):", level=2)
+                for comment in result.ai_analysis['cash_flow_analysis']:
+                    clean_comment = comment.replace('AI Insight', 'Insight')
+                    clean_comment = re.sub(r'<[^>]*>', '', clean_comment)
+                    doc.add_paragraph(f"• {clean_comment}")
+                doc.add_paragraph()
 
         # 10. Child Goals Analysis
         doc.add_heading("10. Indicative Child Goals Analysis", level=1)
