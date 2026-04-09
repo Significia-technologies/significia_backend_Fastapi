@@ -162,19 +162,19 @@ class FinancialCalculator:
         allocated_investment_education = kwargs.get('allocated_investment_education', 0)
         allocated_investment_marriage = kwargs.get('allocated_investment_marriage', 0)
         land_building_value = kwargs.get('land_building_value', 0)
-        spouse_life_expectancy = int(kwargs.get('spouse_life_expectancy', assumptions.get('le_spouse', 85)))
+        spouse_life_expectancy = int(kwargs.get('spouse_life_expectancy', assumptions.get('le_spouse', 0)))
 
         # HLV Income Method
         hlv_income = FinancialCalculator.calculate_hlv_income_method(
-            annual_income, assumptions.get('retirement_age', 60), client_age,
-            assumptions.get('sol_hlv', 70), assumptions.get('pre_ret_rate', 12))
+            annual_income, assumptions.get('retirement_age', 0), client_age,
+            assumptions.get('sol_hlv', 0), assumptions.get('pre_ret_rate', 0))
 
-        years_considered_income = max(0, int(assumptions.get('retirement_age', 60)) - client_age)
+        years_considered_income = max(0, int(assumptions.get('retirement_age', 0)) - client_age)
 
         # HLV Expense Method
         hlv_expense = FinancialCalculator.calculate_hlv_expense_method(
             annual_expenses, spouse_life_expectancy, client_age,
-            assumptions.get('sol_hlv', 70), assumptions.get('inflation', 6))
+            assumptions.get('sol_hlv', 0), assumptions.get('inflation', 0))
 
         years_considered_expense = max(0, spouse_life_expectancy - client_age)
 
@@ -182,17 +182,20 @@ class FinancialCalculator:
         existing_financial_assets = max(
             0, total_assets - land_building_value - allocated_investment_education - allocated_investment_marriage)
 
-        # Net HLV = max(0, Gross HLV - Existing Assets + Liabilities - Life Cover)
-        additional_cover_income = max(
-            0, hlv_income - existing_financial_assets + current_liabilities - current_life_cover)
-        additional_cover_expense = max(
-            0, hlv_expense - existing_financial_assets + current_liabilities - current_life_cover)
+        # Adjusted HLV = Gross HLV - Existing Assets + Liabilities
+        adjusted_hlv_income = max(0, hlv_income - existing_financial_assets + current_liabilities)
+        adjusted_hlv_expense = max(0, hlv_expense - existing_financial_assets + current_liabilities)
 
-        net_hlv_income = additional_cover_income
-        net_hlv_expense = additional_cover_expense
+        # Net HLV (Final Gap) = Adjusted HLV - Current Life Cover
+        net_hlv_income = max(0, adjusted_hlv_income - current_life_cover)
+        net_hlv_expense = max(0, adjusted_hlv_expense - current_life_cover)
+
+        # Additional life cover needed (Legacy keys, same as net_hlv now)
+        additional_cover_income = net_hlv_income
+        additional_cover_expense = net_hlv_expense
 
         # Monthly investment for HLV cover
-        years_to_retirement = max(0, int(assumptions.get('retirement_age', 60)) - client_age)
+        years_to_retirement = max(0, int(assumptions.get('retirement_age', 0)) - client_age)
         monthly_investment_insurance_income = 0
         monthly_investment_insurance_expense = 0
         if years_to_retirement > 0:
@@ -213,6 +216,8 @@ class FinancialCalculator:
             'years_considered_income': int(years_considered_income),
             'years_considered_expense': int(years_considered_expense),
             'spouse_life_expectancy_used': int(spouse_life_expectancy),
+            'adjusted_hlv_income': int(adjusted_hlv_income),
+            'adjusted_hlv_expense': int(adjusted_hlv_expense),
             'net_hlv_income': int(net_hlv_income),
             'net_hlv_expense': int(net_hlv_expense),
             'additional_life_cover_needed_income': int(additional_cover_income),
@@ -226,8 +231,10 @@ class FinancialCalculator:
             'allocated_investment_education': int(allocated_investment_education),
             'allocated_investment_marriage': int(allocated_investment_marriage),
             'hlv_calculation_formula': 'NET HLV = max(0, Gross HLV - Existing Financial Assets + Current Liabilities - Current Life Insurance Cover)',
-            'income_method_explanation': f'Income Replacement Method: {years_considered_income} years (Retirement Age {assumptions.get("retirement_age", 60)} - Current Age {client_age})',
-            'expense_method_explanation': f'Expense Replacement Method: {years_considered_expense} years (Spouse Life Expectancy {spouse_life_expectancy} - Current Age {client_age})',
+            'adjusted_hlv_calculation_formula': 'ADJUSTED HLV = Gross HLV - Existing Financial Assets + Current Liabilities',
+            'income_method_explanation': f'Income Replacement Method: {years_considered_income} years (Retirement Age {assumptions.get("retirement_age", 0)} - Current Age {client_age})',
+            'expense_method_explanation': f'Expense Replacement Method: {years_considered_expense} years (Spouse Life Expectancy {assumptions.get("le_spouse", 0)} - Current Age {client_age})',
+            'sol_hlv': assumptions.get('sol_hlv', 0),
         }
 
     # ──────────────────────────────────────────────
@@ -287,6 +294,11 @@ class FinancialCalculator:
         medical_bonus_years = kwargs.get('medical_bonus_years', 0)
         medical_bonus_percentage = kwargs.get('medical_bonus_percentage', 0)
 
+        # Use strictly DB values
+        retirement_age = int(assumptions.get('retirement_age', 0))
+        life_expectancy = int(assumptions.get('le_spouse', 0))
+        medical_inflation = float(assumptions.get('medical_inflation', 0))
+
         (
             medical_corpus_today,
             medical_corpus_at_retirement,
@@ -297,18 +309,18 @@ class FinancialCalculator:
             balance_needed_at_life_expectancy,
         ) = FinancialCalculator.calculate_medical_corpus_requirements(
             current_medical_cover, client_age,
-            int(assumptions.get('retirement_age', 60)),
-            int(assumptions.get('le_client', 85)),
-            assumptions.get('medical_inflation', 10),
+            retirement_age,
+            life_expectancy,
+            medical_inflation,
             medical_bonus_years, medical_bonus_percentage)
 
         # Monthly investment for medical shortfall
-        years_to_retirement = max(0, int(assumptions.get('retirement_age', 60)) - client_age)
+        years_to_retirement = max(0, retirement_age - client_age)
         monthly_investment_medical_retirement = 0
         if years_to_retirement > 0 and balance_needed_at_retirement > 0:
             monthly_investment_medical_retirement = int(balance_needed_at_retirement / (years_to_retirement * 12))
 
-        years_to_life_expectancy = max(0, int(assumptions.get('le_client', 85)) - client_age)
+        years_to_life_expectancy = max(0, life_expectancy - client_age)
         monthly_investment_medical_life_expectancy = 0
         if years_to_life_expectancy > 0 and balance_needed_at_life_expectancy > 0:
             monthly_investment_medical_life_expectancy = int(
@@ -444,15 +456,24 @@ class FinancialCalculator:
         marriage_investment_pct = safe_float(kwargs.get('marriage_investment_pct', 0))
 
         # ── 1. RETIREMENT ──
-        retirement_corpus_at_retirement = FinancialCalculator.calculate_retirement_corpus_at_retirement(
-            annual_expenses, int(assumptions.get('retirement_age', 60)), client_age,
-            int(assumptions.get('le_client', 85)), assumptions.get('sol_ret', 80),
-            assumptions.get('inflation', 6), assumptions.get('post_ret_rate', 8))
+        # 1. RETIREMENT PARAMETERS
+        retirement_age = int(assumptions.get('retirement_age', 0))
+        life_expectancy = int(assumptions.get('le_client', 0))
+        inflation = float(assumptions.get('inflation', 0))
+        medical_inflation = float(assumptions.get('medical_inflation', 0))
+        pre_ret_rate = float(assumptions.get('pre_ret_rate', 0))
+        post_ret_rate = float(assumptions.get('post_ret_rate', 0))
+        sol_ret_percent = float(assumptions.get('sol_ret', 0))
 
-        years_to_retirement = max(0, int(assumptions.get('retirement_age', 60)) - client_age)
+        retirement_corpus_at_retirement = FinancialCalculator.calculate_retirement_corpus_at_retirement(
+            annual_expenses, retirement_age, client_age,
+            life_expectancy, sol_ret_percent,
+            inflation, post_ret_rate)
+
+        years_to_retirement = max(0, retirement_age - client_age)
 
         future_value_existing_savings = FinancialCalculator.calculate_future_value(
-            existing_retirement_savings, assumptions.get('pre_ret_rate', 12), years_to_retirement)
+            existing_retirement_savings, pre_ret_rate, years_to_retirement)
 
         net_retirement_corpus_needed = max(0, retirement_corpus_at_retirement - future_value_existing_savings)
 
@@ -656,7 +677,7 @@ class FinancialCalculator:
             'future_value_existing_savings': int(future_value_existing_savings),
             'net_retirement_corpus_needed': int(net_retirement_corpus_needed),
             'years_to_retirement': int(years_to_retirement),
-            'remaining_years': int(max(0, int(assumptions.get('le_client', 85)) - client_age)),
+            'remaining_years': int(max(0, int(assumptions.get('le_client', 0)) - client_age)),
             'monthly_investment_retirement': int(monthly_investment_retirement),
             'retirement_readiness': int(retirement_readiness),
 
@@ -699,4 +720,12 @@ class FinancialCalculator:
             'current_medical_cover': int(medical_results.get('current_medical_cover', 0)),
             'medical_bonus_years': int(medical_results.get('medical_bonus_years', 0)),
             'medical_bonus_percentage': float(medical_results.get('medical_bonus_percentage', 0)),
+            'sol_hlv': hlv_results.get('sol_hlv', 0),
+            'sol_ret': assumptions.get('sol_ret', 0),
+            'inflation': inflation,
+            'medical_inflation': medical_inflation,
+            'pre_ret_rate': assumptions.get('pre_ret_rate', 12),
+            'post_ret_rate': assumptions.get('post_ret_rate', 8),
+            'adjusted_hlv_income': int(hlv_results.get('adjusted_hlv_income', 0)),
+            'adjusted_hlv_expense': int(hlv_results.get('adjusted_hlv_expense', 0)),
         }

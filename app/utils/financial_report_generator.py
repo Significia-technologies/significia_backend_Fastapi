@@ -452,6 +452,10 @@ class FinancialReportGenerator:
             else:
                 val_str = str(int(v)) if float(v).is_integer() else str(v)
             ass_data.append([label, val_str])
+        
+        # Add Allocation Percentages to Assumptions
+        ass_data.append(['Allocation for Education Goal', f"{profile.education_investment_pct}%"])
+        ass_data.append(['Allocation for Marriage Goal', f"{profile.marriage_investment_pct}%"])
             
         t = Table(ass_data, colWidths=[300, 200])
         t.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.grey), ('GRID', (0,0), (-1,-1), 1, colors.black)]))
@@ -480,13 +484,19 @@ class FinancialReportGenerator:
         # 4. HLV
         elements.append(Paragraph('4. Indicative Human Life Value Analysis', section_style))
         hlv = result.hlv_data
+        adjusted_hlv_income = hlv.get('adjusted_hlv_income')
+        if adjusted_hlv_income is None:
+            adjusted_hlv_income = hlv.get('hlv_income_method', 0) - hlv.get('existing_financial_assets', 0) + hlv.get('current_liabilities', 0)
+            
         hlv_info = [
             ['Description', 'Value (Rs)'],
-            ['HLV (Income Replacement Method)', format_number(hlv.get('hlv_income_method'))],
-            ['HLV (Need Based Method)', format_number(hlv.get('hlv_expense_method'))],
-            ['Net HLV (Income)', format_number(hlv.get('net_hlv_income'))],
-            ['Additional Life Cover Needed (Income)', format_number(hlv.get('additional_life_cover_needed_income'))],
-            ['Current Life Cover', format_number(profile.insurance.get('life_cover', 0))],
+            ['HLV (Income Replacement Method)', format_number(hlv.get('hlv_income_method', 0))],
+            ['HLV (Need Based Method)', format_number(hlv.get('hlv_expense_method', 0))],
+            ['Existing Financial Assets', format_number(hlv.get('existing_financial_assets', 0))],
+            ['Current Liabilities', format_number(hlv.get('current_liabilities', 0))],
+            ['Adjusted HLV total requirements', format_number(adjusted_hlv_income)],
+            ['Current Life Cover', format_number(hlv.get('current_life_cover', 0))],
+            ['Net HLV (Total Requirement - Income)', format_number(hlv.get('net_hlv_income', 0))],
         ]
         t = Table(hlv_info, colWidths=[300, 200])
         t.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.grey), ('GRID', (0,0), (-1,-1), 1, colors.black)]))
@@ -530,6 +540,7 @@ class FinancialReportGenerator:
         ret_info = [
             ['Description', 'Value (Rs)'],
             ['Retirement Corpus Needed', format_number(ret.get('retirement_corpus_at_retirement'))],
+            ['Future Value of Existing Savings', format_number(ret.get('future_value_existing_savings'))],
             ['Net Corpus Needed', format_number(ret.get('net_retirement_corpus_needed'))],
             # ['Retirement Readiness', f"{ret.get('retirement_readiness', 0)}%"],
         ]
@@ -565,9 +576,10 @@ class FinancialReportGenerator:
         # 8. Child Goals
         elements.append(Paragraph('8. Child Goals Analysis', section_style))
         edu_info = [
-            ['Education Today Value (Rs)', format_number(result.calculations.get('child_education_corpus_today', 0))],
-            ['Education Future Needed (Rs)', format_number(result.calculations.get('child_education_future_needed', 0))],
-            ['Education Net Corpus (Rs)', format_number(result.calculations.get('education_net_corpus', 0))],
+            ['Education Expance current Value (Rs)', format_number(result.calculations.get('education_corpus_today', 0))],
+            ['Education Future corpus Needed (Rs)', format_number(result.calculations.get('education_future_needed', 0))],
+            ['Future value of current corpus allocated (Rs)', format_number(result.calculations.get('fv_allocated_education', 0))],
+            ['Education Net corpus required (Rs)', format_number(result.calculations.get('education_net_corpus', 0))],
             ['Indicative Monthly Contribution (Rs)', format_number(result.calculations.get('monthly_investment_education', 0))],
         ]
         t = Table(edu_info, colWidths=[300, 200])
@@ -576,9 +588,10 @@ class FinancialReportGenerator:
         elements.append(Spacer(1, 6))
 
         marr_info = [
-            ['Marriage Today Value (Rs)', format_number(result.calculations.get('marriage_corpus_today', 0))],
-            ['Marriage Future Needed (Rs)', format_number(result.calculations.get('marriage_future_needed', 0))],
-            ['Marriage Net Corpus (Rs)', format_number(result.calculations.get('marriage_net_corpus', 0))],
+            ['Marriage Expance Current Value (Rs)', format_number(result.calculations.get('marriage_corpus_today', 0))],
+            ['Marriage Expance Future corpus Needed (Rs)', format_number(result.calculations.get('marriage_future_needed', 0))],
+            ['Future value of current corpus allocated (Rs)', format_number(result.calculations.get('fv_allocated_marriage', 0))],
+            ['Marriage Net corpus required (Rs)', format_number(result.calculations.get('marriage_net_corpus', 0))],
             ['Indicative Monthly Contribution (Rs)', format_number(result.calculations.get('monthly_investment_marriage', 0))],
         ]
         t = Table(marr_info, colWidths=[300, 200])
@@ -586,47 +599,24 @@ class FinancialReportGenerator:
         elements.append(t)
         elements.append(Spacer(1, 12))
 
-        # 9. Emergency Fund Analysis
-        elements.append(Paragraph('9. Indicative Emergency Fund Analysis', section_style))
-        em_info = [
-            ['Emergency Fund Needed (6 months) (Rs)', format_number(result.calculations.get('emergency_fund_needed', 0))],
-            ['Shortfall (Rs)', format_number(result.calculations.get('emergency_fund_shortfall', 0))],
-            ['Indicative Monthly Contribution Required (Rs)', format_number(result.calculations.get('monthly_investment_emergency', 0))],
-        ]
-        t = Table(em_info, colWidths=[300, 200])
-        t.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.lightgrey), ('GRID', (0,0), (-1,-1), 1, colors.black)]))
-        elements.append(t)
-        elements.append(Spacer(1, 12))
+        
 
         # 10. Summary Table
-        elements.append(Paragraph('10. Indicative Monthly Contribution Summary', section_style))
+        elements.append(Paragraph('9. Indicative Monthly Contribution Summary', section_style))
         inv_data = [
             ['Investment Goal', 'Monthly Contribution', 'Months'],
             ['Retirement', format_currency(ret.get('monthly_investment_retirement')), str(int(ret.get('years_to_retirement', 0)*12))],
             ['Education', format_currency(ret.get('monthly_investment_education')), str(int(profile.assumptions.get('education_years', 0)*12))],
             ['Marriage', format_currency(ret.get('monthly_investment_marriage')), str(int(profile.assumptions.get('marriage_years', 0)*12))],
-            ['TOTAL (Income Method)', format_currency(ret.get('total_monthly_investment_income')), ''],
-            ['TOTAL (Expense Method)', format_currency(ret.get('total_monthly_investment_expense')), '']
+            ['TOTAL', format_currency(ret.get('monthly_investment_retirement', 0) + ret.get('monthly_investment_education', 0) + ret.get('monthly_investment_marriage', 0)), '']
         ]
         t = Table(inv_data, colWidths=[200, 150, 100])
-        t.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.grey), ('FONTNAME', (0,-2), (-1,-1), 'Helvetica-Bold'), ('GRID', (0,0), (-1,-1), 1, colors.black)]))
+        t.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.grey), ('FONTNAME', (0,-1), (-1,-1), 'Helvetica-Bold'), ('GRID', (0,0), (-1,-1), 1, colors.black)]))
         elements.append(t)
 
-        # 11. Investment Allocation
-        elements.append(Paragraph('11. Existing Investment Allocation(%)', section_style))
-        all_data = [
-            ['Goal', 'Allocation Percentage'],
-            ['Education Goal', f"{profile.education_investment_pct}%"],
-            ['Marriage Goal', f"{profile.marriage_investment_pct}%"],
-        ]
-        t = Table(all_data, colWidths=[250, 250])
-        t.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.grey), ('GRID', (0,0), (-1,-1), 1, colors.black)]))
-        elements.append(t)
-        elements.append(Spacer(1, 12))
-
-        # 12. Conclusion
+        # 10. Conclusion
         if not profile.exclude_ai and result.ai_analysis and 'overall_conclusion' in result.ai_analysis:
-            elements.append(Paragraph('12. OVERALL CONCLUSION', section_style))
+            elements.append(Paragraph('10. OVERALL CONCLUSION', section_style))
             conc = result.ai_analysis['overall_conclusion']
             conc = re.sub(r'<[^>]*>', '', conc)
             
@@ -641,15 +631,15 @@ class FinancialReportGenerator:
             
             elements.append(Spacer(1, 20))
 
-        # 13. Disclaimer
+        # 11. Disclaimer
         elements.append(Paragraph("", normal_style))
-        elements.append(Paragraph('13. DISCLAIMER', section_style))
+        elements.append(Paragraph('11. DISCLAIMER', section_style))
         disc = profile.disclaimer_text or "This report is generated based on data provided by the client..."
         elements.append(Paragraph(disc, normal_style))
         elements.append(Spacer(1, 40))
 
-        # 14. Discussion Notes
-        elements.append(Paragraph('14. DISCUSSION NOTES', section_style))
+        # 12. Discussion Notes
+        elements.append(Paragraph('12. DISCUSSION NOTES', section_style))
         if profile.discussion_notes:
             elements.append(Paragraph(profile.discussion_notes, normal_style))
         else:
@@ -657,9 +647,9 @@ class FinancialReportGenerator:
             elements.append(Spacer(1, 200))
         elements.append(Spacer(1, 40))
 
-        # 15. Signatures (Very last)
+        # 13. Signatures (Very last)
         elements.append(Spacer(1, 10))
-        elements.append(Paragraph('15. SIGNATURES', section_style))
+        elements.append(Paragraph('13. SIGNATURES', section_style))
         elements.append(Spacer(1, 40))
         sig_data = [
             ["__________________________", "__________________________"],
@@ -1048,7 +1038,25 @@ class FinancialReportGenerator:
                     label = other.get('label', 'Other') if isinstance(other, dict) else getattr(other, 'label', 'Other')
                     lib_data.append([label, format_currency(amt)])
                     total_lib += amt
-        add_table("1.7 Liabilities", lib_data) # Added this line, it was missing in original code.
+        lib_data.append(["TOTAL ANNUAL LIABILITIES", format_currency(total_lib)])
+        add_table("1.7 Liabilities", lib_data)
+
+         # 1.8 Net Worth Summary
+        add_table("1.8 Net Worth Summary", [
+            ["Particulars", "Value"],
+            ["Total Assets", format_currency(total_ast)],
+            ["Total Liabilities", format_currency(total_lib)],
+            ["NET WORTH", format_currency(total_ast - total_lib)]
+        ])
+
+        # 1.9 Insurance
+        ins = profile.insurance
+        add_table("1.9 Insurance Coverage", [
+            ["Type", "Coverage", "Premium"],
+            ["Life", format_currency(ins.get('life_cover')), format_currency(ins.get('life_premium'))],
+            ["Medical", format_currency(ins.get('medical_cover')), format_currency(ins.get('medical_premium'))],
+            ["Vehicle", format_currency(ins.get('vehicle_cover')), format_currency(ins.get('vehicle_premium'))]
+        ])
 
         # 2. Financial Assumptions
         label_map = {
@@ -1077,19 +1085,18 @@ class FinancialReportGenerator:
             else:
                 val_str = str(int(v)) if float(v).is_integer() else str(v)
             ass_data.append([label, val_str])
+        
+        # Add Allocation Percentages to Assumptions
+        ass_data.append(['Allocation for Education Goal', f"{profile.education_investment_pct}%"])
+        ass_data.append(['Allocation for Marriage Goal', f"{profile.marriage_investment_pct}%"])
+            
         add_table("2. Financial Assumptions", ass_data)
 
-        # 3. Net Worth Summary
-        add_table("3. Net Worth Summary", [
-            ["Particulars", "Value"],
-            ["Total Assets", format_currency(total_ast)],
-            ["Total Liabilities", format_currency(total_lib)],
-            ["NET WORTH", format_currency(total_ast - total_lib)]
-        ])
+       
 
-        # 4. Executive Summary & Insights
+        # 3. Executive Summary & Insights
         if not profile.exclude_ai and result.ai_analysis and 'executive_brief' in result.ai_analysis:
-            doc.add_heading("4. Executive Summary & Insights", level=1)
+            doc.add_heading("3. Executive Summary & Insights", level=1)
             brief = result.ai_analysis['executive_brief']
             brief = re.sub(r'<[^>]*>', '', brief)
             sections = FinancialReportGenerator._parse_professional_text(brief)
@@ -1100,38 +1107,74 @@ class FinancialReportGenerator:
                     doc.add_paragraph(sec['content'])
             doc.add_page_break()
 
-        # 5. Insurance
-        ins = profile.insurance
-        add_table("5. Insurance Coverage", [
-            ["Type", "Coverage", "Premium"],
-            ["Life", format_currency(ins.get('life_cover')), format_currency(ins.get('life_premium'))],
-            ["Medical", format_currency(ins.get('medical_cover')), format_currency(ins.get('medical_premium'))],
-            ["Vehicle", format_currency(ins.get('vehicle_cover')), format_currency(ins.get('vehicle_premium'))]
-        ])
+        
 
-        # 6. HLV
+        # 4. HLV
         hlv = result.hlv_data
+        adjusted_hlv_income = hlv.get('adjusted_hlv_income')
+        if adjusted_hlv_income is None:
+            adjusted_hlv_income = hlv.get('hlv_income_method', 0) - hlv.get('existing_financial_assets', 0) + hlv.get('current_liabilities', 0)
+
         hlv_info = [
             ["Description", "Value (Rs)"],
-            ["HLV (Income Replacement Method)", format_number(hlv.get('hlv_income_method'))],
-            ["HLV (Need Based Method)", format_number(hlv.get('hlv_expense_method'))],
-            ["Net HLV (Income)", format_number(hlv.get('net_hlv_income'))],
-            ["Additional Life Cover Needed (Income)", format_number(hlv.get('additional_life_cover_needed_income'))],
-            ["Current Life Cover", format_number(profile.insurance.get('life_cover', 0))],
+            ["HLV (Income Replacement Method)", format_number(hlv.get('hlv_income_method', 0))],
+            ["HLV (Need Based Method)", format_number(hlv.get('hlv_expense_method', 0))],
+            ["Existing Financial Assets", format_number(hlv.get('existing_financial_assets', 0))],
+            ["Current Liabilities", format_number(hlv.get('current_liabilities', 0))],
+            ["Adjusted HLV total requirements", format_number(adjusted_hlv_income)],
+            ["Current Life Cover", format_number(hlv.get('current_life_cover', 0))],
+            ["Net HLV (Total Requirement)", format_number(hlv.get('net_hlv_income', 0))],
+            ["Additional HLV cover needed Income", format_number(hlv.get('additional_life_cover_needed_income', 0))],
         ]
-        add_table("6. Human Life Value Analysis", hlv_info)
+        add_table("4. Indicative Human Life Value Analysis", hlv_info)
 
-        # 7/8. Retirement & Medical
-        ret = result.calculations
+        # HLV Insights
+        if not profile.exclude_ai and result.ai_analysis and 'hlv_comments' in result.ai_analysis:
+            doc.add_heading("Insights (HLV):", level=2)
+            for comment in result.ai_analysis['hlv_comments']:
+                clean_comment = comment.replace('AI Insight', 'Insight')
+                clean_comment = re.sub(r'<[^>]*>', '', clean_comment)
+                doc.add_paragraph(f"• {clean_comment}")
+            doc.add_paragraph()
+
+        # 7. Medical Analysis
         med = result.medical_data
-        rm_info = [
+        med_info = [
+            ["Description", "Value (Rs)"],
+            ["Medical Corpus at Retirement", format_number(med.get('medical_corpus_at_retirement'))],
+            ["Projected Coverage accumulation", format_number(med.get('total_coverage_at_retirement'))],
+            ["Balance Needed at Retirement", format_number(med.get('balance_needed_at_retirement'))],
+            ["Medical Corpus at Life Expectancy", format_number(med.get('medical_corpus_at_life_expectancy'))],
+        ]
+        add_table("7. Medical Analysis", med_info)
+
+        # Medical Insights
+        if not profile.exclude_ai and result.ai_analysis and 'medical_comments' in result.ai_analysis:
+            doc.add_heading("Insights (Medical):", level=2)
+            for comment in result.ai_analysis['medical_comments']:
+                clean_comment = comment.replace('AI Insight', 'Insight')
+                clean_comment = re.sub(r'<[^>]*>', '', clean_comment)
+                doc.add_paragraph(f"• {clean_comment}")
+            doc.add_paragraph()
+
+        # 8. Retirement Analysis
+        ret = result.calculations
+        ret_info = [
             ["Description", "Value (Rs)"],
             ["Retirement Corpus Needed", format_number(ret.get('retirement_corpus_at_retirement'))],
+            ["Future Value of Existing Savings", format_number(ret.get('future_value_existing_savings'))],
             ["Net Corpus Needed", format_number(ret.get('net_retirement_corpus_needed'))],
-            ["Medical Corpus at Retirement", format_number(med.get('medical_corpus_at_retirement'))],
-            ["Retirement Readiness", f"{ret.get('retirement_readiness', 0)}%"]
         ]
-        add_table("7/8. Retirement & Medical Analysis", rm_info)
+        add_table("8. Retirement Analysis", ret_info)
+
+        # Retirement Insights
+        if not profile.exclude_ai and result.ai_analysis and 'retirement_comments' in result.ai_analysis:
+            doc.add_heading("Insights (Retirement):", level=2)
+            for comment in result.ai_analysis['retirement_comments']:
+                clean_comment = comment.replace('AI Insight', 'Insight')
+                clean_comment = re.sub(r'<[^>]*>', '', clean_comment)
+                doc.add_paragraph(f"• {clean_comment}")
+            doc.add_paragraph()
 
         # 9. Cash Flow
         if result.cash_flow_analysis:
@@ -1141,18 +1184,43 @@ class FinancialReportGenerator:
                                 format_number(row['investment_growth']), format_number(row['annual_withdrawal']), format_number(row['closing_balance'])])
             add_table("9. Retirement Cash Flow Analysis", cf_data)
 
-        # 10. Monthly Investment Summary
+        # 10. Child Goals Analysis
+        doc.add_heading("10. Indicative Child Goals Analysis", level=1)
+        edu_info = [
+            ["Particulars", "Details (Rs)"],
+            ['Education expance in current value', format_number(result.calculations.get('education_corpus_today', 0))],
+            ['Education expance Future corpus Needed', format_number(result.calculations.get('education_future_needed', 0))],
+            ['Future value of current corpus allocated', format_number(result.calculations.get('fv_allocated_education', 0))],
+            ['Education Net Corpus', format_number(result.calculations.get('education_net_corpus', 0))],
+            ['Indicative Monthly Contribution', format_number(result.calculations.get('monthly_investment_education', 0))],
+        ]
+        add_table("10.1 Education Goal", edu_info)
+        doc.add_paragraph()
+
+        marr_info = [
+            ["Particulars", "Details (Rs)"],
+            ['Marriage Expance Current Value', format_number(result.calculations.get('marriage_corpus_today', 0))],
+            ['Marriage Expance Future corpus Needed', format_number(result.calculations.get('marriage_future_needed', 0))],
+            ['Future value of current corpus allocated', format_number(result.calculations.get('fv_allocated_marriage', 0))],
+            ['Marriage Net corpus required', format_number(result.calculations.get('marriage_net_corpus', 0))],
+            ['Indicative Monthly Contribution', format_number(result.calculations.get('monthly_investment_marriage', 0))],
+        ]
+        add_table("10.2 Marriage Goal", marr_info)
+        doc.add_paragraph()
+
+      
+
+        # 11. Monthly Investment Summary
         sum_data = [
             ['Goal', 'Monthly Investment (Rs)'],
             ['Retirement', format_number(ret.get('monthly_investment_retirement', 0))],
             ['Education', format_number(ret.get('monthly_investment_education', 0))],
             ['Marriage', format_number(ret.get('monthly_investment_marriage', 0))],
-            ['TOTAL (Income Method)', format_number(ret.get('total_monthly_investment_income', 0))],
-            ['TOTAL (Expense Method)', format_number(ret.get('total_monthly_investment_expense', 0))],
+            ['TOTAL', format_number(ret.get('monthly_investment_retirement', 0) + ret.get('monthly_investment_education', 0) + ret.get('monthly_investment_marriage', 0))],
         ]
-        add_table("10. Monthly Investment Summary", sum_data)
+        add_table("11. Monthly Investment Summary", sum_data)
 
-        # 12. Health Score
+        # 12. Financial Health Score
         score_details = result.calculations.get('financial_health_score_details', [])
         if score_details:
             score_data = [["Component", "Status", "Points"]]

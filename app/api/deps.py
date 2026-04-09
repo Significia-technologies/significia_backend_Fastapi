@@ -327,6 +327,9 @@ async def get_current_client(
     since the Master no longer has a local ClientProfile SQLAlchemy model
     that's in sync with the Silo's direct connection.
     """
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+        
     try:
         payload = decode_token(token)
         client_id: str = payload.get("sub")
