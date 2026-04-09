@@ -449,14 +449,16 @@ class FinancialReportGenerator:
             if 'corpus' in k:
                 val_str = format_currency(v)
             elif 'rate' in k or 'inflation' in k or 'sol' in k:
-                val_str = f"{v}%"
+                val_str = f"{int(v)}%" if float(v).is_integer() else f"{v}%"
             else:
                 val_str = str(int(v)) if float(v).is_integer() else str(v)
             ass_data.append([label, val_str])
         
         # Add Allocation Percentages to Assumptions
-        ass_data.append(['Allocation for Education Goal', f"{profile.education_investment_pct}%"])
-        ass_data.append(['Allocation for Marriage Goal', f"{profile.marriage_investment_pct}%"])
+        edu_pct = f"{int(profile.education_investment_pct)}%" if float(profile.education_investment_pct).is_integer() else f"{profile.education_investment_pct}%"
+        marr_pct = f"{int(profile.marriage_investment_pct)}%" if float(profile.marriage_investment_pct).is_integer() else f"{profile.marriage_investment_pct}%"
+        ass_data.append(['Allocation for Education Goal', edu_pct])
+        ass_data.append(['Allocation for Marriage Goal', marr_pct])
             
         t = Table(ass_data, colWidths=[300, 200])
         t.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.grey), ('GRID', (0,0), (-1,-1), 1, colors.black)]))
@@ -1083,14 +1085,16 @@ class FinancialReportGenerator:
             if 'corpus' in k:
                 val_str = format_currency(v)
             elif 'rate' in k or 'inflation' in k or 'sol' in k:
-                val_str = f"{v}%"
+                val_str = f"{int(v)}%" if float(v).is_integer() else f"{v}%"
             else:
                 val_str = str(int(v)) if float(v).is_integer() else str(v)
             ass_data.append([label, val_str])
         
         # Add Allocation Percentages to Assumptions
-        ass_data.append(['Allocation for Education Goal', f"{profile.education_investment_pct}%"])
-        ass_data.append(['Allocation for Marriage Goal', f"{profile.marriage_investment_pct}%"])
+        edu_pct = f"{int(profile.education_investment_pct)}%" if float(profile.education_investment_pct).is_integer() else f"{profile.education_investment_pct}%"
+        marr_pct = f"{int(profile.marriage_investment_pct)}%" if float(profile.marriage_investment_pct).is_integer() else f"{profile.marriage_investment_pct}%"
+        ass_data.append(['Allocation for Education Goal', edu_pct])
+        ass_data.append(['Allocation for Marriage Goal', marr_pct])
             
         add_table("2. Financial Assumptions", ass_data)
 
