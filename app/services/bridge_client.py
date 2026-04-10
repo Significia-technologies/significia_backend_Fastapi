@@ -97,14 +97,23 @@ class BridgeClient:
                 logger.error(f"[Bridge OFFLINE] tenant={self.tenant_name} path={path}")
                 raise HTTPException(503, "Bridge is offline. Please contact your administrator.")
 
-    async def post(self, path: str, data: Any = None, headers: Optional[Dict] = None) -> Any:
-        """Send a POST request to the Bridge."""
+    async def post(self, path: str, data: Any = None, files: Optional[Dict] = None, headers: Optional[Dict] = None) -> Any:
+        """Send a POST request to the Bridge. Supports JSON or Multipart File uploads."""
         url = f"{self.base_url}{path}"
         logger.info(f"[Bridge POST] tenant={self.tenant_name} path={path}")
 
         async with httpx.AsyncClient(timeout=BRIDGE_TIMEOUT_SECONDS) as client:
             try:
-                response = await client.post(url, headers=self._merge_headers(headers), json=jsonable_encoder(data))
+                # If files are provided, we skip the application/json header
+                req_headers = self._merge_headers(headers, skip_content_type=files is not None)
+                
+                if files:
+                    # Multi-part form data
+                    response = await client.post(url, headers=req_headers, data=data, files=files)
+                else:
+                    # Standard JSON
+                    response = await client.post(url, headers=req_headers, json=jsonable_encoder(data))
+                    
                 return self._handle_response(response, path)
             except httpx.ConnectTimeout:
                 logger.error(f"[Bridge TIMEOUT] tenant={self.tenant_name} path={path}")

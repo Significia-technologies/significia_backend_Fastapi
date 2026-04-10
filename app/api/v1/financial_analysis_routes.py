@@ -578,6 +578,103 @@ async def download_analysis_pdf_bridge(
     )
 
 
+@router.post("/bridge/analysis/{id}/email")
+async def email_analysis_report(
+    id: str,
+    bridge: BridgeClient = Depends(get_bridge_client),
+    db: Session = Depends(get_db),
+):
+    """
+    Generate and email the Financial Analysis Report to the client.
+    Stateless: Generates report on-the-fly and pushes to Bridge for delivery.
+    """
+    # 1. Fetch analysis data & Client info
+    result_data, profile_data = await fetch_analysis_data(id, bridge)
+    if not profile_data:
+        raise HTTPException(404, "Financial profile not found")
+    if not result_data:
+        raise HTTPException(400, "Calculations not performed for this version.")
+
+    client = await bridge.get(f"/clients/{result_data.get('client_id')}")
+    client_name = client.get("client_name", "Valued Client")
+    client_email = client.get("email") or profile_data.get("email")
+
+    if not client_email:
+        raise HTTPException(400, "Client email not found. Please update client details first.")
+
+    # 2. Fetch IA master data for branding
+    ia_logo_path = None
+    ia_name = None
+    try:
+        ia_master = await bridge.get("/ia-master")
+        if ia_master:
+            ia_logo_path = ia_master.get("ia_logo_path")
+            ia_name = ia_master.get("ia_name") or ia_master.get("entity_name")
+            ia_email = ia_master.get("registered_email_id")
+    except:
+        ia_email = "Significia Advisor"
+
+    # Resolve logo locally for generation
+    resolved_logo_path = None
+    if ia_logo_path:
+        try:
+            url_resp = await bridge.get("/storage/url", params={"key": ia_logo_path})
+            if url_resp.get("url"):
+                resolved_logo_path = await resolve_logo_to_local_path(url_resp.get("url"), db)
+        except:
+            pass
+
+    # 3. Generate PDF Buffer
+    # We use dict_to_obj as the Generator expects object notation
+    result_obj = dict_to_obj(result_data)
+    profile_obj = dict_to_obj(profile_data)
+    profile_obj.client = dict_to_obj(client)
+
+    pdf_buffer = FinancialReportGenerator.generate_pdf(
+        result=result_obj,
+        profile=profile_obj,
+        client_name=client_name,
+        ia_logo_path=resolved_logo_path or ia_logo_path,
+        ia_name=ia_name
+    )
+
+    # 4. Request Bridge to send email with attachment
+    filename = f"Financial_Analysis_{client_name.replace(' ', '_')}.pdf"
+    
+    # We'll use a simple fallback body if no template is configured
+    # In a real scenario, we'd fetch the 'REPORT_DELIVERY' template from Bridge
+    email_payload = {
+        "recipient": client_email,
+        "recipient_name": client_name,
+        "subject": f"Financial Analysis Report — {client_name}",
+        "body": f"<p>Dear {client_name},</p><p>Please find attached your Financial Analysis Report as discussed.</p><p>Regards,<br>{ia_name or 'Your Financial Advisor'}</p>",
+        "context_type": "profile",
+        "context_id": profile_data.get("id")
+    }
+
+    # Reset buffer for reading
+    pdf_buffer.seek(0)
+    files = {"files": (filename, pdf_buffer.read(), "application/pdf")}
+    
+    try:
+        delivery_result = await bridge.post("/email/send", data=email_payload, files=files)
+        
+        # 5. Log audit trail
+        await bridge.post("/sebi/audit", data={
+            "action_type": "EMAIL_SENT",
+            "table_name": "financial_analysis_profiles",
+            "record_id": str(profile_data.get("id")),
+            "change_reason_type": "report_generation",
+            "change_reason_text": f"Financial Analysis report emailed to {client_email}",
+            "entity_version": profile_data.get("version_number", 1)
+        })
+        
+        return delivery_result
+    except Exception as e:
+        logger.error(f"Failed to push email to bridge: {e}")
+        raise HTTPException(500, f"Email delivery system error: {str(e)}")
+
+
 @router.get("/bridge/analysis/{id}/word")
 async def download_analysis_word_bridge(
     id: str,

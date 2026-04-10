@@ -444,6 +444,19 @@ async def get_report_history(
     return await bridge.get("/sebi/report-history", params=params)
 
 
+@router.get("/sebi/report-history/lookup")
+async def lookup_report(
+    source_record_id: str,
+    report_type: str = None,
+    bridge: BridgeClient = Depends(get_bridge_client),
+):
+    """Proxy: Look up the latest report for a specific source record."""
+    params = {"source_record_id": source_record_id}
+    if report_type:
+        params["report_type"] = report_type
+    return await bridge.get("/sebi/report-history/lookup", params=params)
+
+
 @router.post("/sebi/report-history")
 async def create_report_history(
     data: dict,
