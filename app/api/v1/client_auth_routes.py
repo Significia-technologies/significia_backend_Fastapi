@@ -135,6 +135,9 @@ async def get_client_me(
     """
     from app.core.jwt import decode_token
     try:
+        if not token:
+            raise HTTPException(status_code=401, detail="Missing authentication token")
+            
         payload = decode_token(token)
         user_id = payload.get("sub")
         if not user_id:

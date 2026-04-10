@@ -9,6 +9,7 @@ import uuid
 import json
 from datetime import datetime
 from typing import Optional, List, Dict, Any
+from app.utils.encryption import decrypt_string
 
 # PDF generation imports
 try:
@@ -26,6 +27,7 @@ try:
             self.entity_name = kwargs.pop('entity_name', "")
             self.advisor_name = kwargs.pop('advisor_name', "")
             self.ia_reg_no = kwargs.pop('ia_reg_no', "")
+            self.report_date = kwargs.pop('report_date', "")
             canvas.Canvas.__init__(self, *args, **kwargs)
             self._saved_page_states = []
 
@@ -49,13 +51,14 @@ try:
             self.drawRightString(570, 20, page_text)
             
             # Footer: Prepared by / Entity Name / Reg No (left-aligned)
-            if any([self.advisor_name, self.entity_name, self.ia_reg_no]):
+            if any([self.advisor_name, self.entity_name, self.ia_reg_no, self.report_date]):
                 self.setFont("Helvetica-Oblique", 7)
                 self.setFillColor(colors.grey)
                 footer_parts = []
                 if self.advisor_name: footer_parts.append(f"Prepared by: {self.advisor_name}")
-                if self.entity_name: footer_parts.append(f"Entity: {self.entity_name}")
-                if self.ia_reg_no: footer_parts.append(f"Reg No: {self.ia_reg_no}")
+                if self.report_date: footer_parts.append(f"Report Date: {self.report_date}")
+                # if self.entity_name: footer_parts.append(f"Entity: {self.entity_name}")
+                # if self.ia_reg_no: footer_parts.append(f"RIA Reg No: {self.ia_reg_no}")
                 footer_text = " , ".join(footer_parts)
                 self.drawString(30, 20, footer_text)
             
@@ -64,6 +67,12 @@ try:
                 self.setFont("Helvetica-Bold", 8)
                 self.setFillColor(colors.HexColor('#1e293b'))
                 self.drawString(30, 820, self.entity_name.upper())
+                
+                # Add IA registration number below entity name
+                if self.ia_reg_no:
+                    self.setFont("Helvetica", 7)
+                    self.setFillColor(colors.HexColor('#64748b'))
+                    self.drawString(30, 810, f"RIA REG NO: {self.ia_reg_no.upper()}")
 
             # Header: STRICTLY CONFIDENTIAL (top-right, every page)
             self.setFont("Helvetica-Oblique", 7)
@@ -106,7 +115,7 @@ def resolve_logo_path(logo_path: Optional[str]) -> Optional[str]:
     if not logo_path:
         return None
         
-    # Strategy 1: Absolute path (most likely from resolve_logo_to_local_path utility)
+    # Strategy 1: Absolute path
     if os.path.isabs(logo_path) and os.path.exists(logo_path):
         return logo_path
         
@@ -117,15 +126,29 @@ def resolve_logo_path(logo_path: Optional[str]) -> Optional[str]:
     # Strategy 3: Relative to backend root
     file_dir = os.path.dirname(os.path.abspath(__file__))
     backend_root = os.path.abspath(os.path.join(file_dir, '..', '..'))
+    
+    # Try direct join
     joined_path = os.path.join(backend_root, logo_path)
     if os.path.exists(joined_path):
         return joined_path
 
-    # Strategy 4: Try prepending 'uploads/' if it's a relative path starting with 'ia_documents'
-    if not logo_path.startswith('uploads/') and 'ia_documents' in logo_path:
-        uploads_path = os.path.join(backend_root, 'uploads', logo_path)
-        if os.path.exists(uploads_path):
-            return uploads_path
+    # Strategy 4: Handle ia_documents prefix (common in this app)
+    if 'ia_documents' in logo_path:
+        # If it doesn't already have 'uploads/' prefix, try adding it
+        if not logo_path.startswith('uploads/'):
+            updated_path = os.path.join(backend_root, 'uploads', logo_path)
+            if os.path.exists(updated_path):
+                return updated_path
+        else:
+            # If it already has 'uploads/', Strategy 3 should have caught it, 
+            # but let's be extra sure about the backend_root join
+            pass
+
+    # Strategy 5: Strip leading slash if any
+    if logo_path.startswith('/'):
+        stripped_path = os.path.join(backend_root, logo_path.lstrip('/'))
+        if os.path.exists(stripped_path):
+            return stripped_path
 
     return None
 
@@ -188,11 +211,26 @@ class FinancialReportGenerator:
 
         buffer = io.BytesIO()
         
+        # Advisor Details
+        advisor_name = profile.client.advisor_name if hasattr(profile, 'client') and profile.client else None
+        ia_reg_no = profile.client.advisor_registration_number if hasattr(profile, 'client') and profile.client else None
+        
+        # Robust Report Date parsing
+        raw_date = profile.created_at if hasattr(profile, 'created_at') and profile.created_at else datetime.now()
+        if isinstance(raw_date, str):
+            try:
+                # Handle ISO format strings
+                report_date = datetime.fromisoformat(raw_date.replace('Z', '+00:00'))
+            except:
+                report_date = datetime.now()
+        else:
+            report_date = raw_date
+            
+        report_date_str = report_date.strftime('%d %B, %Y')
+
         # Factory for canvas with ia_name and advisor_name
         def canvas_factory(*args, **kwargs):
-            advisor_name = profile.client.advisor_name if hasattr(profile, 'client') and profile.client else None
-            ia_reg_no = profile.client.advisor_registration_number if hasattr(profile, 'client') and profile.client else None
-            return NumberedCanvas(*args, entity_name=ia_name, advisor_name=advisor_name, ia_reg_no=ia_reg_no, **kwargs)
+            return NumberedCanvas(*args, entity_name=ia_name, advisor_name=advisor_name, ia_reg_no=ia_reg_no, report_date=report_date_str, **kwargs)
 
         doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=50, bottomMargin=40)
         elements = []
@@ -207,36 +245,62 @@ class FinancialReportGenerator:
         normal_style.leading = 14
 
         # Cover Page
-        elements.append(Spacer(1, 100))
-        resolved_logo = resolve_logo_path(ia_logo_path)
+        elements.append(Spacer(1, 40))
+        
+        # Logo - Center it using a table
+        decrypted_logo_path = decrypt_string(ia_logo_path) if ia_logo_path else None
+        resolved_logo = resolve_logo_path(decrypted_logo_path)
         if resolved_logo:
             try:
-                logo = Image(resolved_logo, width=1.5*inch, height=1.5*inch)
-                elements.append(logo)
+                logo = Image(resolved_logo, width=1.8*inch, height=1.8*inch)
+                logo_table = Table([[logo]], colWidths=[6.5*inch])
+                logo_table.setStyle(TableStyle([
+                    ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+                    ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ]))
+                elements.append(logo_table)
             except Exception as e:
                 print(f"Error rendering logo: {e}")
         
-        elements.append(Spacer(1, 20))
-        elements.append(Paragraph('FINANCIAL ANALYSIS REPORT', title_style))
-        elements.append(Spacer(1, 10))
-        prepared_by = ia_name or profile.client.advisor_name or 'INVESTMENT ADVISOR'
-        cover_details = [
-            [Paragraph(f"<b>CLIENT NAME:</b> {client_name.upper()}", normal_style)],
-            [Paragraph(f"<b>PREPARED BY:</b> {prepared_by.upper()}", normal_style)],
-            [Paragraph(f"<b>REPORT DATE:</b> {datetime.now().strftime('%d %B, %Y').upper()}", normal_style)]
+        elements.append(Spacer(1, 60))
+        
+        # Main Title with horizontal rules
+        title_style_centered = ParagraphStyle('ReportTitleCentered', parent=title_style, alignment=1, fontSize=28, textColor=colors.HexColor('#0f172a'))
+        elements.append(Paragraph('FINANCIAL ANALYSIS REPORT', title_style_centered))
+        
+        # Horizontal Rule
+        from reportlab.platypus import HRFlowable
+        elements.append(HRFlowable(width="60%", thickness=2, color=colors.HexColor('#334155'), spaceBefore=20, spaceAfter=20))
+        
+        elements.append(Spacer(1, 40))
+        
+        # Centered Details
+        detail_style = ParagraphStyle('CoverDetail', parent=normal_style, alignment=1, fontSize=12, leading=20)
+        prepared_by = ia_name or (profile.client.advisor_name if hasattr(profile, 'client') and profile.client else 'INVESTMENT ADVISOR')
+        
+        details_data = [
+            [Paragraph(f"<b>CLIENT NAME:</b> {client_name.upper()}", detail_style)],
         ]
-        if profile.client.client_code:
-            cover_details.insert(1, [Paragraph(f"<b>CLIENT CODE:</b> {profile.client.client_code}", normal_style)])
+        
+        if hasattr(profile, 'client') and profile.client and profile.client.client_code:
+            details_data.append([Paragraph(f"<b>CLIENT CODE:</b> {profile.client.client_code.upper()}", detail_style)])
             
-        t_cover = Table(cover_details, colWidths=[4.5*inch])
+        details_data.append([Paragraph(f"<b>PREPARED BY:</b> {prepared_by.upper()}", detail_style)])
+        if ia_reg_no:
+            details_data.append([Paragraph(f"<b>RIA REGISTRATION NO:</b> {ia_reg_no.upper()}", detail_style)])
+        details_data.append([Paragraph(f"<b>REPORT DATE:</b> {report_date_str.upper()}", detail_style)])
+            
+        t_cover = Table(details_data, colWidths=[6.5*inch])
         t_cover.setStyle(TableStyle([
             ('ALIGN', (0,0), (-1,-1), 'CENTER'),
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 12),
+            ('TOPPADDING', (0,0), (-1,-1), 10),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 10),
         ]))
         elements.append(t_cover)
         
         elements.append(PageBreak())
+        # --- END PREMIUM COVER PAGE ---
         # --- END PREMIUM COVER PAGE ---
 
         # 1. CLIENT INFORMATION
@@ -408,8 +472,11 @@ class FinancialReportGenerator:
         ins_data = [
             ['Insurance Type', 'Cover Amount (Rs)', 'Premium (Rs)'],
             ['Life Insurance', format_number(profile.insurance.get('life_cover', 0)), format_number(profile.insurance.get('life_premium', 0))],
-            ['Medical Cover', format_number(profile.insurance.get('medical_cover', 0)), format_number(profile.insurance.get('medical_premium', 0))],
-            ['Vehicle insurance', format_number(profile.insurance.get('vehicle_cover', 0)), format_number(profile.insurance.get('vehicle_premium', 0))],
+            ['Medical Cover', format_number(profile.insurance.get('med_cover', 0)), format_number(profile.insurance.get('med_premium', 0))],
+            ['Vehicle Insurance', format_number(profile.insurance.get('veh_cover', 0)), format_number(profile.insurance.get('veh_premium', 0))],
+            ['Other General Insurance', format_number(profile.insurance.get('other_cover', 0)), format_number(profile.insurance.get('other_premium', 0))],
+            ['Health Insurance Bonus Year', str(int(profile.medical_bonus_years)) if profile.medical_bonus_years else "0", "-"],
+            ['Avg Health Insurance Bonus %', f"{int(profile.medical_bonus_percentage)}%" if profile.medical_bonus_percentage else "0%", "-"],
         ]
         t = Table(ins_data, colWidths=[200, 150, 150])
         t.setStyle(TableStyle([
@@ -448,10 +515,16 @@ class FinancialReportGenerator:
             if 'corpus' in k:
                 val_str = format_currency(v)
             elif 'rate' in k or 'inflation' in k or 'sol' in k:
-                val_str = f"{v}%"
+                val_str = f"{int(v)}%" if float(v).is_integer() else f"{v}%"
             else:
                 val_str = str(int(v)) if float(v).is_integer() else str(v)
             ass_data.append([label, val_str])
+        
+        # Add Allocation Percentages to Assumptions
+        edu_pct = f"{int(profile.education_investment_pct)}%" if float(profile.education_investment_pct).is_integer() else f"{profile.education_investment_pct}%"
+        marr_pct = f"{int(profile.marriage_investment_pct)}%" if float(profile.marriage_investment_pct).is_integer() else f"{profile.marriage_investment_pct}%"
+        ass_data.append(['Allocation for Education Goal', edu_pct])
+        ass_data.append(['Allocation for Marriage Goal', marr_pct])
             
         t = Table(ass_data, colWidths=[300, 200])
         t.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.grey), ('GRID', (0,0), (-1,-1), 1, colors.black)]))
@@ -480,13 +553,19 @@ class FinancialReportGenerator:
         # 4. HLV
         elements.append(Paragraph('4. Indicative Human Life Value Analysis', section_style))
         hlv = result.hlv_data
+        adjusted_hlv_income = hlv.get('adjusted_hlv_income')
+        if adjusted_hlv_income is None:
+            adjusted_hlv_income = hlv.get('hlv_income_method', 0) - hlv.get('existing_financial_assets', 0) + hlv.get('current_liabilities', 0)
+            
         hlv_info = [
             ['Description', 'Value (Rs)'],
-            ['HLV (Income Replacement Method)', format_number(hlv.get('hlv_income_method'))],
-            ['HLV (Need Based Method)', format_number(hlv.get('hlv_expense_method'))],
-            ['Net HLV (Income)', format_number(hlv.get('net_hlv_income'))],
-            ['Additional Life Cover Needed (Income)', format_number(hlv.get('additional_life_cover_needed_income'))],
-            ['Current Life Cover', format_number(profile.insurance.get('life_cover', 0))],
+            ['HLV (Income Replacement Method)', format_number(hlv.get('hlv_income_method', 0))],
+            ['HLV (Need Based Method)', format_number(hlv.get('hlv_expense_method', 0))],
+            ['Existing Financial Assets', format_number(hlv.get('existing_financial_assets', 0))],
+            ['Current Liabilities', format_number(hlv.get('current_liabilities', 0))],
+            ['Adjusted HLV total requirements', format_number(adjusted_hlv_income)],
+            ['Current Life Cover', format_number(hlv.get('current_life_cover', 0))],
+            ['Net HLV (Total Requirement - Income)', format_number(hlv.get('net_hlv_income', 0))],
         ]
         t = Table(hlv_info, colWidths=[300, 200])
         t.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.grey), ('GRID', (0,0), (-1,-1), 1, colors.black)]))
@@ -502,13 +581,14 @@ class FinancialReportGenerator:
             elements.append(Spacer(1, 6))
 
         # 5. Medical
-        elements.append(Paragraph('5. Medical Coverage Analysis', section_style))
+        elements.append(Paragraph('5. Indicative Medical Coverage Analysis', section_style))
         med = result.medical_data
         med_info = [
             ['Description', 'Value (Rs)'],
-            ['Medical Corpus at Retirement', format_number(med.get('medical_corpus_at_retirement'))],
-            ['Medical Corpus at Life Expectancy', format_number(med.get('medical_corpus_at_life_expectancy'))],
+            ['Medical Coverage at Retirement', format_number(med.get('medical_corpus_at_retirement'))],
+            ['Projected Coverage accumulation', format_number(med.get('total_coverage_at_retirement'))],
             ['Balance Needed at Retirement', format_number(med.get('balance_needed_at_retirement'))],
+            ['Medical Coverage at Life Expectancy', format_number(med.get('medical_corpus_at_life_expectancy'))],
         ]
         t = Table(med_info, colWidths=[300, 200])
         t.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.grey), ('GRID', (0,0), (-1,-1), 1, colors.black)]))
@@ -529,7 +609,9 @@ class FinancialReportGenerator:
         ret_info = [
             ['Description', 'Value (Rs)'],
             ['Retirement Corpus Needed', format_number(ret.get('retirement_corpus_at_retirement'))],
+            ['Future Value of Existing Savings', format_number(ret.get('future_value_existing_savings'))],
             ['Net Corpus Needed', format_number(ret.get('net_retirement_corpus_needed'))],
+            ['Monthly Contribution Required', format_number(ret.get('monthly_investment_retirement'))],
             # ['Retirement Readiness', f"{ret.get('retirement_readiness', 0)}%"],
         ]
         t = Table(ret_info, colWidths=[300, 200])
@@ -560,13 +642,23 @@ class FinancialReportGenerator:
             t = Table(cf_data, colWidths=[40, 40, 100, 100, 100, 100])
             t.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.grey), ('FONTSIZE', (0,0), (-1,-1), 8), ('GRID', (0,0), (-1,-1), 0.5, colors.black)]))
             elements.append(t)
+            elements.append(Spacer(1, 6))
+
+            # AI Cash Flow Comments
+            if not profile.exclude_ai and result.ai_analysis and 'cash_flow_analysis' in result.ai_analysis:
+                elements.append(Paragraph('Insights (Cash Flow):', subsection_style))
+                for comment in result.ai_analysis['cash_flow_analysis']:
+                    clean_comment = comment.replace('AI Insight', 'Insight')
+                    elements.append(Paragraph(f"• {clean_comment}", normal_style))
+                elements.append(Spacer(1, 12))
 
         # 8. Child Goals
         elements.append(Paragraph('8. Child Goals Analysis', section_style))
         edu_info = [
-            ['Education Today Value (Rs)', format_number(result.calculations.get('child_education_corpus_today', 0))],
-            ['Education Future Needed (Rs)', format_number(result.calculations.get('child_education_future_needed', 0))],
-            ['Education Net Corpus (Rs)', format_number(result.calculations.get('education_net_corpus', 0))],
+            ['Education Expance current Value (Rs)', format_number(result.calculations.get('education_corpus_today', 0))],
+            ['Education Future corpus Needed (Rs)', format_number(result.calculations.get('education_future_needed', 0))],
+            ['Future value of current corpus allocated (Rs)', format_number(result.calculations.get('fv_allocated_education', 0))],
+            ['Education Net corpus required (Rs)', format_number(result.calculations.get('education_net_corpus', 0))],
             ['Indicative Monthly Contribution (Rs)', format_number(result.calculations.get('monthly_investment_education', 0))],
         ]
         t = Table(edu_info, colWidths=[300, 200])
@@ -575,9 +667,10 @@ class FinancialReportGenerator:
         elements.append(Spacer(1, 6))
 
         marr_info = [
-            ['Marriage Today Value (Rs)', format_number(result.calculations.get('marriage_corpus_today', 0))],
-            ['Marriage Future Needed (Rs)', format_number(result.calculations.get('marriage_future_needed', 0))],
-            ['Marriage Net Corpus (Rs)', format_number(result.calculations.get('marriage_net_corpus', 0))],
+            ['Marriage Expance Current Value (Rs)', format_number(result.calculations.get('marriage_corpus_today', 0))],
+            ['Marriage Expance Future corpus Needed (Rs)', format_number(result.calculations.get('marriage_future_needed', 0))],
+            ['Future value of current corpus allocated (Rs)', format_number(result.calculations.get('fv_allocated_marriage', 0))],
+            ['Marriage Net corpus required (Rs)', format_number(result.calculations.get('marriage_net_corpus', 0))],
             ['Indicative Monthly Contribution (Rs)', format_number(result.calculations.get('monthly_investment_marriage', 0))],
         ]
         t = Table(marr_info, colWidths=[300, 200])
@@ -585,47 +678,24 @@ class FinancialReportGenerator:
         elements.append(t)
         elements.append(Spacer(1, 12))
 
-        # 9. Emergency Fund Analysis
-        elements.append(Paragraph('9. Indicative Emergency Fund Analysis', section_style))
-        em_info = [
-            ['Emergency Fund Needed (6 months) (Rs)', format_number(result.calculations.get('emergency_fund_needed', 0))],
-            ['Shortfall (Rs)', format_number(result.calculations.get('emergency_fund_shortfall', 0))],
-            ['Indicative Monthly Contribution Required (Rs)', format_number(result.calculations.get('monthly_investment_emergency', 0))],
-        ]
-        t = Table(em_info, colWidths=[300, 200])
-        t.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.lightgrey), ('GRID', (0,0), (-1,-1), 1, colors.black)]))
-        elements.append(t)
-        elements.append(Spacer(1, 12))
+        
 
         # 10. Summary Table
-        elements.append(Paragraph('10. Indicative Monthly Contribution Summary', section_style))
+        elements.append(Paragraph('9. Indicative Monthly Contribution Summary', section_style))
         inv_data = [
             ['Investment Goal', 'Monthly Contribution', 'Months'],
             ['Retirement', format_currency(ret.get('monthly_investment_retirement')), str(int(ret.get('years_to_retirement', 0)*12))],
             ['Education', format_currency(ret.get('monthly_investment_education')), str(int(profile.assumptions.get('education_years', 0)*12))],
             ['Marriage', format_currency(ret.get('monthly_investment_marriage')), str(int(profile.assumptions.get('marriage_years', 0)*12))],
-            ['TOTAL (Income Method)', format_currency(ret.get('total_monthly_investment_income')), ''],
-            ['TOTAL (Expense Method)', format_currency(ret.get('total_monthly_investment_expense')), '']
+            ['TOTAL', format_currency(ret.get('monthly_investment_retirement', 0) + ret.get('monthly_investment_education', 0) + ret.get('monthly_investment_marriage', 0)), '']
         ]
         t = Table(inv_data, colWidths=[200, 150, 100])
-        t.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.grey), ('FONTNAME', (0,-2), (-1,-1), 'Helvetica-Bold'), ('GRID', (0,0), (-1,-1), 1, colors.black)]))
+        t.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.grey), ('FONTNAME', (0,-1), (-1,-1), 'Helvetica-Bold'), ('GRID', (0,0), (-1,-1), 1, colors.black)]))
         elements.append(t)
 
-        # 11. Investment Allocation
-        elements.append(Paragraph('11. Existing Investment Allocation(%)', section_style))
-        all_data = [
-            ['Goal', 'Allocation Percentage'],
-            ['Education Goal', f"{profile.education_investment_pct}%"],
-            ['Marriage Goal', f"{profile.marriage_investment_pct}%"],
-        ]
-        t = Table(all_data, colWidths=[250, 250])
-        t.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.grey), ('GRID', (0,0), (-1,-1), 1, colors.black)]))
-        elements.append(t)
-        elements.append(Spacer(1, 12))
-
-        # 12. Conclusion
+        # 10. Conclusion
         if not profile.exclude_ai and result.ai_analysis and 'overall_conclusion' in result.ai_analysis:
-            elements.append(Paragraph('12. OVERALL CONCLUSION', section_style))
+            elements.append(Paragraph('10. OVERALL CONCLUSION', section_style))
             conc = result.ai_analysis['overall_conclusion']
             conc = re.sub(r'<[^>]*>', '', conc)
             
@@ -640,15 +710,21 @@ class FinancialReportGenerator:
             
             elements.append(Spacer(1, 20))
 
-        # 13. Disclaimer
+        # 11. Disclaimer
         elements.append(Paragraph("", normal_style))
-        elements.append(Paragraph('13. DISCLAIMER', section_style))
+        elements.append(Paragraph('11. DISCLAIMER', section_style))
         disc = profile.disclaimer_text or "This report is generated based on data provided by the client..."
         elements.append(Paragraph(disc, normal_style))
         elements.append(Spacer(1, 40))
 
-        # 14. Discussion Notes
-        elements.append(Paragraph('14. DISCUSSION NOTES', section_style))
+        # 12. Record & Version Control Statement
+        if hasattr(profile, 'record_version_control_statement') and profile.record_version_control_statement:
+            elements.append(Paragraph('12. RECORD & VERSION CONTROL STATEMENT', section_style))
+            elements.append(Paragraph(profile.record_version_control_statement, normal_style))
+            elements.append(Spacer(1, 20))
+
+        # 13. Discussion Notes
+        elements.append(Paragraph('13. DISCUSSION NOTES', section_style))
         if profile.discussion_notes:
             elements.append(Paragraph(profile.discussion_notes, normal_style))
         else:
@@ -656,9 +732,9 @@ class FinancialReportGenerator:
             elements.append(Spacer(1, 200))
         elements.append(Spacer(1, 40))
 
-        # 15. Signatures (Very last)
+        # 14. Signatures (Very last)
         elements.append(Spacer(1, 10))
-        elements.append(Paragraph('15. SIGNATURES', section_style))
+        elements.append(Paragraph('14. SIGNATURES', section_style))
         elements.append(Spacer(1, 40))
         sig_data = [
             ["__________________________", "__________________________"],
@@ -709,7 +785,8 @@ class FinancialReportGenerator:
 
         # --- HEADER ---
         header_data = []
-        resolved_logo = resolve_logo_path(ia_logo_path)
+        decrypted_logo_path = decrypt_string(ia_logo_path) if ia_logo_path else None
+        resolved_logo = resolve_logo_path(decrypted_logo_path)
         if resolved_logo:
             try:
                 logo = Image(resolved_logo, width=0.8*inch, height=0.8*inch)
@@ -895,6 +972,8 @@ class FinancialReportGenerator:
         elements.append(t_notes)
         elements.append(Spacer(1, 30))
 
+        elements.append(Paragraph("All inputs provided above have been discussed with and confirmed by the client", styles['Normal']))
+        elements.append(Spacer(1, 15))
         sig_data = [
             ["_________________________", "_________________________"],
             [Paragraph("<b>Client Signature</b>", label_style), Paragraph("<b>Advisor Signature</b>", label_style)],
@@ -933,48 +1012,83 @@ class FinancialReportGenerator:
         
         # Left side: IA Name
         if ia_name:
-            htable.cell(0, 0).text = ia_name.upper()
-            htable.cell(0, 0).paragraphs[0].runs[0].font.size = Pt(8)
-            htable.cell(0, 0).paragraphs[0].runs[0].bold = True
+            ia_reg_no = profile.client.advisor_registration_number if hasattr(profile, 'client') and profile.client else None
+            
+            p = htable.cell(0, 0).paragraphs[0]
+            p.text = ia_name.upper()
+            p.runs[0].font.size = Pt(8)
+            p.runs[0].bold = True
+            
+            if ia_reg_no:
+                r_p = htable.cell(0, 0).add_paragraph(f"RIA REG NO: {ia_reg_no.upper()}")
+                r_p.runs[0].font.size = Pt(7)
+                r_p.runs[0].font.color.rgb = RGBColor(0x64, 0x74, 0x8b)
+                r_p.runs[0].italic = True
             
         # Right side: Strictly Confidential
         htable.cell(0, 1).text = "STRICTLY CONFIDENTIAL"
         htable.cell(0, 1).paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
         htable.cell(0, 1).paragraphs[0].runs[0].font.size = Pt(8)
         htable.cell(0, 1).paragraphs[0].runs[0].italic = True
-
-        # Cover Page
-        for _ in range(5): doc.add_paragraph()
         
-        resolved_logo = resolve_logo_path(ia_logo_path)
+        # Cover Page
+        for _ in range(3): doc.add_paragraph()
+        
+        decrypted_logo_path = decrypt_string(ia_logo_path) if ia_logo_path else None
+        resolved_logo = resolve_logo_path(decrypted_logo_path)
         if resolved_logo:
             try:
-                doc.add_picture(resolved_logo, width=Inches(2.5))
-                doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+                # Add logo in a centered paragraph
+                logo_para = doc.add_paragraph()
+                logo_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                run = logo_para.add_run()
+                run.add_picture(resolved_logo, width=Inches(2.0))
             except Exception as e:
-                print(f"Error rendering logo in Word report: {e}")
+                print(f"Error rendering logo in DOCX: {e}")
         
-        for _ in range(2): doc.add_paragraph()
+        for _ in range(3): doc.add_paragraph()
         
-        title = doc.add_heading("COMPREHENSIVE FINANCIAL ANALYSIS REPORT", 0)
+        # Title
+        title = doc.add_heading('FINANCIAL ANALYSIS REPORT', 0)
         title.alignment = WD_ALIGN_PARAGRAPH.CENTER
         
-        for _ in range(4): doc.add_paragraph()
+        # Spacer
+        doc.add_paragraph()
         
-        p = doc.add_paragraph()
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run = p.add_run(f"CLIENT NAME: {client_name.upper()}\n")
-        run.bold = True
-        if profile.client.client_code:
-            p.add_run(f"CLIENT CODE: {profile.client.client_code}\n")
+        # Details
+        prepared_by = ia_name or (profile.client.advisor_name if hasattr(profile, 'client') and profile.client else 'INVESTMENT ADVISOR')
+        ia_reg_no = profile.client.advisor_registration_number if hasattr(profile, 'client') and profile.client else None
         
-        prepared_by = ia_name or profile.client.advisor_name or 'INVESTMENT ADVISOR'
-        p.add_run(f"PREPARED BY: {prepared_by}\n")
-        p.add_run(f"REPORT DATE: {datetime.now().strftime('%d %B, %Y').upper()}")
+        # Robust Report Date parsing
+        raw_date = profile.created_at if hasattr(profile, 'created_at') and profile.created_at else datetime.now()
+        if isinstance(raw_date, str):
+            try:
+                report_date = datetime.fromisoformat(raw_date.replace('Z', '+00:00'))
+            except:
+                report_date = datetime.now()
+        else:
+            report_date = raw_date
+            
+        report_date_str = report_date.strftime('%d %B, %Y')
         
-        doc.add_page_break()
-        # --- END PREMIUM COVER PAGE ---
+        def add_centered_detail(label, value):
+            p = doc.add_paragraph()
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            run = p.add_run(f"{label}: ")
+            run.bold = True
+            p.add_run(value.upper())
 
+        add_centered_detail("CLIENT NAME", client_name)
+        if hasattr(profile, 'client') and profile.client and profile.client.client_code:
+            add_centered_detail("CLIENT CODE", profile.client.client_code)
+        
+        add_centered_detail("PREPARED BY", prepared_by)
+        if ia_reg_no:
+            add_centered_detail("RIA REGISTRATION NO", ia_reg_no)
+        add_centered_detail("REPORT DATE", report_date_str)
+
+        doc.add_page_break() 
+        # 1. Client Profile
         def add_table(title, data):
             doc.add_heading(title, level=1)
             table = doc.add_table(rows=len(data), cols=len(data[0]))
@@ -1045,7 +1159,28 @@ class FinancialReportGenerator:
                     label = other.get('label', 'Other') if isinstance(other, dict) else getattr(other, 'label', 'Other')
                     lib_data.append([label, format_currency(amt)])
                     total_lib += amt
-        add_table("1.7 Liabilities", lib_data) # Added this line, it was missing in original code.
+        lib_data.append(["TOTAL ANNUAL LIABILITIES", format_currency(total_lib)])
+        add_table("1.7 Liabilities", lib_data)
+
+         # 1.8 Net Worth Summary
+        add_table("1.8 Net Worth Summary", [
+            ["Particulars", "Value"],
+            ["Total Assets", format_currency(total_ast)],
+            ["Total Liabilities", format_currency(total_lib)],
+            ["NET WORTH", format_currency(total_ast - total_lib)]
+        ])
+
+        # 1.9 Insurance
+        ins = profile.insurance
+        add_table("1.9 Insurance Coverage", [
+            ["Type", "Coverage", "Premium"],
+            ["Life", format_currency(ins.get('life_cover')), format_currency(ins.get('life_premium'))],
+            ["Medical", format_currency(ins.get('med_cover')), format_currency(ins.get('med_premium'))],
+            ["Vehicle", format_currency(ins.get('veh_cover')), format_currency(ins.get('veh_premium'))],
+            ["Other General", format_currency(ins.get('other_cover')), format_currency(ins.get('other_premium'))],
+            ["Health Insurance Bonus Year", str(int(profile.medical_bonus_years)) if profile.medical_bonus_years else "0", "-"],
+            ["Avg Health Insurance Bonus %", f"{int(profile.medical_bonus_percentage)}%" if profile.medical_bonus_percentage else "0%", "-"]
+        ])
 
         # 2. Financial Assumptions
         label_map = {
@@ -1070,23 +1205,24 @@ class FinancialReportGenerator:
             if 'corpus' in k:
                 val_str = format_currency(v)
             elif 'rate' in k or 'inflation' in k or 'sol' in k:
-                val_str = f"{v}%"
+                val_str = f"{int(v)}%" if float(v).is_integer() else f"{v}%"
             else:
                 val_str = str(int(v)) if float(v).is_integer() else str(v)
             ass_data.append([label, val_str])
+        
+        # Add Allocation Percentages to Assumptions
+        edu_pct = f"{int(profile.education_investment_pct)}%" if float(profile.education_investment_pct).is_integer() else f"{profile.education_investment_pct}%"
+        marr_pct = f"{int(profile.marriage_investment_pct)}%" if float(profile.marriage_investment_pct).is_integer() else f"{profile.marriage_investment_pct}%"
+        ass_data.append(['Allocation for Education Goal', edu_pct])
+        ass_data.append(['Allocation for Marriage Goal', marr_pct])
+            
         add_table("2. Financial Assumptions", ass_data)
 
-        # 3. Net Worth Summary
-        add_table("3. Net Worth Summary", [
-            ["Particulars", "Value"],
-            ["Total Assets", format_currency(total_ast)],
-            ["Total Liabilities", format_currency(total_lib)],
-            ["NET WORTH", format_currency(total_ast - total_lib)]
-        ])
+       
 
-        # 4. Executive Summary & Insights
+        # 3. Executive Summary & Insights
         if not profile.exclude_ai and result.ai_analysis and 'executive_brief' in result.ai_analysis:
-            doc.add_heading("4. Executive Summary & Insights", level=1)
+            doc.add_heading("3. Executive Summary & Insights", level=1)
             brief = result.ai_analysis['executive_brief']
             brief = re.sub(r'<[^>]*>', '', brief)
             sections = FinancialReportGenerator._parse_professional_text(brief)
@@ -1097,38 +1233,75 @@ class FinancialReportGenerator:
                     doc.add_paragraph(sec['content'])
             doc.add_page_break()
 
-        # 5. Insurance
-        ins = profile.insurance
-        add_table("5. Insurance Coverage", [
-            ["Type", "Coverage", "Premium"],
-            ["Life", format_currency(ins.get('life_cover')), format_currency(ins.get('life_premium'))],
-            ["Medical", format_currency(ins.get('medical_cover')), format_currency(ins.get('medical_premium'))],
-            ["Vehicle", format_currency(ins.get('vehicle_cover')), format_currency(ins.get('vehicle_premium'))]
-        ])
+        
 
-        # 6. HLV
+        # 4. HLV
         hlv = result.hlv_data
+        adjusted_hlv_income = hlv.get('adjusted_hlv_income')
+        if adjusted_hlv_income is None:
+            adjusted_hlv_income = hlv.get('hlv_income_method', 0) - hlv.get('existing_financial_assets', 0) + hlv.get('current_liabilities', 0)
+
         hlv_info = [
             ["Description", "Value (Rs)"],
-            ["HLV (Income Replacement Method)", format_number(hlv.get('hlv_income_method'))],
-            ["HLV (Need Based Method)", format_number(hlv.get('hlv_expense_method'))],
-            ["Net HLV (Income)", format_number(hlv.get('net_hlv_income'))],
-            ["Additional Life Cover Needed (Income)", format_number(hlv.get('additional_life_cover_needed_income'))],
-            ["Current Life Cover", format_number(profile.insurance.get('life_cover', 0))],
+            ["HLV (Income Replacement Method)", format_number(hlv.get('hlv_income_method', 0))],
+            ["HLV (Need Based Method)", format_number(hlv.get('hlv_expense_method', 0))],
+            ["Existing Financial Assets", format_number(hlv.get('existing_financial_assets', 0))],
+            ["Current Liabilities", format_number(hlv.get('current_liabilities', 0))],
+            ["Adjusted HLV total requirements", format_number(adjusted_hlv_income)],
+            ["Current Life Cover", format_number(hlv.get('current_life_cover', 0))],
+            ["Net HLV (Total Requirement)", format_number(hlv.get('net_hlv_income', 0))],
+            ["Additional HLV cover needed Income", format_number(hlv.get('additional_life_cover_needed_income', 0))],
         ]
-        add_table("6. Human Life Value Analysis", hlv_info)
+        add_table("4. Indicative Human Life Value Analysis", hlv_info)
 
-        # 7/8. Retirement & Medical
-        ret = result.calculations
+        # HLV Insights
+        if not profile.exclude_ai and result.ai_analysis and 'hlv_comments' in result.ai_analysis:
+            doc.add_heading("Insights (HLV):", level=2)
+            for comment in result.ai_analysis['hlv_comments']:
+                clean_comment = comment.replace('AI Insight', 'Insight')
+                clean_comment = re.sub(r'<[^>]*>', '', clean_comment)
+                doc.add_paragraph(f"• {clean_comment}")
+            doc.add_paragraph()
+
+        # 7. Medical Analysis
         med = result.medical_data
-        rm_info = [
+        med_info = [
+            ["Description", "Value (Rs)"],
+            ["Medical Corpus at Retirement", format_number(med.get('medical_corpus_at_retirement'))],
+            ["Projected Coverage accumulation", format_number(med.get('total_coverage_at_retirement'))],
+            ["Balance Needed at Retirement", format_number(med.get('balance_needed_at_retirement'))],
+            ["Medical Corpus at Life Expectancy", format_number(med.get('medical_corpus_at_life_expectancy'))],
+        ]
+        add_table("7. Medical Analysis", med_info)
+
+        # Medical Insights
+        if not profile.exclude_ai and result.ai_analysis and 'medical_comments' in result.ai_analysis:
+            doc.add_heading("Insights (Medical):", level=2)
+            for comment in result.ai_analysis['medical_comments']:
+                clean_comment = comment.replace('AI Insight', 'Insight')
+                clean_comment = re.sub(r'<[^>]*>', '', clean_comment)
+                doc.add_paragraph(f"• {clean_comment}")
+            doc.add_paragraph()
+
+        # 8. Retirement Analysis
+        ret = result.calculations
+        ret_info = [
             ["Description", "Value (Rs)"],
             ["Retirement Corpus Needed", format_number(ret.get('retirement_corpus_at_retirement'))],
+            ["Future Value of Existing Savings", format_number(ret.get('future_value_existing_savings'))],
             ["Net Corpus Needed", format_number(ret.get('net_retirement_corpus_needed'))],
-            ["Medical Corpus at Retirement", format_number(med.get('medical_corpus_at_retirement'))],
-            ["Retirement Readiness", f"{ret.get('retirement_readiness', 0)}%"]
+            ["Monthly Contribution Required", format_number(ret.get('monthly_investment_retirement'))],
         ]
-        add_table("7/8. Retirement & Medical Analysis", rm_info)
+        add_table("8. Retirement Analysis", ret_info)
+
+        # Retirement Insights
+        if not profile.exclude_ai and result.ai_analysis and 'retirement_comments' in result.ai_analysis:
+            doc.add_heading("Insights (Retirement):", level=2)
+            for comment in result.ai_analysis['retirement_comments']:
+                clean_comment = comment.replace('AI Insight', 'Insight')
+                clean_comment = re.sub(r'<[^>]*>', '', clean_comment)
+                doc.add_paragraph(f"• {clean_comment}")
+            doc.add_paragraph()
 
         # 9. Cash Flow
         if result.cash_flow_analysis:
@@ -1138,18 +1311,52 @@ class FinancialReportGenerator:
                                 format_number(row['investment_growth']), format_number(row['annual_withdrawal']), format_number(row['closing_balance'])])
             add_table("9. Retirement Cash Flow Analysis", cf_data)
 
-        # 10. Monthly Investment Summary
+            # Cash Flow Insights
+            if not profile.exclude_ai and result.ai_analysis and 'cash_flow_analysis' in result.ai_analysis:
+                doc.add_heading("Insights (Cash Flow):", level=2)
+                for comment in result.ai_analysis['cash_flow_analysis']:
+                    clean_comment = comment.replace('AI Insight', 'Insight')
+                    clean_comment = re.sub(r'<[^>]*>', '', clean_comment)
+                    doc.add_paragraph(f"• {clean_comment}")
+                doc.add_paragraph()
+
+        # 10. Child Goals Analysis
+        doc.add_heading("10. Indicative Child Goals Analysis", level=1)
+        edu_info = [
+            ["Particulars", "Details (Rs)"],
+            ['Education expance in current value', format_number(result.calculations.get('education_corpus_today', 0))],
+            ['Education expance Future corpus Needed', format_number(result.calculations.get('education_future_needed', 0))],
+            ['Future value of current corpus allocated', format_number(result.calculations.get('fv_allocated_education', 0))],
+            ['Education Net Corpus', format_number(result.calculations.get('education_net_corpus', 0))],
+            ['Indicative Monthly Contribution', format_number(result.calculations.get('monthly_investment_education', 0))],
+        ]
+        add_table("10.1 Education Goal", edu_info)
+        doc.add_paragraph()
+
+        marr_info = [
+            ["Particulars", "Details (Rs)"],
+            ['Marriage Expance Current Value', format_number(result.calculations.get('marriage_corpus_today', 0))],
+            ['Marriage Expance Future corpus Needed', format_number(result.calculations.get('marriage_future_needed', 0))],
+            ['Future value of current corpus allocated', format_number(result.calculations.get('fv_allocated_marriage', 0))],
+            ['Marriage Net corpus required', format_number(result.calculations.get('marriage_net_corpus', 0))],
+            ['Indicative Monthly Contribution', format_number(result.calculations.get('monthly_investment_marriage', 0))],
+        ]
+        add_table("10.2 Marriage Goal", marr_info)
+        doc.add_paragraph()
+
+      
+
+        # 11. Monthly Investment Summary
         sum_data = [
             ['Goal', 'Monthly Investment (Rs)'],
             ['Retirement', format_number(ret.get('monthly_investment_retirement', 0))],
             ['Education', format_number(ret.get('monthly_investment_education', 0))],
             ['Marriage', format_number(ret.get('monthly_investment_marriage', 0))],
-            ['TOTAL (Income Method)', format_number(ret.get('total_monthly_investment_income', 0))],
-            ['TOTAL (Expense Method)', format_number(ret.get('total_monthly_investment_expense', 0))],
+            ['TOTAL', format_number(ret.get('monthly_investment_retirement', 0) + ret.get('monthly_investment_education', 0) + ret.get('monthly_investment_marriage', 0))],
         ]
-        add_table("10. Monthly Investment Summary", sum_data)
+        add_table("11. Monthly Investment Summary", sum_data)
 
-        # 12. Health Score
+        # 12. Financial Health Score
         score_details = result.calculations.get('financial_health_score_details', [])
         if score_details:
             score_data = [["Component", "Status", "Points"]]
@@ -1178,8 +1385,14 @@ class FinancialReportGenerator:
         doc.add_paragraph(disc)
         doc.add_paragraph()
         
-        # 15. Discussion Notes
-        doc.add_heading("15. DISCUSSION NOTES", level=1)
+        # 15. Record & Version Control Statement
+        if hasattr(profile, 'record_version_control_statement') and profile.record_version_control_statement:
+            doc.add_heading("15. RECORD & VERSION CONTROL STATEMENT", level=1)
+            doc.add_paragraph(profile.record_version_control_statement)
+            doc.add_paragraph()
+
+        # 16. Discussion Notes
+        doc.add_heading("16. DISCUSSION NOTES", level=1)
         if profile.discussion_notes:
             doc.add_paragraph(profile.discussion_notes)
         else:
@@ -1187,8 +1400,8 @@ class FinancialReportGenerator:
         
         doc.add_paragraph()
         
-        # 16. Signatures
-        doc.add_heading("16. Signatures", level=1)
+        # 17. Signatures
+        doc.add_heading("17. Signatures", level=1)
         doc.add_paragraph()
         doc.add_paragraph("__________________________            __________________________")
         doc.add_paragraph("Signature of Client                   Signature of IA")
@@ -1205,7 +1418,24 @@ class FinancialReportGenerator:
         prepared_by = ia_name or (profile.client.advisor_name if hasattr(profile, 'client') and profile.client else 'INVESTMENT ADVISOR')
         ia_reg_no = profile.client.advisor_registration_number if hasattr(profile, 'client') and profile.client else 'N/A'
         
-        footer_parts = [f"Prepared by: {prepared_by}", f"Entity: {ia_name or 'N/A'}", f"Reg No: {ia_reg_no}"]
+        # Robust Report Date parsing
+        raw_date = profile.created_at if hasattr(profile, 'created_at') and profile.created_at else datetime.now()
+        if isinstance(raw_date, str):
+            try:
+                report_date = datetime.fromisoformat(raw_date.replace('Z', '+00:00'))
+            except:
+                report_date = datetime.now()
+        else:
+            report_date = raw_date
+            
+        report_date_str_full = report_date.strftime('%d %B, %Y')
+        
+        footer_parts = [
+            f"Prepared by: {prepared_by}", 
+            f"Report Date: {report_date_str_full}",
+            f"Entity: {ia_name or 'N/A'}", 
+            f"RIA Reg No: {ia_reg_no}"
+        ]
         footer_text = " | ".join(footer_parts)
         
         f_run = f_p.add_run(footer_text)
