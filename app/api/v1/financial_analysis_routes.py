@@ -738,8 +738,8 @@ async def email_analysis_report(
     email_payload = {
         "recipient": client_email,
         "recipient_name": client_name,
-        "subject": get_financial_analysis_subject(client_name),
-        "body": get_financial_analysis_template(template_context),
+        "template_type": "FINANCIAL_ANALYSIS_DELIVERY",
+        "template_variables": json.dumps(template_context),
         "context_type": "profile",
         "context_id": get_safe(profile_data, "id")
     }

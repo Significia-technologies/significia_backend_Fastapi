@@ -84,9 +84,11 @@ class EmailLog(SiloBase):
     # Recipient
     recipient_email: Mapped[str] = mapped_column(String(255), nullable=False)
     recipient_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    client_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     # Content snapshot
     subject: Mapped[str] = mapped_column(String(500), nullable=False)
+    body_html: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     template_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     # Attachments info (JSON string of filenames)
