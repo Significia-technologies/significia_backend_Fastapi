@@ -53,6 +53,9 @@ class EmailTemplate(SiloBase):
     __tablename__ = "email_templates"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    group_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), default=uuid.uuid4)
+    version: Mapped[str] = mapped_column(String(20), default="v1.0")
+    audit_id: Mapped[Optional[str]] = mapped_column(String(6), nullable=True)
 
     # Template Classification
     template_name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -65,6 +68,7 @@ class EmailTemplate(SiloBase):
     body_html: Mapped[str] = mapped_column(Text, nullable=False)
 
     # Flags
+    is_latest: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
 
@@ -90,6 +94,7 @@ class EmailLog(SiloBase):
     subject: Mapped[str] = mapped_column(String(500), nullable=False)
     body_html: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     template_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    template_audit_id: Mapped[Optional[str]] = mapped_column(String(6), nullable=True)
 
     # Attachments info (JSON string of filenames)
     attachments_info: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
