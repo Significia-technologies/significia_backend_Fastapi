@@ -65,7 +65,8 @@ async def record_report_audit(
     report_type: str,
     version_number: int,
     data_hash: str,
-    action: str = "GENERATED"
+    action: str = "GENERATED",
+    change_summary: Optional[str] = None
 ) -> Optional[str]:
     """Helper to record report generation/delivery events in the Bridge."""
     try:
@@ -75,6 +76,7 @@ async def record_report_audit(
             "report_type": report_type,
             "version_number": version_number,
             "report_hash": data_hash,
+            "change_summary": change_summary,
             "metadata": {"action": action, "source": "backend_proxy"}
         })
         return get_safe(resp, "short_id") or get_safe(resp, "id")
@@ -603,14 +605,20 @@ async def download_analysis_pdf_bridge(
     data_hash = compute_data_fingerprint(profile_data, result_data)
     
     # 2. Record in Report History to get Audit ID
+    version = profile_data.get("version_number", 1)
+    change_summary = profile_data.get("change_reason_text") or (
+        "Initial Report Generation" if version == 1 else f"Generated updated report (v{version})"
+    )
+    
     audit_id = await record_report_audit(
         bridge=bridge,
         client_id=result_data.get('client_id'),
         profile_id=str(profile_data.get("id") or id),
         report_type="PDF",
-        version_number=profile_data.get("version_number", 1),
+        version_number=version,
         data_hash=data_hash,
-        action="DOWNLOADED"
+        action="DOWNLOADED",
+        change_summary=change_summary
     )
 
     pdf_buffer = FinancialReportGenerator.generate_pdf(
@@ -701,14 +709,20 @@ async def email_analysis_report(
     data_hash = compute_data_fingerprint(profile_data, result_data)
     
     # 2. Record in Report History to get Audit ID
+    version = get_safe(profile_data, "version_number", 1)
+    change_summary = get_safe(profile_data, "change_reason_text") or (
+        "Initial Report Delivery" if version == 1 else f"Emailed updated report (v{version})"
+    )
+    
     audit_id = await record_report_audit(
         bridge=bridge,
         client_id=get_safe(result_data, 'client_id'),
         profile_id=str(get_safe(profile_data, "id") or id),
         report_type="financial_analysis",
-        version_number=get_safe(profile_data, "version_number", 1),
+        version_number=version,
         data_hash=data_hash,
-        action="EMAILED"
+        action="EMAILED",
+        change_summary=change_summary
     )
 
     # 3. Generate PDF Buffer
@@ -813,14 +827,20 @@ async def download_analysis_word_bridge(
     data_hash = compute_data_fingerprint(profile_data, result_data)
     
     # 2. Record in Report History to get Audit ID
+    version = profile_data.get("version_number", 1)
+    change_summary = profile_data.get("change_reason_text") or (
+        "Initial Word Export" if version == 1 else f"Generated Word report (v{version})"
+    )
+    
     audit_id = await record_report_audit(
         bridge=bridge,
         client_id=result_data.get('client_id'),
         profile_id=str(profile_data.get("id") or id),
         report_type="WORD",
-        version_number=profile_data.get("version_number", 1),
+        version_number=version,
         data_hash=data_hash,
-        action="DOWNLOADED"
+        action="DOWNLOADED",
+        change_summary=change_summary
     )
 
     word_buffer = FinancialReportGenerator.generate_docx(

@@ -65,6 +65,7 @@ async def record_report_audit(
     version_number: int,
     data_hash: str,
     action: str = "GENERATED",
+    change_summary: Optional[str] = None,
     existing_id: Optional[str] = None
 ) -> Optional[str]:
     """Helper to record report generation/delivery events in the Bridge."""
@@ -75,6 +76,7 @@ async def record_report_audit(
             "report_type": report_type,
             "version_number": version_number,
             "report_hash": data_hash,
+            "change_summary": change_summary,
             "metadata": {"action": action, "source": "backend_proxy"}
         }
         if existing_id:
@@ -215,6 +217,7 @@ class FinancialReportService:
                 version_number=version,
                 data_hash=data_hash,
                 action="RE-DELIVERED",
+                change_summary=f"Re-delivered report v{version} to {client_email}",
                 existing_id=get_safe(audit_record, "id")
             )
             
