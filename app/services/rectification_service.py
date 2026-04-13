@@ -46,6 +46,7 @@ class RectificationService:
             "proposed_changes": [c.model_dump() for c in payload.proposed_changes],
             "justification_details": payload.justification_details.model_dump(),
             "impact_declaration": payload.impact_declaration.model_dump(),
+            "purpose_of_edit": payload.purpose_of_edit,
             "confirmation_mode": payload.confirmation_mode,
             "confirmation_reference": payload.confirmation_reference,
             "is_investor_requested": payload.is_investor_requested,

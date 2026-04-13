@@ -27,6 +27,7 @@ class RectificationCreate(BaseModel):
     proposed_changes: List[ProposedChange]
     justification_details: JustificationDetails
     impact_declaration: ImpactDeclaration
+    purpose_of_edit: Optional[str] = None
     confirmation_mode: str
     confirmation_reference: Optional[str] = None
     is_investor_requested: bool = Field(False, description="Whether the request originated from an investor")
@@ -36,6 +37,7 @@ class RectificationUpdate(BaseModel):
     proposed_changes: Optional[List[ProposedChange]] = None
     justification_details: Optional[JustificationDetails] = None
     impact_declaration: Optional[ImpactDeclaration] = None
+    purpose_of_edit: Optional[str] = None
     confirmation_mode: Optional[str] = None
     confirmation_reference: Optional[str] = None
     is_investor_requested: Optional[bool] = None
@@ -51,6 +53,7 @@ class RectificationResponse(BaseModel):
     proposed_changes: List[ProposedChange] = []
     justification_details: Optional[JustificationDetails] = None
     impact_declaration: Optional[ImpactDeclaration] = None
+    purpose_of_edit: Optional[str] = None
     confirmation_mode: str = "EMAIL"
     confirmation_reference: Optional[str] = None
     is_investor_requested: bool = False

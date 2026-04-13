@@ -93,11 +93,28 @@ class RectificationPDFGenerator:
         # Section 2: Request Details
         section_title(2, "Request Details")
         start_y = pdf.get_y()
-        draw_field("Requested By", rectification.get("requested_by_name", "Staff / IA Employee"), 0)
-        created_at = rectification.get("created_at", "")
-        if isinstance(created_at, str) and "T" in created_at:
-             created_at = created_at.split("T")[0]
-        draw_field("Timestamp", str(created_at), col_w)
+        requested_name = rectification.get("requested_by_name", "Staff / IA Employee")
+        draw_field("Requested By", requested_name, 0)
+        
+        created_at_raw = rectification.get("created_at", "")
+        formatted_ts = str(created_at_raw)
+        
+        try:
+            from datetime import datetime, timedelta
+            if isinstance(created_at_raw, str):
+                # Handle ISO format from bridge (usually UTC)
+                ts_obj = datetime.fromisoformat(created_at_raw.replace('Z', '+00:00'))
+                # Localize to IST for the report (matching the UI)
+                ts_obj = ts_obj + timedelta(hours=5, minutes=30)
+                formatted_ts = ts_obj.strftime("%B %d, %Y %I:%M %p")
+            elif isinstance(created_at_raw, datetime):
+                # If already a datetime, assume it needs offset if it's UTC
+                ts_obj = created_at_raw + timedelta(hours=5, minutes=30)
+                formatted_ts = ts_obj.strftime("%B %d, %Y %I:%M %p")
+        except Exception:
+            pass
+
+        draw_field("Timestamp", formatted_ts, col_w)
 
         pdf.ln(12)
 
@@ -107,8 +124,8 @@ class RectificationPDFGenerator:
         modes = ["Data Correction", "Client Update", "Assumption Change", "Input Error", "Other"]
         
         # Robust selection detection for comma-separated strings
-        conf_mode_str = rectification.get("confirmation_mode", "")
-        selected_modes = [m.strip().upper() for m in (conf_mode_str.split(",") if isinstance(conf_mode_str, str) else [])]
+        purpose_str = rectification.get("purpose_of_edit", "")
+        selected_modes = [m.strip().upper() for m in (purpose_str.split(",") if isinstance(purpose_str, str) else [])]
         
         pdf.set_x(15)
         for mode in modes:
@@ -196,6 +213,32 @@ class RectificationPDFGenerator:
         draw_justification("3. Source of revised data?", just.get("q3"))
         pdf.ln(5)
 
+        # Section 6: Client Confirmation
+        section_title(6, "Client Confirmation (If Available)")
+        pdf.set_font("helvetica", "B", 8)
+        conf_modes = ["Written/Email", "Verbal", "Not applicable"]
+        
+        conf_mode_str = rectification.get("confirmation_mode", "")
+        selected_conf_modes = [m.strip().upper() for m in (conf_mode_str.split(",") if isinstance(conf_mode_str, str) else [])]
+        
+        pdf.set_x(15)
+        for mode in conf_modes:
+            is_checked = mode.upper() in selected_conf_modes
+            pdf.set_font("zapfdingbats", "", 10)
+            pdf.cell(5, 5, "4" if is_checked else "", 1, 0, 'C')
+            pdf.set_font("helvetica", "B", 8)
+            pdf.cell(45, 5, f" {mode.upper()}", 0, 0)
+        pdf.ln(8)
+        
+        pdf.set_x(15)
+        pdf.set_font("helvetica", "B", 7)
+        pdf.set_text_color(*text_muted)
+        pdf.cell(20, 5, "REFERENCE:", 0, 0)
+        pdf.set_font("helvetica", "B", 8)
+        pdf.set_text_color(*primary_black)
+        pdf.cell(0, 5, str(rectification.get("confirmation_reference", "N/A")), border='B', ln=True)
+        pdf.ln(10)
+
         # Section 7: Impact Declaration
         section_title(7, "Impact Declaration")
         impact = rectification.get("impact_declaration", {})
@@ -245,9 +288,33 @@ class RectificationPDFGenerator:
         pdf.multi_cell(0, 5, '"I confirm that the proposed edit info is accurate and verified relative to the client\'s request or original source document. This edit was not performed prior to this authorization."', border=1)
         pdf.ln(15)
         
-        pdf.line(15, pdf.get_y(), 65, pdf.get_y())
+        cur_y = pdf.get_y()
+        pdf.line(15, cur_y, 65, cur_y)
         pdf.set_font("helvetica", "B", 7)
-        pdf.text(15, pdf.get_y() + 4, "STAFF SIGNATURE")
+        pdf.text(15, cur_y + 4, "STAFF SIGNATURE")
+        
+        # Add Requested On Date matching the UI
+        try:
+            from datetime import datetime, timedelta
+            raw_ts = rectification.get("created_at", "")
+            if isinstance(raw_ts, str):
+                ts_obj = datetime.fromisoformat(raw_ts.replace('Z', '+00:00'))
+                # Re-localize to IST for correct date flipping
+                ts_obj = ts_obj + timedelta(hours=5, minutes=30)
+                req_date = ts_obj.strftime("%d/%m/%Y")
+            else:
+                req_date = str(raw_ts).split("T")[0]
+            
+            if req_date:
+                pdf.set_font("helvetica", "B", 7)
+                pdf.set_text_color(*text_muted)
+                pdf.text(140, cur_y, "REQUESTED ON")
+                pdf.set_font("helvetica", "B", 8)
+                pdf.set_text_color(*primary_black)
+                pdf.text(140, cur_y + 4, req_date)
+        except Exception:
+            pass
+            
         pdf.ln(15)
 
         # Section 6: IA Authorization
