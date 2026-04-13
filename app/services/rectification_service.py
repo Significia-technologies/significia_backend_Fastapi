@@ -86,12 +86,23 @@ class RectificationService:
         return await bridge.post(f"/rectification/{rectification_id}/approve")
 
     @staticmethod
-    async def list_rectifications(bridge: BridgeClient, client_id: Optional[uuid.UUID] = None) -> List[Dict[str, Any]]:
+    async def list_rectifications(
+        bridge: BridgeClient, 
+        client_id: Optional[uuid.UUID] = None,
+        page: int = 1,
+        limit: int = 10,
+        search: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
-        Lists all rectification records via the Bridge.
+        Lists rectification records via the Bridge with pagination and search.
         """
-        params = {}
+        params = {
+            "limit": limit,
+            "offset": (page - 1) * limit
+        }
         if client_id:
             params["client_id"] = str(client_id)
+        if search:
+            params["search"] = search
             
         return await bridge.get("/rectification/list", params=params)

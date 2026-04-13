@@ -1,14 +1,14 @@
 import uuid
 import os
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request, Form, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 import io
 
 from app.api.deps import get_db, get_current_user, get_bridge_client
 from app.services.rectification_service import RectificationService
-from app.schemas.data_rectification_schema import RectificationCreate, RectificationResponse
+from app.schemas.data_rectification_schema import RectificationCreate, RectificationResponse, PaginatedRectificationResponse
 from app.services.bridge_client import BridgeClient
 from app.models.user import User
 from app.models.staff_profile import StaffProfile
@@ -176,18 +176,31 @@ async def initiate_rectification(
     return await RectificationService.initiate_rectification(bridge, payload, current_user.id)
 
 
-@router.get("/list", response_model=List[RectificationResponse])
+@router.get("/list", response_model=PaginatedRectificationResponse)
 async def list_rectifications(
     client_id: Optional[uuid.UUID] = None,
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1),
+    search: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     bridge: BridgeClient = Depends(get_bridge_client),
     current_user: User = Depends(get_current_user)
 ):
     """
-    List rectifications via the Bridge.
+    List rectifications via the Bridge with pagination and search.
     """
-    records = await RectificationService.list_rectifications(bridge, client_id)
-    return await enrich_rectifications_with_names(records, db)
+    result = await RectificationService.list_rectifications(bridge, client_id, page, limit, search)
+    records = result.get("records", [])
+    total = result.get("total", 0)
+    
+    enriched_records = await enrich_rectifications_with_names(records, db)
+    
+    return {
+        "records": enriched_records,
+        "total": total,
+        "page": page,
+        "limit": limit
+    }
 
 
 @router.get("/{rectification_id}", response_model=RectificationResponse)

@@ -70,9 +70,13 @@ class RectificationResponse(BaseModel):
     approved_by_role: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
-
-
-
+    client_name: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+class PaginatedRectificationResponse(BaseModel):
+    records: List[RectificationResponse]
+    total: int
+    page: int
+    limit: int
