@@ -54,7 +54,7 @@ class RectificationResponse(BaseModel):
     confirmation_mode: str = "EMAIL"
     confirmation_reference: Optional[str] = None
     is_investor_requested: bool = False
-    initiation_reason: str = "Internal Update/Legacy Record"
+    initiation_reason: Optional[str] = None
     document_path: Optional[str] = None
     investor_request_path: Optional[str] = None
     signed_form_path: Optional[str] = None

@@ -105,15 +105,21 @@ class RectificationPDFGenerator:
         section_title(3, "Purpose of Edit")
         pdf.set_font("helvetica", "B", 8)
         modes = ["Data Correction", "Client Update", "Assumption Change", "Input Error", "Other"]
-        current_mode = rectification.get("confirmation_mode", "Data Correction")
+        
+        # Robust selection detection for comma-separated strings
+        conf_mode_str = rectification.get("confirmation_mode", "")
+        selected_modes = [m.strip().upper() for m in (conf_mode_str.split(",") if isinstance(conf_mode_str, str) else [])]
         
         pdf.set_x(15)
         for mode in modes:
-            is_checked = mode in current_mode
+            is_checked = mode.upper() in selected_modes
+            
+            # Draw standard box with Tick using ZapfDingbats
             pdf.set_font("zapfdingbats", "", 10)
-            pdf.cell(5, 5, "4" if is_checked else "o", 1, 0, 'C')
+            pdf.cell(5, 5, "4" if is_checked else "", 1, 0, 'C')
+            
             pdf.set_font("helvetica", "B", 8)
-            pdf.cell(35, 5, f" {mode.upper()}", 0, 0)
+            pdf.cell(33, 5, f" {mode.upper()}", 0, 0)
         pdf.ln(12)
 
         # Section 4: Proposed Changes

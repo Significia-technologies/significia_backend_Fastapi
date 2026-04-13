@@ -21,6 +21,9 @@ class DataRectification(SiloBase):
     # Serial No: E-YYYYMMDD-XXXX
     serial_no: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, index=True)
     
+    # Initiation Reason
+    initiation_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    
     client_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
     )
