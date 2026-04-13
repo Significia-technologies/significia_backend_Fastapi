@@ -299,7 +299,7 @@ class ClientPDFGenerator:
             ("Declaration", [
                 ("Agreement Date", client_data.get("agreement_date")),
                 ("IA Master", client_data.get("advisor_name")),
-                ("Statement", "I hereby confirm that all details provided are accurate to the best of my knowledge and comply with SEBI Investment Advisor guidelines. The client's identity has been verified via KYC documents.", True),
+                ("Statement", "I hereby confirm that all details provided are accurate to the best of my knowledge. This report is generated based on client provided data and recorded information. This report is for data recording and financia analysis purpose only and does not constitute investment advice or recommendation. The client's identity has been verified via KYC documents. The report is generated for internal use and analytical purposes only.", True),
             ])
         ]
 
