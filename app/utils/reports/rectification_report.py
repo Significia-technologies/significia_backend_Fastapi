@@ -131,15 +131,110 @@ class RectificationPDFGenerator:
         pdf.set_font("helvetica", "", 8)
         if not changes:
             pdf.cell(190, 10, "No fields selected for correction", 1, 1, 'C')
+        
         for chg in changes:
-            pdf.cell(40, 8, str(chg.get("field", "")).upper(), 1, 0, 'L')
-            pdf.cell(45, 8, str(chg.get("current", "")), 1, 0, 'L')
-            pdf.cell(45, 8, str(chg.get("proposed", "")), 1, 0, 'L')
-            pdf.cell(60, 8, str(chg.get("reason", "")), 1, 1, 'L')
+            field = str(chg.get("field", "")).upper()
+            curr = str(chg.get("current", ""))
+            prop = str(chg.get("proposed", ""))
+            reas = str(chg.get("reason", ""))
+            
+            # Calculate dynamic height based on text wrapping
+            h_unit = 4.5
+            l_f = pdf.multi_cell(40, h_unit, field, split_only=True)
+            l_c = pdf.multi_cell(45, h_unit, curr, split_only=True)
+            l_p = pdf.multi_cell(45, h_unit, prop, split_only=True)
+            l_r = pdf.multi_cell(60, h_unit, reas, split_only=True)
+            
+            row_h = max(len(l_f), len(l_c), len(l_p), len(l_r), 1) * h_unit
+            if row_h < 8: row_h = 8 # Stick to minimum original height
+            
+            # Check for page break
+            if pdf.get_y() + row_h > 270:
+                pdf.add_page()
+            
+            cur_x, cur_y = pdf.get_x(), pdf.get_y()
+            
+            # Draw Cell Borders (Rectangles for consistent row height)
+            pdf.rect(cur_x, cur_y, 40, row_h)
+            pdf.rect(cur_x+40, cur_y, 45, row_h)
+            pdf.rect(cur_x+85, cur_y, 45, row_h)
+            pdf.rect(cur_x+130, cur_y, 60, row_h)
+            
+            # Render Wrapped Text
+            pdf.multi_cell(40, h_unit, field, align='L')
+            pdf.set_xy(cur_x + 40, cur_y)
+            pdf.multi_cell(45, h_unit, curr, align='L')
+            pdf.set_xy(cur_x + 85, cur_y)
+            pdf.multi_cell(45, h_unit, prop, align='L')
+            pdf.set_xy(cur_x + 130, cur_y)
+            pdf.multi_cell(60, h_unit, reas, align='L')
+            
+            pdf.set_y(cur_y + row_h)
         pdf.ln(10)
 
-        # Section 5: Declaration
-        section_title(5, "Declaration (By Requestor)")
+        # Section 5: Detailed Justification
+        section_title(5, "Detailed Justification")
+        just = rectification.get("justification_details", {})
+        
+        def draw_justification(label, text_val):
+            pdf.set_font("helvetica", "B", 8)
+            pdf.set_text_color(*text_muted)
+            pdf.cell(0, 5, label, ln=True)
+            pdf.set_font("helvetica", "", 9)
+            pdf.set_text_color(*primary_black)
+            pdf.multi_cell(0, 5, str(text_val or "---"), border='B')
+            pdf.ln(4)
+
+        draw_justification("1. What is incorrect in current data?", just.get("q1"))
+        draw_justification("2. Why is change required?", just.get("q2"))
+        draw_justification("3. Source of revised data?", just.get("q3"))
+        pdf.ln(5)
+
+        # Section 7: Impact Declaration
+        section_title(7, "Impact Declaration")
+        impact = rectification.get("impact_declaration", {})
+        
+        pdf.set_font("helvetica", "B", 8)
+        pdf.set_x(15)
+        
+        # Financial Impact
+        pdf.set_font("zapfdingbats", "", 10)
+        pdf.cell(5, 5, "4" if impact.get("financial") else "o", 1, 0, 'C')
+        pdf.set_font("helvetica", "B", 8)
+        pdf.cell(55, 5, " IMPACTS FINANCIAL ANALYSIS", 0, 0)
+        
+        # Risk Impact
+        pdf.set_font("zapfdingbats", "", 10)
+        pdf.cell(5, 5, "4" if impact.get("risk") else "o", 1, 0, 'C')
+        pdf.set_font("helvetica", "B", 8)
+        pdf.cell(55, 5, " IMPACTS RISK PROFILE", 0, 1)
+        
+        pdf.ln(4)
+        pdf.set_x(15)
+
+        # Asset Allocation Impact
+        pdf.set_font("zapfdingbats", "", 10)
+        pdf.cell(5, 5, "4" if impact.get("asset_allocation") else "o", 1, 0, 'C')
+        pdf.set_font("helvetica", "B", 8)
+        pdf.cell(55, 5, " IMPACTS ASSET ALLOCATION", 0, 0)
+        
+        # Portfolio Impact
+        pdf.set_font("zapfdingbats", "", 10)
+        pdf.cell(5, 5, "4" if impact.get("portfolio") else "o", 1, 0, 'C')
+        pdf.set_font("helvetica", "B", 8)
+        pdf.cell(55, 5, " IMPACTS PORTFOLIO / HOLDINGS", 0, 1)
+        
+        pdf.ln(4)
+        pdf.set_font("helvetica", "B", 7)
+        pdf.set_text_color(*text_muted)
+        pdf.cell(0, 4, "REMARKS / MITIGATION", ln=True)
+        pdf.set_font("helvetica", "I", 9)
+        pdf.set_text_color(*primary_black)
+        pdf.multi_cell(0, 5, impact.get("remarks") or "", border='B')
+        pdf.ln(10)
+
+        # Section 8: Declaration
+        section_title(8, "Declaration (By Requestor)")
         pdf.set_font("helvetica", "I", 9)
         pdf.multi_cell(0, 5, '"I confirm that the proposed edit info is accurate and verified relative to the client\'s request or original source document. This edit was not performed prior to this authorization."', border=1)
         pdf.ln(15)
