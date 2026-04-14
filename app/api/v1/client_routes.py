@@ -116,6 +116,24 @@ async def delete_client_bridge(
     return None
 
 
+DOCUMENT_TYPE_MAP = {
+    "PAN Card": "pan_card_copy",
+    "Aadhar Card": "aadhar_card_copy",
+    "Passport": "passport_copy",
+    "Cancelled Cheque": "cancelled_cheque_copy",
+    "Photo (Passport size)": "profile_photo",
+    "Registration Certificate": "certificate_path",
+    "Signature": "client_signature_path",
+    "Advisor Signature": "advisor_signature_path",
+    "Income Proof": "income_proof_path",
+    "Address Proof": "address_proof_path",
+    "Signed Form": "signed_form_path",
+    "Client Agreement": "agreement_copy_path",
+    "Financial Analysis Document": "financial_analysis_path",
+    "Other": "other_document_path"
+}
+
+
 @router.post("/clients/{client_id}/upload-document", response_model=dict)
 async def upload_client_document_bridge(
     client_id: uuid.UUID,
@@ -123,13 +141,20 @@ async def upload_client_document_bridge(
     file: UploadFile = File(...),
     bridge: BridgeClient = Depends(get_bridge_client),
 ):
-    """Upload a document for a client via the Bridge (stored in IA's own bucket)."""
+    """
+    Upload a document for a client via the Bridge.
+    Maps frontend document types to internal Bridge database columns.
+    """
+    # Map frontend label to bridge column if exists
+    bridge_doc_type = DOCUMENT_TYPE_MAP.get(document_type, document_type)
+    
     file_bytes = await file.read()
     result = await bridge.upload_file(
-        f"/api/storage/upload",
+        f"/clients/{client_id}/upload-document",
         file_bytes=file_bytes,
         filename=file.filename,
         content_type=file.content_type or "application/octet-stream",
+        data={"document_type": bridge_doc_type}
     )
     return result
 
