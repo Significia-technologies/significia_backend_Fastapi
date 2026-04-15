@@ -182,6 +182,69 @@ async def get_client_version_bridge(
     return await bridge.get(f"/clients/{client_id}/versions/{version_id}")
 
 
+@router.get("/clients/{client_id}/versions/{version_id}/pdf")
+async def download_client_version_report(
+    client_id: uuid.UUID,
+    version_id: uuid.UUID,
+    request: Request,
+    bridge: BridgeClient = Depends(get_bridge_client),
+    current_user: Any = Depends(get_current_user),
+):
+    """
+    Generate and download a historical version report for a specific client.
+    """
+    try:
+        # 1. Fetch version snapshot and IA profile in parallel
+        import asyncio
+        # We call the version detail endpoint which returns { "snapshot": { ... }, "version_number": X, ... }
+        version_task = bridge.get(f"/clients/{client_id}/versions/{version_id}")
+        ia_task = bridge.get("/ia-master")
+        
+        version_data, ia_data = await asyncio.gather(version_task, ia_task)
+        
+        if not version_data or "snapshot" not in version_data:
+            raise HTTPException(status_code=404, detail="Version snapshot not found")
+
+        client_snapshot = version_data["snapshot"]
+        version_number = version_data.get("version_number", "unknown")
+        
+        if ia_data:
+            # Re-using the decryption logic from the generator component for safety
+            ia_data["name_of_ia"] = decrypt_string(ia_data.get("name_of_ia"))
+            ia_data["name_of_entity"] = decrypt_string(ia_data.get("name_of_entity"))
+
+        # 2. Generate PDF using the snapshot
+        pdf_bytes = ClientPDFGenerator.generate_client_report(client_snapshot, ia_data=ia_data)
+        
+        client_name = client_snapshot.get("client_name", "Client").replace(" ", "_")
+        
+        # --- SEBI AUDIT ---
+        await bridge.post("/sebi/audit", {
+            "action_type": "EXPORT",
+            "table_name": "client_versions",
+            "record_id": str(version_id),
+            "change_reason_type": "report_generation",
+            "change_reason_text": f"Historical Client Report (V{version_number}) Exported: {client_snapshot.get('client_name')}"
+        }, headers={
+            "X-User-Id": str(current_user.id),
+            "X-User-IP": request.client.host if request.client else "0.0.0.0",
+            "X-User-Agent": request.headers.get("User-Agent", "Unknown")
+        })
+
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename=Report_{client_name}_V{version_number}.pdf"
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Failed to generate version PDF: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 from fastapi import Query as FastAPIQuery
 
 @router.get("/clients/{client_id}/version-at", response_model=dict)
