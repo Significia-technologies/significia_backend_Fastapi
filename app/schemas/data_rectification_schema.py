@@ -6,7 +6,7 @@ from datetime import datetime
 class ProposedChange(BaseModel):
     field: str
     current: Any
-    proposed: Any
+    proposed: Optional[Any] = None
     reason: str
 
 class JustificationDetails(BaseModel):

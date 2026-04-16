@@ -21,12 +21,9 @@ NON_RECTIFIABLE_FIELDS = {
 
         # ── Document / File paths (system-managed) ────────────────────────
         "documents",
-        "certificate_path",
         "financial_analysis_path",
         "other_document_path",
         "agreement_copy_path",
-        "client_signature_path",
-        "advisor_signature_path",
 
         # ── Core Identity (immutable after onboarding) ────────────────────
         "client_name",

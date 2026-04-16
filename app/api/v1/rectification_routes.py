@@ -254,7 +254,7 @@ async def upload_signed_form(
         rectification = await RectificationService.upload_signed_document(
             bridge, rectification_id, file_bytes, file.filename, file.content_type, doc_type
         )
-        return {"status": "success", "message": "Document uploaded to Silo and status changed to UPDATED"}
+        return rectification
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -280,22 +280,39 @@ async def approve_rectification(
 async def download_rectification_document(
     rectification_id: uuid.UUID,
     doc_type: str = "signed_form",
+    filename: Optional[str] = None,
     bridge: BridgeClient = Depends(get_bridge_client),
     current_user: User = Depends(get_current_user)
 ):
     """
     Proxy document download from the Bridge.
+    Handles 'investor_request', 'signed_form', and 'proposed_change'.
     """
-    # 1. Get record to find path
-    record = await bridge.get(f"/rectification/{rectification_id}")
-    col = "investor_request_path" if doc_type == "investor_request" else "signed_form_path"
-    file_path = record.get(col)
+    # 1. Determine file path
+    if doc_type == "proposed_change":
+        if not filename:
+             raise HTTPException(400, "Filename is required for proposed documents")
+        # Fetch record to get client_id (needed for folder structure)
+        record = await bridge.get(f"/rectification/{rectification_id}")
+        client_id = record.get("client_id")
+        file_path = f"/{current_user.tenant_id}/clients/{client_id}/rectification/{rectification_id}/proposed/{filename}"
+    else:
+        # 1. Get record to find path for compliance docs
+        record = await bridge.get(f"/rectification/{rectification_id}")
+        col = "investor_request_path" if doc_type == "investor_request" else "signed_form_path"
+        file_path = record.get(col)
     
     if not file_path:
-        raise HTTPException(404, "Document not found")
+        raise HTTPException(404, "Document path not found")
         
     # 2. Fetch from Bridge
-    response = await bridge.get_raw(f"/storage/{file_path.lstrip('/')}")
+    try:
+        response = await bridge.get_raw(f"/storage/{file_path.lstrip('/')}")
+        if response.status_code != 200:
+             raise HTTPException(response.status_code, "Failed to fetch file from Silo")
+    except Exception as e:
+        logger.error(f"Error proxying file download: {e}")
+        raise HTTPException(500, f"Error fetching document: {str(e)}")
     
     return StreamingResponse(
         io.BytesIO(response.content),
