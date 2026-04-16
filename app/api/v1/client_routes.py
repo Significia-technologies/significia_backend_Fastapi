@@ -188,6 +188,7 @@ async def download_client_version_report(
     version_id: uuid.UUID,
     request: Request,
     bridge: BridgeClient = Depends(get_bridge_client),
+    db: Session = Depends(get_db),
     current_user: Any = Depends(get_current_user),
 ):
     """
@@ -196,11 +197,24 @@ async def download_client_version_report(
     try:
         # 1. Fetch version snapshot and IA profile in parallel
         import asyncio
-        # We call the version detail endpoint which returns { "snapshot": { ... }, "version_number": X, ... }
         version_task = bridge.get(f"/clients/{client_id}/versions/{version_id}")
         ia_task = bridge.get("/ia-master")
+        employees_task = bridge.get("/employees")
         
-        version_data, ia_data = await asyncio.gather(version_task, ia_task)
+        version_data, ia_data, employees_list = await asyncio.gather(version_task, ia_task, employees_task)
+        
+        # Resolve Logo for Cover Page
+        logo_path = None
+        ia_logo_key = ia_data.get("ia_logo_path") if ia_data else None
+        if ia_logo_key:
+            try:
+                from app.utils.file_utils import resolve_logo_to_local_path
+                url_resp = await bridge.get("/storage/url", params={"key": ia_logo_key})
+                signed_url = url_resp.get("url")
+                if signed_url:
+                    logo_path = await resolve_logo_to_local_path(signed_url, db)
+            except Exception as e:
+                print(f"Failed to resolve IA logo for version report: {e}")
         
         if not version_data or "snapshot" not in version_data:
             raise HTTPException(status_code=404, detail="Version snapshot not found")
@@ -209,12 +223,47 @@ async def download_client_version_report(
         version_number = version_data.get("version_number", "unknown")
         
         if ia_data:
-            # Re-using the decryption logic from the generator component for safety
             ia_data["name_of_ia"] = decrypt_string(ia_data.get("name_of_ia"))
             ia_data["name_of_entity"] = decrypt_string(ia_data.get("name_of_entity"))
 
-        # 2. Generate PDF using the snapshot
-        pdf_bytes = ClientPDFGenerator.generate_client_report(client_snapshot, ia_data=ia_data)
+        # --- ENRICHMENT FOR HISTORICAL REPORT ---
+        # 1. IPV & Assigned Person Name + Role Lookup
+        ipv_done_by_id = str(client_snapshot.get("ipv_done_by_id") or "")
+        assigned_id = str(client_snapshot.get("assigned_employee_id") or "")
+        
+        # Helper to find employee and format string
+        def get_emp_info(emp_id):
+            if not emp_id: return "N/A"
+            emp = next((e for e in employees_list if str(e.get("id")) == emp_id), None)
+            if not emp: return "N/A"
+            name = emp.get("full_name") or emp.get("name_of_employee") or emp.get("name", "Unknown")
+            role = emp.get("designation") or emp.get("role")
+            return f"{name} ({role})" if role else name
+
+        client_snapshot["ipv_done_by_name"] = get_emp_info(ipv_done_by_id)
+        client_snapshot["assigned_person_info"] = get_emp_info(assigned_id)
+
+        # 2. Document Checklist Mapping (Bridge Columns -> Labels)
+        uploaded = []
+        for label, bridge_col in DOCUMENT_TYPE_MAP.items():
+            if client_snapshot.get(bridge_col):
+                uploaded.append(label)
+        client_snapshot["uploaded_documents"] = uploaded
+
+        # 2. Version Header Info
+        version_info = {
+            "version_number": version_number,
+            "valid_from": version_data.get("valid_from", "Unknown"),
+            "valid_to": version_data.get("valid_to")
+        }
+
+        # 3. Generate PDF using the snapshot
+        pdf_bytes = ClientPDFGenerator.generate_client_report(
+            client_snapshot, 
+            ia_data=ia_data,
+            version_info=version_info,
+            logo_path=logo_path
+        )
         
         client_name = client_snapshot.get("client_name", "Client").replace(" ", "_")
         
@@ -388,6 +437,7 @@ async def download_client_individual_report(
     client_id: uuid.UUID,
     request: Request,
     bridge: BridgeClient = Depends(get_bridge_client),
+    db: Session = Depends(get_db),
     current_user: Any = Depends(get_current_user),
 ):
     """
@@ -402,6 +452,19 @@ async def download_client_individual_report(
         
         client, ia_data, employees_list = await asyncio.gather(client_task, ia_task, employees_task)
         
+        # Resolve Logo for Cover Page
+        logo_path = None
+        ia_logo_key = ia_data.get("ia_logo_path") if ia_data else None
+        if ia_logo_key:
+            try:
+                from app.utils.file_utils import resolve_logo_to_local_path
+                url_resp = await bridge.get("/storage/url", params={"key": ia_logo_key})
+                signed_url = url_resp.get("url")
+                if signed_url:
+                    logo_path = await resolve_logo_to_local_path(signed_url, db)
+            except Exception as e:
+                print(f"Failed to resolve IA logo for individual report: {e}")
+        
         if not client:
             raise HTTPException(status_code=404, detail="Client not found")
 
@@ -409,16 +472,21 @@ async def download_client_individual_report(
             ia_data["name_of_ia"] = decrypt_string(ia_data.get("name_of_ia"))
             ia_data["name_of_entity"] = decrypt_string(ia_data.get("name_of_entity"))
         
-        # 2. Enrich: IPV Performer Name Lookup
+        # 2. Enrich: IPV & Assigned Person Name + Role Lookup
         ipv_done_by_id = str(client.get("ipv_done_by_id") or "")
-        if ipv_done_by_id:
-            performer = next((e for e in employees_list if str(e.get("id")) == ipv_done_by_id), None)
-            if performer:
-                client["ipv_done_by_name"] = performer.get("full_name") or performer.get("name_of_employee") or performer.get("name")
-            else:
-                client["ipv_done_by_name"] = "N/A"
-        else:
-            client["ipv_done_by_name"] = "N/A"
+        assigned_id = str(client.get("assigned_employee_id") or "")
+        
+        # Helper to find employee and format string
+        def get_emp_info(emp_id):
+            if not emp_id: return "N/A"
+            emp = next((e for e in employees_list if str(e.get("id")) == emp_id), None)
+            if not emp: return "N/A"
+            name = emp.get("full_name") or emp.get("name_of_employee") or emp.get("name", "Unknown")
+            role = emp.get("designation") or emp.get("role")
+            return f"{name} ({role})" if role else name
+
+        client["ipv_done_by_name"] = get_emp_info(ipv_done_by_id)
+        client["assigned_person_info"] = get_emp_info(assigned_id)
 
         # 3. Enrich: Document Checklist Mapping (Bridge Columns -> Labels)
         # We check each column mapping from DOCUMENT_TYPE_MAP
@@ -431,7 +499,11 @@ async def download_client_individual_report(
         client["uploaded_documents"] = uploaded
 
         # 4. Generate PDF
-        pdf_bytes = ClientPDFGenerator.generate_client_report(client, ia_data=ia_data)
+        pdf_bytes = ClientPDFGenerator.generate_client_report(
+            client, 
+            ia_data=ia_data, 
+            logo_path=logo_path
+        )
         
         client_name = client.get("client_name", "Client").replace(" ", "_")
         

@@ -14,6 +14,16 @@ class BaseReportPDF(FPDF):
         self.set_auto_page_break(auto=True, margin=15)
         self.alias_nb_pages()
 
+    def header(self):
+        # Only show header on pages after the cover page (Page 1)
+        if self.page_no() > 1:
+            self.set_font('helvetica', 'I', 8)
+            self.set_text_color(150, 150, 150)
+            # Right-aligned disclaimer at the very top
+            self.cell(0, 5, "Internal system report - not for client communication", 0, 1, 'R')
+            # Add a small buffer after the header
+            self.ln(5)
+
     def footer(self):
         # Position at 1.5 cm from bottom
         self.set_y(-15)
@@ -148,47 +158,128 @@ class IAPDFGenerator:
 
 class ClientPDFGenerator:
     @staticmethod
-    def generate_client_report(client_data: dict, ia_data: Optional[dict] = None) -> bytes:
+    def _fmt_dt(dt_str: Optional[str]) -> str:
+        if not dt_str or dt_str == "unknown":
+            return "N/A"
+        try:
+            # Handle ISO format from Bridge
+            if 'T' in dt_str:
+                dt_obj = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
+                return dt_obj.strftime('%d-%m-%Y %H:%M')
+            return dt_str
+        except:
+            return dt_str
+
+    @staticmethod
+    def render_client_cover_page(pdf, client_data: dict, ia_data: dict, logo_path: Optional[str] = None, version_info: Optional[dict] = None):
+        pdf.add_page()
+        
+        # Colors & Settings
+        primary_blue = (0, 70, 160)
+        text_black = (20, 20, 20)
+        margin = 10
+        
+        # Draw a full page border for premium feel
+        pdf.set_draw_color(*primary_blue)
+        pdf.set_line_width(0.5)
+        pdf.rect(5, 5, 200, 287)
+        pdf.set_line_width(0.2)
+        
+        # 1. Render Archival Banner at the VERY TOP of the cover if present
+        if version_info:
+            pdf.set_y(10)
+            pdf.set_fill_color(255, 245, 230)
+            pdf.set_draw_color(255, 120, 0)
+            pdf.set_line_width(0.4)
+            pdf.set_x(10)
+            pdf.set_font("helvetica", "B", 10)
+            pdf.set_text_color(200, 80, 0)
+            
+            v_no = version_info.get("version_number", "N/A")
+            pdf.cell(190, 8, f" [!] HISTORICAL ARCHIVAL RECORD - VERSION {v_no}", border='LTR', ln=True, fill=True, align='C')
+            
+            pdf.set_font("helvetica", "", 8)
+            pdf.set_text_color(60, 60, 60)
+            valid_from = ClientPDFGenerator._fmt_dt(version_info.get("valid_from"))
+            valid_to = ClientPDFGenerator._fmt_dt(version_info.get("valid_to")) if version_info.get("valid_to") else "Active (Present)"
+            pdf.cell(190, 6, f" Timeline: {valid_from}  TO  {valid_to}", border='LBR', ln=True, fill=True, align='C')
+            
+            pdf.set_line_width(0.2)
+            pdf.set_y(30)
+        else:
+            pdf.set_y(40)
+
+        # IA Logo
+        if logo_path and os.path.exists(logo_path):
+            pdf.image(logo_path, 85, pdf.get_y(), 40)
+            pdf.set_y(pdf.get_y() + 50)
+        else:
+            pdf.set_y(pdf.get_y() + 20)
+        pdf.set_font("helvetica", "B", 14)
+        pdf.set_text_color(*text_black)
+        ia_name = ia_data.get('name_of_entity') or ia_data.get('name_of_ia', 'Significia Investor Services')
+        pdf.cell(0, 10, ia_name.upper(), ln=True, align="C")
+        
+        # Report Title
+        pdf.ln(30)
+        pdf.set_font("helvetica", "B", 24)
+        pdf.set_text_color(*primary_blue)
+        pdf.cell(0, 15, "INVESTOR REGISTRATION RECORD", ln=True, align="C")
+        
+        # Decorative line
+        pdf.set_fill_color(*primary_blue)
+        pdf.set_xy(75, pdf.get_y() + 2)
+        pdf.cell(60, 1.5, "", ln=True, fill=True)
+        
+        # Client Main Info
+        pdf.ln(40)
+        pdf.set_font("helvetica", "B", 18)
+        pdf.set_text_color(*text_black)
+        pdf.cell(0, 10, client_data.get('client_name', 'Unnamed Client').upper(), ln=True, align="C")
+        
+        pdf.set_font("helvetica", "B", 12)
+        pdf.set_text_color(100, 100, 100)
+        pdf.cell(0, 8, f"REFERENCE CODE: {client_data.get('client_code', 'N/A')}", ln=True, align="C")
+        
+        # Footer of cover page
+        pdf.set_y(250)
+        pdf.set_font("helvetica", "I", 10)
+        pdf.set_text_color(150, 150, 150)
+        current_date = datetime.now().strftime('%d %B %Y')
+        pdf.cell(0, 6, f"Record Generated on: {current_date}", ln=True, align="C")
+        
+        pdf.set_font("helvetica", "", 9)
+        reg_no = ia_data.get('ia_registration_number', 'N/A')
+        pdf.cell(0, 6, f"Investment Advisor Reg No: {reg_no}", ln=True, align="C")
+        
+        # Internal Disclaimer on Cover Page
+        pdf.set_font("helvetica", "I", 9)
+        pdf.set_text_color(200, 80, 0) # Use the accent orange color for visibility
+        pdf.cell(0, 8, "Internal system report - not for client communication", ln=True, align="C")
+
+    @staticmethod
+    def generate_client_report(client_data: dict, ia_data: Optional[dict] = None, version_info: Optional[dict] = None, logo_path: Optional[str] = None) -> bytes:
         pdf = BaseReportPDF(
             advisor_name=ia_data.get('name_of_ia') if ia_data else client_data.get('advisor_name'),
             entity_name=ia_data.get('name_of_entity') if ia_data else None,
             ia_reg_no=ia_data.get('ia_registration_number') if ia_data else client_data.get('advisor_registration_number')
         )
-        pdf.add_page()
         
+        # 1. Render Cover Page if IA Data is available
+        if ia_data:
+            ClientPDFGenerator.render_client_cover_page(pdf, client_data, ia_data, logo_path, version_info)
+        
+        pdf.add_page()
+        margin = 10
         accent_grey = (248, 249, 250)
         border_grey = (210, 215, 220)
         text_black = (10, 10, 10)
         text_muted = (80, 80, 80)
         primary_blue = (0, 70, 160)
-        margin = 10
 
-        pdf.set_font("helvetica", "B", 20)
-        pdf.set_text_color(*text_black)
-        pdf.cell(0, 10, "CLIENT REGISTRATION REPORT", ln=True, align="L")
-        
-        if ia_data:
-            entity_name = ia_data.get('name_of_entity') or ia_data.get('name_of_ia', 'N/A')
-            ia_reg = ia_data.get('ia_registration_number', 'N/A')
-            pdf.set_font("helvetica", "B", 10)
-            pdf.set_text_color(*text_muted)
-            pdf.cell(0, 5, f"ENTITY: {entity_name.upper()}", ln=True, align="L")
-            pdf.cell(0, 5, f"REGISTRATION NO: {ia_reg}", ln=True, align="L")
-
-        pdf.set_font("helvetica", "B", 10)
-        pdf.set_text_color(*primary_blue)
-        pdf.cell(0, 5, f"REFERENCE: {client_data.get('client_code')}", ln=True, align="L")
-        pdf.set_font("helvetica", "I", 8)
-        pdf.set_text_color(128, 128, 128)
-        pdf.cell(0, 5, "Internal system report - not for client communication", ln=True, align="L")
-
-        pdf.set_font("helvetica", "I", 8)
-        pdf.set_text_color(*text_muted)
-        current_date = datetime.now().strftime('%d-%m-%Y %H:%M:%S')
-        pdf.set_xy(10, 10)
-        pdf.cell(0, 10, f"DATE: {current_date}", ln=True, align="R")
-        # Shift Y down if header is present
-        pdf.set_y(40 if ia_data else 25)
+        # Shift Y to start sections directly
+        pdf.set_draw_color(*border_grey)
+        pdf.set_y(20)
 
         def render_compact_section(title, fields, row_h=7.5, is_last=False):
             temp_fields = [f for f in fields if f[1] is not None]
@@ -282,10 +373,11 @@ class ClientPDFGenerator:
                 ("Home Address", client_data.get("address"), True),
             ]),
             ("KYC & IPV Compliance", [
+                ("Assigned To", client_data.get("assigned_person_info") or "N/A"),
                 ("CKYC Verified", "Yes" if client_data.get("kyc_verified") else "No"),
                 ("CKYC Number", client_data.get("ckyc_number") or "N/A"),
-                ("IPV Done By", client_data.get("ipv_done_by_name") or "N/A"),
-                ("IPV Date", str(client_data.get("ipv_date")) if client_data.get("ipv_date") else "N/A"),
+                ("IPV Performer", client_data.get("ipv_done_by_name") or "N/A"),
+                ("IPV Date", ClientPDFGenerator._fmt_dt(client_data.get("ipv_date")) if client_data.get("ipv_date") else "N/A"),
             ]),
             ("Financial Profile", [
                 ("Annual Income", f"INR {float(client_data.get('annual_income', 0)):,.0f}"),
@@ -297,6 +389,7 @@ class ClientPDFGenerator:
             ]),
             ("Banking & Demat", [
                 ("Bank Name", client_data.get("bank_name")),
+                ("Branch", client_data.get("bank_branch")),
                 ("A/C Number", client_data.get("bank_account_number")),
                 ("IFSC Code", client_data.get("ifsc_code")),
                 ("Demat A/C", client_data.get("demat_account_number")),
