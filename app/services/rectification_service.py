@@ -72,7 +72,7 @@ class RectificationService:
         """
         module = module.upper()
         
-        if module != "CLIENT":
+        if module not in ["CLIENT", "DEACTIVATION"]:
             return {}
         
         try:
@@ -81,7 +81,11 @@ class RectificationService:
                 return {}
             # Strip out non-rectifiable fields before returning
             non_rectifiable = NON_RECTIFIABLE_FIELDS.get("CLIENT", [])
-            return {k: v for k, v in res.items() if k not in non_rectifiable}
+            # For DEACTIVATION, we specifically allow 'is_active' even if it's in blacklist
+            filtered = {k: v for k, v in res.items() if k not in non_rectifiable}
+            if module == "DEACTIVATION":
+                filtered["is_active"] = res.get("is_active", True)
+            return filtered
         except Exception:
             return {}
 
@@ -89,15 +93,27 @@ class RectificationService:
     async def initiate_rectification(bridge: BridgeClient, payload: RectificationCreate, requested_by_id: uuid.UUID) -> Dict[str, Any]:
         """
         Calls Bridge to create a new Data Rectification record.
-        Only CLIENT module is permitted. Financial Analysis, Risk Profile,
-        and Asset Allocation are managed through their own versioned assessment workflows.
+        Only CLIENT and DEACTIVATION modules are permitted.
         """
-        if payload.module.upper() != "CLIENT":
+        module = payload.module.upper()
+        if module not in ["CLIENT", "DEACTIVATION"]:
             raise ValueError(
-                f"Data Rectification is restricted to Client Master Data only. "
-                f"Module '{payload.module}' cannot be rectified through this workflow. "
-                f"Use the respective module's assessment or versioning tools instead."
+                f"Data Rectification is restricted to Client Master Data and Deactivation. "
+                f"Module '{payload.module}' cannot be rectified through this workflow."
             )
+        # --- COMPLIANCE GUARD: Block rectifications for deactivated clients ---
+        try:
+            client_data = await bridge.get(f"/clients/{payload.client_id}")
+            if not client_data.get("is_active", True):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Compliance Error: This client is deactivated. No further data rectifications or status changes are permitted for terminated accounts."
+                )
+        except HTTPException as e:
+            if e.status_code == 404:
+                raise HTTPException(404, detail="Client not found in Bridge database.")
+            raise
+
         data = {
             "client_id": str(payload.client_id),
             "module": payload.module,

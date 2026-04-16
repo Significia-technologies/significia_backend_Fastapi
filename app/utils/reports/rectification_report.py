@@ -20,12 +20,16 @@ class RectificationPDFGenerator:
         text_muted = (100, 100, 100)
         
         # Header
+        is_deactivation = rectification.get("module") == "DEACTIVATION"
+        main_title = "CLIENT DEACTIVATION AUTHORIZATION FORM" if is_deactivation else "DATA CORRECTION AUTHORIZATION FORM"
+        sub_title = "PERMANENT TERMINATION OF SERVICE AUTHORIZATION" if is_deactivation else "PRE-EDIT APPROVAL FOR VERSION CREATION"
+
         pdf.set_font("helvetica", "B", 18)
         pdf.set_text_color(*primary_black)
-        pdf.cell(0, 10, "DATA CORRECTION AUTHORIZATION FORM", ln=True, align="C")
+        pdf.cell(0, 10, main_title, ln=True, align="C")
         pdf.set_font("helvetica", "B", 8)
         pdf.set_text_color(*text_muted)
-        pdf.cell(0, 5, "PRE-EDIT APPROVAL FOR VERSION CREATION", ln=True, align="C")
+        pdf.cell(0, 5, sub_title, ln=True, align="C")
         pdf.ln(5)
         
         pdf.set_draw_color(0, 0, 0)
