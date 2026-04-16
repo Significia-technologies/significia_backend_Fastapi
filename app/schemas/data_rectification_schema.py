@@ -9,6 +9,12 @@ class ProposedChange(BaseModel):
     proposed: Optional[Any] = None
     reason: str
 
+class ProposedChangeInput(BaseModel):
+    field: str
+    current: Any
+    proposed: Optional[Any] = None
+    reason: str = Field(..., min_length=1)
+
 class JustificationDetails(BaseModel):
     q1: str = Field(..., description="What is incorrect in current data?")
     q2: str = Field(..., description="Why is change required?")
@@ -24,7 +30,7 @@ class RectificationCreate(BaseModel):
     module: str
     record_id: str
     current_version: int
-    proposed_changes: List[ProposedChange]
+    proposed_changes: List[ProposedChangeInput]
     justification_details: JustificationDetails
     impact_declaration: ImpactDeclaration
     purpose_of_edit: Optional[str] = None
@@ -34,7 +40,7 @@ class RectificationCreate(BaseModel):
     initiation_reason: str = Field(..., description="Reason for initiating the rectification protocol")
 
 class RectificationUpdate(BaseModel):
-    proposed_changes: Optional[List[ProposedChange]] = None
+    proposed_changes: Optional[List[ProposedChangeInput]] = None
     justification_details: Optional[JustificationDetails] = None
     impact_declaration: Optional[ImpactDeclaration] = None
     purpose_of_edit: Optional[str] = None
