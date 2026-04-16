@@ -3,33 +3,87 @@ from typing import Dict, Any, List, Optional
 from app.services.bridge_client import BridgeClient
 from app.schemas.data_rectification_schema import RectificationCreate, RectificationResponse
 
+# Fields that are outcomes of formal assessment processes and MUST NOT be rectified
+# via the data rectification workflow. These are managed through their own assessment flows.
+NON_RECTIFIABLE_FIELDS = {
+    "CLIENT": [
+        # ── System / Auth fields ──────────────────────────────────────────
+        "id",
+        "user_id",
+        "role",
+        "password",
+        "tenant_id",
+        "created_at",
+        "updated_at",
+        "is_active",
+        "status",
+
+        # ── Document / File paths (system-managed) ────────────────────────
+        "documents",
+        "certificate_path",
+        "financial_analysis_path",
+        "other_document_path",
+        "agreement_copy_path",
+        "client_signature_path",
+        "advisor_signature_path",
+
+        # ── Core Identity (immutable after onboarding) ────────────────────
+        "client_name",
+        "name",
+        "client_code",
+        "pan_number",
+        "aadhar_number",
+        "passport_number",
+        "date_of_birth",
+
+        # ── KYC / Compliance audit fields ─────────────────────────────────
+        "kyc_verified",
+        "ckyc_number",
+
+        # ── IPV fields ────────────────────────────────────────────────────
+        "ipv_done_by_id",
+        "ipv_date",
+
+        # ── Advisor / IA fields ───────────────────────────────────────────
+        "advisor_name",
+        "advisor_registration_number",
+
+        # ── Agreement / Registration dates ────────────────────────────────
+        "client_date",
+        "agreement_date",
+
+        # ── Rectification audit trail ─────────────────────────────────────
+        "rectification_serial_no",
+
+        # ── Assessment outcome fields (managed via their own modules) ─────
+        "risk_profile",
+        "investment_experience",
+        "investment_horizon",
+        "liquidity_needs",
+        "investment_objectives",
+    ]
+}
+
 class RectificationService:
     @staticmethod
     async def get_current_values(bridge: BridgeClient, module: str, record_id: str) -> Dict[str, Any]:
         """
-        Fetches the current state of a record from the relevant module via the Bridge.
+        Fetches the current state of a CLIENT record from the Bridge for rectification.
+        Only CLIENT module is supported for data rectification.
+        Financial Analysis, Risk Profile, and Asset Allocation are NOT rectifiable.
         """
         module = module.upper()
         
-        # 1. Map module name to Bridge path
-        # Note: most modules currently use clientId as the record_id for initiation
-        path_map = {
-            "CLIENT": f"/clients/{record_id}",
-            "RISK": f"/risk-assessments/{record_id}",
-            "FINANCIAL": f"/financial-analysis/profiles/{record_id}",
-            "ASSET": f"/asset-allocations?client_id={record_id}"
-        }
-        
-        path = path_map.get(module)
-        if not path:
+        if module != "CLIENT":
             return {}
-            
+        
         try:
-            res = await bridge.get(path)
-            # If Bridge returns a list (e.g. all assessments for a client), take the first/latest
-            if isinstance(res, list) and len(res) > 0:
-                return res[0]
-            return res if isinstance(res, dict) else {}
+            res = await bridge.get(f"/clients/{record_id}")
+            if not isinstance(res, dict):
+                return {}
+            # Strip out non-rectifiable fields before returning
+            non_rectifiable = NON_RECTIFIABLE_FIELDS.get("CLIENT", [])
+            return {k: v for k, v in res.items() if k not in non_rectifiable}
         except Exception:
             return {}
 
@@ -37,7 +91,15 @@ class RectificationService:
     async def initiate_rectification(bridge: BridgeClient, payload: RectificationCreate, requested_by_id: uuid.UUID) -> Dict[str, Any]:
         """
         Calls Bridge to create a new Data Rectification record.
+        Only CLIENT module is permitted. Financial Analysis, Risk Profile,
+        and Asset Allocation are managed through their own versioned assessment workflows.
         """
+        if payload.module.upper() != "CLIENT":
+            raise ValueError(
+                f"Data Rectification is restricted to Client Master Data only. "
+                f"Module '{payload.module}' cannot be rectified through this workflow. "
+                f"Use the respective module's assessment or versioning tools instead."
+            )
         data = {
             "client_id": str(payload.client_id),
             "module": payload.module,
