@@ -3,6 +3,7 @@ import os
 from datetime import datetime, date
 from fpdf import FPDF
 from typing import List, Optional
+from app.constants import REQUIRED_DOCUMENTS
 
 class BaseReportPDF(FPDF):
     def __init__(self, *args, **kwargs):
@@ -280,6 +281,12 @@ class ClientPDFGenerator:
                 ("Email ID", client_data.get("email")),
                 ("Home Address", client_data.get("address"), True),
             ]),
+            ("KYC & IPV Compliance", [
+                ("CKYC Verified", "Yes" if client_data.get("kyc_verified") else "No"),
+                ("CKYC Number", client_data.get("ckyc_number") or "N/A"),
+                ("IPV Done By", client_data.get("ipv_done_by_name") or "N/A"),
+                ("IPV Date", str(client_data.get("ipv_date")) if client_data.get("ipv_date") else "N/A"),
+            ]),
             ("Financial Profile", [
                 ("Annual Income", f"INR {float(client_data.get('annual_income', 0)):,.0f}"),
                 ("Net Worth", f"INR {float(client_data.get('net_worth', 0)):,.0f}"),
@@ -301,6 +308,10 @@ class ClientPDFGenerator:
                 ("Tax Residency", client_data.get("tax_residency")),
                 ("Nominee Name", client_data.get("nominee_name")),
                 ("Objectives", client_data.get("investment_objectives"), True),
+            ]),
+            ("Document Checklist", [
+                (doc, " [ Yes ]" if doc in (client_data.get("uploaded_documents") or []) else " [ No ]")
+                for doc in REQUIRED_DOCUMENTS
             ]),
             ("Regulatory Declaration & IA Consent", [
                 ("Agreement Date", client_data.get("agreement_date")),
@@ -356,19 +367,20 @@ class ClientPDFGenerator:
         pdf.ln(5)
         
         headers = [
-            ("SL No", 12),
-            ("Client Code", 22),
-            ("Client Name", 38),
-            ("PAN Number", 25),
-            ("DOB", 20),
-            ("Reg No", 30),
-            ("Advisor Name", 33),
-            ("Relation", 15),
-            ("Assigned Employee", 35),
-            ("Created At", 30)
+            ("SL No", 10),
+            ("Client Code", 20),
+            ("Client Name", 32),
+            ("PAN Number", 22),
+            ("CKYC No", 25),
+            ("DOB", 18),
+            ("Reg No", 24),
+            ("Advisor Name", 28),
+            ("IPV", 12),
+            ("Assigned Professional", 32),
+            ("Created At", 25)
         ]
         
-        pdf.set_font("helvetica", "B", 9)
+        pdf.set_font("helvetica", "B", 8)
         pdf.set_fill_color(*primary_blue)
         pdf.set_text_color(255, 255, 255)
         pdf.set_draw_color(*border_grey)
@@ -377,7 +389,7 @@ class ClientPDFGenerator:
             pdf.cell(width, 10, header, border=1, align="C", fill=True)
         pdf.ln()
         
-        pdf.set_font("helvetica", "", 8)
+        pdf.set_font("helvetica", "", 7.5)
         pdf.set_text_color(*text_black)
         
         alternate = False
@@ -389,28 +401,27 @@ class ClientPDFGenerator:
             
             def fmt_date(d):
                 if isinstance(d, (datetime, date)):
-                    return d.strftime('%d-%m-%Y %H:%M')
+                    return d.strftime('%d-%m-%Y')
                 if isinstance(d, str) and 'T' in d:
                     try:
-                        # Attempt to parse ISO format and extracted date + HH:MM
                         dt_obj = datetime.fromisoformat(d.replace('Z', '+00:00'))
-                        return dt_obj.strftime('%d-%m-%Y %H:%M')
+                        return dt_obj.strftime('%d-%m-%Y')
                     except:
-                        # Fallback parsing YYYY-MM-DD
-                        return d[:16].replace('T', ' ') # Simple fallback: YYYY-MM-DD HH:MM
+                        return d[:10]
                 return str(d) if d else ""
 
             row_data = [
-                (idx, 12),
-                (client.get("client_code", ""), 22),
-                (client.get("client_name", "")[:20], 38),
-                (client.get("pan_number", "").upper(), 25),
-                (fmt_date(client.get("date_of_birth")), 20),
-                (client.get("advisor_registration_number", ""), 30),
-                (client.get("advisor_name", "")[:20], 33),
-                (client.get("relation", "self"), 15),
-                (client.get("employee_name", "Unassigned")[:20], 35),
-                (fmt_date(client.get("created_at")), 30)
+                (idx, 10),
+                (client.get("client_code", ""), 20),
+                (client.get("client_name", "")[:20], 32),
+                (client.get("pan_number", "").upper(), 22),
+                (client.get("ckyc_number") or "N/A", 25),
+                (fmt_date(client.get("date_of_birth")), 18),
+                (client.get("advisor_registration_number", ""), 24),
+                (client.get("advisor_name", "")[:15], 28),
+                ("DONE" if client.get("ipv_date") else "PENDING", 12),
+                (client.get("employee_name", "Unassigned")[:20], 32),
+                (fmt_date(client.get("created_at")), 25)
             ]
             
             for val, width in row_data:

@@ -394,21 +394,43 @@ async def download_client_individual_report(
     Generate and download a detailed personal report for a specific client via the Bridge.
     """
     try:
-        # 1. Fetch individual client data and IA profile in parallel
+        # 1. Fetch individual client data, IA profile, and employees in parallel
         import asyncio
         client_task = bridge.get(f"/clients/{client_id}")
         ia_task = bridge.get("/ia-master")
+        employees_task = bridge.get("/employees")
         
-        client, ia_data = await asyncio.gather(client_task, ia_task)
-        
-        if ia_data:
-            ia_data["name_of_ia"] = decrypt_string(ia_data.get("name_of_ia"))
-            ia_data["name_of_entity"] = decrypt_string(ia_data.get("name_of_entity"))
+        client, ia_data, employees_list = await asyncio.gather(client_task, ia_task, employees_task)
         
         if not client:
             raise HTTPException(status_code=404, detail="Client not found")
 
-        # 2. Generate PDF
+        if ia_data:
+            ia_data["name_of_ia"] = decrypt_string(ia_data.get("name_of_ia"))
+            ia_data["name_of_entity"] = decrypt_string(ia_data.get("name_of_entity"))
+        
+        # 2. Enrich: IPV Performer Name Lookup
+        ipv_done_by_id = str(client.get("ipv_done_by_id") or "")
+        if ipv_done_by_id:
+            performer = next((e for e in employees_list if str(e.get("id")) == ipv_done_by_id), None)
+            if performer:
+                client["ipv_done_by_name"] = performer.get("full_name") or performer.get("name_of_employee") or performer.get("name")
+            else:
+                client["ipv_done_by_name"] = "N/A"
+        else:
+            client["ipv_done_by_name"] = "N/A"
+
+        # 3. Enrich: Document Checklist Mapping (Bridge Columns -> Labels)
+        # We check each column mapping from DOCUMENT_TYPE_MAP
+        uploaded = []
+        for label, bridge_col in DOCUMENT_TYPE_MAP.items():
+            # If the client dict has a non-null/non-empty value for that column, it exists
+            if client.get(bridge_col):
+                uploaded.append(label)
+        
+        client["uploaded_documents"] = uploaded
+
+        # 4. Generate PDF
         pdf_bytes = ClientPDFGenerator.generate_client_report(client, ia_data=ia_data)
         
         client_name = client.get("client_name", "Client").replace(" ", "_")
