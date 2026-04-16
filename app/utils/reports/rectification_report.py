@@ -249,36 +249,47 @@ class RectificationPDFGenerator:
         impact = rectification.get("impact_declaration", {})
         
         pdf.set_font("helvetica", "B", 8)
-        pdf.set_x(15)
         
-        # Financial Impact
-        pdf.set_font("zapfdingbats", "", 10)
-        pdf.cell(5, 5, "4" if impact.get("financial") else "o", 1, 0, 'C')
-        pdf.set_font("helvetica", "B", 8)
-        pdf.cell(55, 5, " IMPACTS FINANCIAL ANALYSIS", 0, 0)
+        # Grid layout for checkboxes
+        fields = [
+            ("financial", "IMPACTS FINANCIAL ANALYSIS"),
+            ("risk", "IMPACTS RISK PROFILE"),
+            ("asset_allocation", "IMPACTS ASSET ALLOCATION"),
+            ("portfolio", "IMPACTS PORTFOLIO / HOLDINGS"),
+            ("product_basket", "IMPACTS PRODUCT BASKET"),
+            ("target_portfolio", "IMPACTS TARGET PORTFOLIO"),
+            ("other", "OTHERS")
+        ]
         
-        # Risk Impact
-        pdf.set_font("zapfdingbats", "", 10)
-        pdf.cell(5, 5, "4" if impact.get("risk") else "o", 1, 0, 'C')
-        pdf.set_font("helvetica", "B", 8)
-        pdf.cell(55, 5, " IMPACTS RISK PROFILE", 0, 1)
+        row_count = 0
+        for i, (key, label) in enumerate(fields):
+            if i % 2 == 0:
+                pdf.set_x(15)
+            
+            is_checked = impact.get(key)
+            pdf.set_font("zapfdingbats", "", 10)
+            pdf.cell(5, 5, "4" if is_checked else "o", 1, 0, 'C')
+            pdf.set_font("helvetica", "B", 8)
+            pdf.cell(60, 5, f" {label}", 0, 0)
+            
+            if i % 2 != 0 or i == len(fields) - 1:
+                pdf.ln(7)
+                row_count += 1
         
-        pdf.ln(4)
-        pdf.set_x(15)
+        # Other Details if "Other" is checked
+        if impact.get("other"):
+            pdf.ln(2)
+            pdf.set_x(15)
+            pdf.set_font("helvetica", "B", 7)
+            pdf.set_text_color(*text_muted)
+            pdf.cell(0, 4, "OTHER IMPACT DETAILS", ln=True)
+            pdf.set_font("helvetica", "", 9)
+            pdf.set_text_color(*primary_black)
+            pdf.multi_cell(0, 5, impact.get("other_details") or "---", border='B')
+            pdf.ln(2)
 
-        # Asset Allocation Impact
-        pdf.set_font("zapfdingbats", "", 10)
-        pdf.cell(5, 5, "4" if impact.get("asset_allocation") else "o", 1, 0, 'C')
-        pdf.set_font("helvetica", "B", 8)
-        pdf.cell(55, 5, " IMPACTS ASSET ALLOCATION", 0, 0)
-        
-        # Portfolio Impact
-        pdf.set_font("zapfdingbats", "", 10)
-        pdf.cell(5, 5, "4" if impact.get("portfolio") else "o", 1, 0, 'C')
-        pdf.set_font("helvetica", "B", 8)
-        pdf.cell(55, 5, " IMPACTS PORTFOLIO / HOLDINGS", 0, 1)
-        
-        pdf.ln(4)
+        pdf.ln(2)
+        pdf.set_x(15)
         pdf.set_font("helvetica", "B", 7)
         pdf.set_text_color(*text_muted)
         pdf.cell(0, 4, "REMARKS / MITIGATION", ln=True)

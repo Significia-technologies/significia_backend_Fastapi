@@ -21,8 +21,14 @@ class JustificationDetails(BaseModel):
     q3: str = Field(..., description="Source of revised data")
 
 class ImpactDeclaration(BaseModel):
-    financial: bool
-    risk: bool
+    financial: bool = False
+    risk: bool = False
+    asset_allocation: bool = False
+    portfolio: bool = False
+    product_basket: bool = False
+    target_portfolio: bool = False
+    other: bool = False
+    other_details: Optional[str] = None
     remarks: Optional[str] = None
 
 class RectificationCreate(BaseModel):
