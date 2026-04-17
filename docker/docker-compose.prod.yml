@@ -85,7 +85,7 @@ services:
       - significia-network
 
   flower:
-    image: ghcr.io/tanbiralam06/significia_backend_fastapi:ClientBridge
+    image: ghcr.io/tanbiralam06/significia_backend_fastapi:latest
     container_name: significia-flower-prod
     restart: unless-stopped
     command: celery -A app.tasks.celery_app flower --port=5555
