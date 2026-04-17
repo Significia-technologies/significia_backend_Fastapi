@@ -1,8 +1,10 @@
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Body, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_current_user
 from app.schemas.auth_schema import UserRegisterRequest, UserLoginRequest, TokenResponse, UserResponse, RefreshTokenRequest
+from fastapi.security import OAuth2PasswordRequestForm
+from typing import Optional
 from app.services.auth_service import AuthService
 from app.models.user import User
 
@@ -17,7 +19,20 @@ def register(request: UserRegisterRequest, db: Session = Depends(get_db)):
     return user
 
 @router.post("/login", response_model=TokenResponse)
-def login(request: UserLoginRequest, http_request: Request, db: Session = Depends(get_db)):
+def login(
+    http_request: Request, 
+    db: Session = Depends(get_db),
+    login_data: Optional[UserLoginRequest] = Body(None),
+    form_data: Optional[OAuth2PasswordRequestForm] = Depends()
+):
+    # Determine which login method was used
+    if login_data:
+        request = login_data
+    elif form_data:
+        request = UserLoginRequest(email=form_data.username, password=form_data.password)
+    else:
+        raise HTTPException(status_code=400, detail="Invalid login request format")
+
     client_host = http_request.client.host if http_request.client else "127.0.0.1"
     ip_address = "127.0.0.1" if client_host == "testclient" else client_host
     user_agent = http_request.headers.get("user-agent", "")
