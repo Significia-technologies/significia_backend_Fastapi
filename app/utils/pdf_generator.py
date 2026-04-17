@@ -10,6 +10,7 @@ class BaseReportPDF(FPDF):
         self.advisor_name = kwargs.pop('advisor_name', "")
         self.entity_name = kwargs.pop('entity_name', "")
         self.ia_reg_no = kwargs.pop('ia_reg_no', "")
+        self.header_text = kwargs.pop('header_text', "Internal system report - not for client communication")
         super().__init__(*args, **kwargs)
         self.set_auto_page_break(auto=True, margin=15)
         self.alias_nb_pages()
@@ -20,7 +21,7 @@ class BaseReportPDF(FPDF):
             self.set_font('helvetica', 'I', 8)
             self.set_text_color(150, 150, 150)
             # Right-aligned disclaimer at the very top
-            self.cell(0, 5, "Internal system report - not for client communication", 0, 1, 'R')
+            self.cell(0, 5, self.header_text, 0, 1, 'R')
             # Add a small buffer after the header
             self.ln(5)
 
@@ -50,109 +51,229 @@ class BaseReportPDF(FPDF):
 
 class IAPDFGenerator:
     @staticmethod
+    def render_ia_cover_page(pdf, ia_data: dict, logo_path: Optional[str] = None):
+        pdf.add_page()
+        # Colors (Premium Navy and Silver/Grey)
+        primary_navy = (0, 31, 63)
+        accent_blue = (0, 123, 255)
+        text_dark = (33, 37, 41)
+        
+        # Draw elegant border
+        pdf.set_draw_color(*primary_navy)
+        pdf.set_line_width(0.8)
+        pdf.rect(5, 5, 200, 287)
+        pdf.set_line_width(0.2)
+        
+        # Logo Section
+        pdf.set_y(50)
+        if logo_path and os.path.exists(logo_path):
+            pdf.image(logo_path, 80, pdf.get_y(), 50)
+            pdf.set_y(pdf.get_y() + 60)
+        else:
+            pdf.ln(60)
+
+        # Entity Name
+        pdf.set_font("helvetica", "B", 18)
+        pdf.set_text_color(*primary_navy)
+        name = (ia_data.get('name_of_entity') or ia_data.get('name_of_ia') or "").upper()
+        pdf.cell(0, 10, name, ln=True, align="C")
+        
+        # Report Title
+        pdf.ln(30)
+        pdf.set_font("helvetica", "B", 26)
+        pdf.set_text_color(*accent_blue)
+        pdf.cell(0, 15, "INVESTMENT ADVISOR MASTER REPORT", ln=True, align="C")
+        
+        # Simple stylish separator
+        pdf.set_fill_color(*accent_blue)
+        pdf.set_xy(75, pdf.get_y() + 2)
+        pdf.cell(60, 1.2, "", ln=True, fill=True)
+        
+        # Registration Info
+        pdf.ln(50)
+        pdf.set_font("helvetica", "B", 12)
+        pdf.set_text_color(*text_dark)
+        reg_no = ia_data.get('ia_registration_number', 'N/A')
+        pdf.cell(0, 10, f"SEBI REGISTRATION NO: {reg_no}", ln=True, align="C")
+        
+        # Footer
+        pdf.set_y(260)
+        pdf.set_font("helvetica", "I", 9)
+        pdf.set_text_color(120, 120, 120)
+        current_date = datetime.now().strftime('%d %B %Y')
+        pdf.cell(0, 6, f"Generated for Internal System Record on: {current_date}", ln=True, align="C")
+        pdf.set_text_color(200, 0, 0) # Subtle warning color for "No External Use"
+        pdf.cell(0, 6, "CONFIDENTIAL - INTERNAL SYSTEM RECORD - NOT FOR EXTERNAL USE", ln=True, align="C")
+
+    @staticmethod
     def generate_ia_report(ia_data: dict, employees: List[dict], logo_path: Optional[str] = None) -> bytes:
         pdf = BaseReportPDF(
             advisor_name=ia_data.get('name_of_ia', ''),
             entity_name=ia_data.get('name_of_entity', ''),
-            ia_reg_no=ia_data.get('ia_registration_number', '')
+            ia_reg_no=ia_data.get('ia_registration_number', ''),
+            header_text="Internal system record - not for external use"
         )
+        
+        # 1. Render Premium Cover Page
+        IAPDFGenerator.render_ia_cover_page(pdf, ia_data, logo_path)
+        
         pdf.add_page()
-        
-        # Set font
-        pdf.set_font("helvetica", "B", 20)
-        pdf.set_text_color(33, 37, 41) # Dark grey
-        
-        # Add Logo if available
-        if logo_path and os.path.exists(logo_path):
-            try:
-                # Add logo at top left
-                pdf.image(logo_path, 10, 8, 33)
-                pdf.set_x(50) # Move text to the right of logo
-                pdf.cell(0, 15, "INVESTMENT ADVISOR MASTER REPORT", ln=True, align="L")
-            except Exception as e:
-                print(f"Error rendering logo in IA Master Report: {e}")
-                pdf.cell(0, 15, "INVESTMENT ADVISOR MASTER REPORT", ln=True, align="C")
-        else:
-            pdf.cell(0, 15, "INVESTMENT ADVISOR MASTER REPORT", ln=True, align="C")
-        
-        pdf.set_font("helvetica", "I", 10)
-        pdf.set_text_color(108, 117, 125) # Muted grey
-        current_date = datetime.now().strftime('%d-%m-%Y %H:%M:%S')
-        pdf.cell(0, 10, f"Generated on: {current_date}", ln=True, align="R")
-        pdf.ln(5)
+        margin = 10
+        primary_blue = (0, 123, 255)
+        text_dark = (33, 37, 41)
+        bg_grey = (248, 249, 250)
+        border_grey = (210, 215, 220)
 
-        # Draw a horizontal line matching premium aesthetics
-        pdf.set_fill_color(0, 123, 255) # Primary blue
-        pdf.cell(0, 1, "", ln=True, fill=True)
-        pdf.ln(10)
-        
         def section_header(title):
-            pdf.set_font("helvetica", "B", 14)
-            pdf.set_text_color(0, 123, 255)
+            pdf.set_font("helvetica", "B", 13)
+            pdf.set_text_color(*primary_blue)
             pdf.cell(0, 10, title, ln=True)
             pdf.ln(2)
 
-        section_header("Investment Advisor Profile")
-        
-        pdf.set_font("helvetica", "", 11)
-        pdf.set_text_color(33, 37, 41)
-        
-        fields = [
+        def render_grid_section(title, fields):
+            if not fields: return
+            
+            pdf.set_font("helvetica", "B", 13)
+            pdf.set_text_color(*primary_blue)
+            pdf.cell(0, 12, title, ln=True)
+            pdf.ln(2)
+            
+            # Draw a subtle background for the entire section
+            start_y = pdf.get_y()
+            
+            pdf.set_font("helvetica", "B", 9)
+            pdf.set_text_color(80, 80, 80)
+            
+            for i in range(0, len(fields), 2):
+                pdf.set_x(margin)
+                f1_label, f1_val = fields[i]
+                
+                # Left Column
+                pdf.set_font("helvetica", "B", 9)
+                pdf.set_text_color(100, 100, 100)
+                pdf.cell(40, 9, f" {f1_label}", border='LTB', fill=False)
+                pdf.set_font("helvetica", "", 10)
+                pdf.set_text_color(0, 0, 0) # Solid black
+                pdf.cell(55, 9, f" {f1_val or 'N/A'}", border='RTB', fill=False)
+                
+                # Right Column
+                if i + 1 < len(fields):
+                    f2_label, f2_val = fields[i+1]
+                    pdf.set_x(margin + 95 + 5) # Small gap
+                    pdf.set_font("helvetica", "B", 9)
+                    pdf.set_text_color(100, 100, 100)
+                    pdf.cell(40, 9, f" {f2_label}", border='LTB', fill=False)
+                    pdf.set_font("helvetica", "", 10)
+                    pdf.set_text_color(0, 0, 0) # Solid black
+                    pdf.cell(55, 9, f" {f2_val or 'N/A'}", border='RTB', fill=False)
+                
+                pdf.ln(12)
+
+        # Identity Grid
+        profile_fields = [
             ("Name of IA", ia_data.get('name_of_ia')),
-            ("Nature of Entity", ia_data.get('nature_of_entity', '').capitalize()),
-            ("Entity Name", ia_data.get('name_of_entity') or "N/A"),
+            ("Nature of Entity", str(ia_data.get('nature_of_entity', '')).capitalize()),
+            ("Entity Name", ia_data.get('name_of_entity')),
             ("Reg Number", ia_data.get('ia_registration_number')),
-            ("Reg Date", str(ia_data.get('date_of_registration'))),
-            ("Expiry Date", str(ia_data.get('date_of_registration_expiry'))),
-            ("Address", ia_data.get('registered_address')),
-            ("Email", ia_data.get('registered_email_id')),
-            ("Phone", ia_data.get('registered_contact_number'))
+            ("Reg Date", str(ia_data.get('date_of_registration', 'N/A'))),
+            ("Expiry Date", str(ia_data.get('date_of_registration_expiry', 'N/A'))),
+            ("Email ID", ia_data.get('registered_email_id')),
+            ("Phone No.", ia_data.get('registered_contact_number')),
+            ("CIN Number", ia_data.get('cin_number') or "N/A"),
+            ("BASL ID", ia_data.get('basl_membership_id') or "N/A")
         ]
+        render_grid_section("IA Entity Profile", profile_fields)
         
-        for field, value in fields:
-            pdf.set_font("helvetica", "B", 10)
-            pdf.cell(50, 8, f"{field}:", 0)
-            pdf.set_font("helvetica", "", 10)
-            pdf.cell(0, 8, str(value), 0, ln=True)
+        # Address (Full Width)
+        pdf.set_x(margin)
+        pdf.set_font("helvetica", "B", 9)
+        pdf.set_text_color(100, 100, 100)
+        pdf.cell(40, 9, " Registered Address", border='LTB')
+        pdf.set_font("helvetica", "", 9)
+        pdf.set_text_color(*text_dark)
+        pdf.multi_cell(0, 9, f" {ia_data.get('registered_address', 'N/A')}", border='RTB')
         
         pdf.ln(10)
-        section_header("Bank Details")
         
+        # Bank Grid
         bank_fields = [
-            ("A/C Number", ia_data.get('bank_account_number')),
             ("Bank Name", ia_data.get('bank_name')),
             ("Branch", ia_data.get('bank_branch')),
+            ("A/C Number", ia_data.get('bank_account_number')),
             ("IFSC Code", ia_data.get('ifsc_code'))
         ]
-        
-        for field, value in bank_fields:
-            pdf.set_font("helvetica", "B", 10)
-            pdf.cell(50, 8, f"{field}:", 0)
-            pdf.set_font("helvetica", "", 10)
-            pdf.cell(0, 8, str(value), 0, ln=True)
+        render_grid_section("Nodal / Operational Bank Details", bank_fields)
         
         if employees:
-            pdf.ln(10)
-            section_header("Registered Professionals (Employees)")
+            pdf.ln(5)
             
-            pdf.set_fill_color(248, 249, 250)
-            pdf.set_font("helvetica", "B", 9)
-            pdf.cell(50, 10, "Name", 1, 0, 'C', fill=True)
-            pdf.cell(50, 10, "Designation", 1, 0, 'C', fill=True)
-            pdf.cell(40, 10, "IA Reg No", 1, 0, 'C', fill=True)
-            pdf.cell(50, 10, "Expiry Date", 1, 1, 'C', fill=True)
-            
-            pdf.set_font("helvetica", "", 9)
-            for emp in employees:
-                name = emp.get('name_of_employee', '')[:25]
-                designation = emp.get('designation', '')[:25]
-                reg_no = emp.get('ia_registration_number', '')
-                expiry = str(emp.get('date_of_registration_expiry', ''))
+            # Helper to get name from multiple possible fields
+            def get_person_name(p):
+                return p.get('name') or p.get('name_of_employee') or p.get('full_name') or "N/A"
+
+            # Categorize team members
+            partners = [e for e in employees if e.get('role') in ['partner', 'owner']]
+            other_staff = [e for e in employees if e.get('role') not in ['partner', 'owner']]
+
+            # 1. Partners / Key Personnel Section
+            if partners:
+                section_header("Partners / Key Personnel")
+                pdf.set_fill_color(240, 245, 255) # Light blue fill
+                pdf.set_font("helvetica", "B", 9)
+                pdf.set_text_color(0, 0, 0) # Solid black headers
+                pdf.cell(50, 10, "Name", 1, 0, 'C', fill=True)
+                pdf.cell(50, 10, "Designation", 1, 0, 'C', fill=True)
+                pdf.cell(40, 10, "IA Reg No", 1, 0, 'C', fill=True)
+                pdf.cell(50, 10, "Expiry Date", 1, 1, 'C', fill=True)
                 
-                pdf.cell(50, 10, name, 1, 0, 'L')
-                pdf.cell(50, 10, designation, 1, 0, 'L')
-                pdf.cell(40, 10, reg_no, 1, 0, 'C')
-                pdf.cell(50, 10, expiry, 1, 1, 'C')
+                pdf.set_font("helvetica", "", 9)
+                pdf.set_text_color(20, 20, 20) # Deep black for row data
+                for p in partners:
+                    name = str(get_person_name(p))[:25]
+                    designation = str(p.get('designation', 'Partner'))[:25]
+                    reg_no = str(p.get('ia_registration_number', 'N/A'))
+                    expiry = str(p.get('date_of_registration_expiry', 'N/A'))
+                    
+                    pdf.cell(50, 10, name, 1, 0, 'L')
+                    pdf.cell(50, 10, designation, 1, 0, 'L')
+                    pdf.cell(40, 10, reg_no, 1, 0, 'C')
+                    pdf.cell(50, 10, expiry, 1, 1, 'C')
+                pdf.ln(10)
+
+            # 2. Other Registered Professionals Section
+            if other_staff:
+                section_header("Registered Professionals (Employees)")
+                pdf.set_fill_color(248, 249, 250)
+                pdf.set_font("helvetica", "B", 9)
+                pdf.set_text_color(0, 0, 0) # Solid black headers
+                pdf.cell(50, 10, "Name", 1, 0, 'C', fill=True)
+                pdf.cell(50, 10, "Designation", 1, 0, 'C', fill=True)
+                pdf.cell(40, 10, "IA Reg No", 1, 0, 'C', fill=True)
+                pdf.cell(50, 10, "Expiry Date", 1, 1, 'C', fill=True)
+                
+                pdf.set_font("helvetica", "", 9)
+                pdf.set_text_color(20, 20, 20) # Deep black for row data
+                for emp in other_staff:
+                    name = str(get_person_name(emp))[:25]
+                    designation = str(emp.get('designation', 'Staff'))[:25]
+                    reg_no = str(emp.get('ia_registration_number', 'N/A'))
+                    expiry = str(emp.get('date_of_registration_expiry', 'N/A'))
+                    
+                    pdf.cell(50, 10, name, 1, 0, 'L')
+                    pdf.cell(50, 10, designation, 1, 0, 'L')
+                    pdf.cell(40, 10, reg_no, 1, 0, 'C')
+                    pdf.cell(50, 10, expiry, 1, 1, 'C')
+
+            # Add System Disclaimer at the bottom
+            pdf.ln(10)
+            pdf.set_font("helvetica", "I", 8)
+            pdf.set_text_color(150, 150, 150)
+            disclaimer = (
+                "This report is generated for internal record and reference purpose only. "
+                "Information contain in this report based on recorded data and is not intended for advisory or decision-making purposes. "
+                "All information is based on data provided and recorded by the investment advisor and has not been independently verified by the system"
+            )
+            pdf.multi_cell(0, 5, disclaimer, 0, 'C')
 
         return bytes(pdf.output())
 
