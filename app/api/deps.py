@@ -147,12 +147,15 @@ async def get_current_user_optional(
 def get_current_super_admin(current_user: User = Depends(get_current_user)) -> User:
     """
     Strict dependency for Super Admin routes.
-    Ensures the user has the 'super_admin' role AND belongs to the 'master' tenant.
+    Ensures the user belongs to the 'master' tenant and has an administrative role.
     """
-    if current_user.role != "super_admin" or current_user.tenant.subdomain != "master":
+    is_master_tenant = current_user.tenant.subdomain == "master"
+    is_admin_role = current_user.role in ["super_admin", "staff", "admin", "management"]
+
+    if not is_master_tenant or not is_admin_role:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, 
-            detail="Access restricted to Super Admins only."
+            detail="Access restricted to Super Admin office personnel only."
         )
     return current_user
 

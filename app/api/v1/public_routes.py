@@ -10,8 +10,10 @@ router = APIRouter()
 
 @router.get("/branding")
 async def get_tenant_branding(
+    request: Request,
     db: Session = Depends(get_db),
-    x_tenant_slug: Optional[str] = Header(None, alias="X-Tenant-Slug")
+    x_tenant_slug: Optional[str] = Header(None, alias="X-Tenant-Slug"),
+    host: Optional[str] = Header(None)
 ):
     """
     Public endpoint to fetch tenant branding information.
@@ -19,13 +21,30 @@ async def get_tenant_branding(
     Does NOT require authentication.
     """
     # 1. Resolve Tenant Slug
-    # In production, we would use request.url.hostname to map custom domains.
-    # For now, we rely on the header (which is set by the simulator).
-    slug = x_tenant_slug or "master"
+    tenant = None
     
-    tenant = db.query(Tenant).filter(Tenant.subdomain == slug).first()
+    # Priority 1: X-Tenant-Slug header (set by simulator or mobile apps)
+    if x_tenant_slug:
+        tenant = db.query(Tenant).filter(Tenant.subdomain == x_tenant_slug).first()
+        
+    # Priority 2: Host header (Subdomain detection)
+    if not tenant and host:
+        clean_host = host.split(':')[0].lower()
+        root_domains = ["localhost", "127.0.0.1", "significia.com", "www.significia.com", "app.significia.com", "api.significia.com"]
+        
+        if clean_host not in root_domains:
+            # Check if it's a subdomain of significia.com or localhost
+            for root in ["significia.com", "localhost"]:
+                if clean_host.endswith(f".{root}"):
+                    slug = clean_host.split(f".{root}")[0]
+                    tenant = db.query(Tenant).filter(Tenant.subdomain == slug).first()
+                    break
+        else:
+            # Explicitly "master" if on root domains
+            tenant = db.query(Tenant).filter(Tenant.subdomain == "master").first()
+
+    # Fallback: Default to Master
     if not tenant:
-        # Fallback to master if tenant not found
         tenant = db.query(Tenant).filter(Tenant.subdomain == "master").first()
     
     if not tenant:
