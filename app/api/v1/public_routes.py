@@ -26,6 +26,8 @@ async def get_tenant_branding(
     # Priority 1: X-Tenant-Slug header (set by simulator or mobile apps)
     if x_tenant_slug:
         tenant = db.query(Tenant).filter(Tenant.subdomain == x_tenant_slug).first()
+        if not tenant:
+            raise HTTPException(status_code=404, detail="Tenant not found")
         
     # Priority 2: Host header (Subdomain detection)
     if not tenant and host:
@@ -34,26 +36,30 @@ async def get_tenant_branding(
         
         if clean_host not in root_domains:
             # Check if it's a subdomain of significia.com or localhost
+            is_subdomain = False
             for root in ["significia.com", "localhost"]:
                 if clean_host.endswith(f".{root}"):
+                    is_subdomain = True
                     slug = clean_host.split(f".{root}")[0]
+                    
+                    # Block "master" being used as a subdomain
+                    if slug == "master":
+                         raise HTTPException(status_code=404, detail="Portal not available on this subdomain")
+                         
                     tenant = db.query(Tenant).filter(Tenant.subdomain == slug).first()
                     break
+            
+            # If it was a subdomain but no tenant was found in DB
+            if is_subdomain and not tenant:
+                raise HTTPException(status_code=404, detail="Tenant not found")
         else:
             # Explicitly "master" if on root domains
             tenant = db.query(Tenant).filter(Tenant.subdomain == "master").first()
 
-    # Fallback: Default to Master
+    # Final Check: If still no tenant resolved (e.g. unknown domain)
     if not tenant:
-        tenant = db.query(Tenant).filter(Tenant.subdomain == "master").first()
-    
-    if not tenant:
-        return {
-            "name": "Significia",
-            "is_master": True,
-            "logo_type": "significia",
-            "logo_url": "/favicon-32x32.png"
-        }
+        raise HTTPException(status_code=404, detail="Tenant context could not be resolved")
+
 
     # 2. Branding Logic
     branding = {
