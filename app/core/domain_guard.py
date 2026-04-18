@@ -44,6 +44,7 @@ SIGNIFICIA_DOMAINS = [
     "www.significia.com",
     "localhost",      # Dev mode
     "127.0.0.1",
+    "103.176.85.73",  # Production VPS IP
 ]
 
 
