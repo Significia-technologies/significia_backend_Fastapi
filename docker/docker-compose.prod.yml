@@ -2,7 +2,7 @@ name: significia-backend-prod
 
 services:
   api:
-    image: ghcr.io/tanbiralam06/significia_backend_fastapi:latest
+    image: ghcr.io/significia-technologies/significia_backend_fastapi:latest
     container_name: significia-api-prod
     restart: unless-stopped
     command: /entrypoint.sh api
@@ -30,7 +30,7 @@ services:
       - significia-network
 
   worker:
-    image: ghcr.io/tanbiralam06/significia_backend_fastapi:latest
+    image: ghcr.io/significia-technologies/significia_backend_fastapi:latest
     container_name: significia-worker-prod
     restart: unless-stopped
     command: /entrypoint.sh worker
@@ -85,7 +85,7 @@ services:
       - significia-network
 
   flower:
-    image: ghcr.io/tanbiralam06/significia_backend_fastapi:latest
+    image: ghcr.io/significia-technologies/significia_backend_fastapi:latest
     container_name: significia-flower-prod
     restart: unless-stopped
     command: celery -A app.tasks.celery_app flower --port=5555
