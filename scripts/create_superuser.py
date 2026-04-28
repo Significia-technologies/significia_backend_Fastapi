@@ -51,6 +51,7 @@ def create_superuser(email: str, password: str):
                 is_email_verified=True
             )
             user_repo.create(db, user)
+            db.commit()
             print(f"[+] Super user created successfully.")
 
         print("\n[!] Super User Details:")
