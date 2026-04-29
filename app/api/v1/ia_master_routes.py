@@ -23,6 +23,21 @@ logger = logging.getLogger("significia.ia_master")
 
 router = APIRouter()
 
+def _rewrite_bridge_paths(response: Any, bridge: BridgeClient) -> Any:
+    if not isinstance(response, dict):
+        return response
+        
+    storage_base = bridge.base_url.split("/api/v1/bridge")[0] + "/api/v1/bridge/storage"
+    storage_base = storage_base.replace("0.0.0.0", "localhost")
+    
+    path_fields = ["ia_logo_path", "ia_certificate_path", "ia_signature_path"]
+    for field in path_fields:
+        if field in response and response[field]:
+            if not str(response[field]).startswith("http"):
+                response[field] = f"{storage_base}/{response[field]}"
+                
+    return response
+
 @router.get("/validate/{ia_number}", response_model=IANumberValidationResponse)
 async def validate_ia_number_remote(
     ia_number: str,
@@ -103,7 +118,7 @@ async def create_ia_entry(
             check_and_update_profile_completion(db, tenant, response)
             response["is_profile_completed"] = tenant.is_profile_completed
                 
-        return response
+        return _rewrite_bridge_paths(response, bridge)
 
     except HTTPException:
         raise
@@ -185,7 +200,7 @@ async def update_ia_entry(
             check_and_update_profile_completion(db, tenant, response)
             response["is_profile_completed"] = tenant.is_profile_completed
             
-        return response
+        return _rewrite_bridge_paths(response, bridge)
 
     except HTTPException:
         # Re-raise HTTP exceptions from the Bridge directly to the frontend
@@ -198,7 +213,8 @@ async def get_latest_ia(
     bridge: BridgeClient = Depends(get_bridge_client)
 ):
     """Proxy Latest IA Info request to the Bridge."""
-    return await bridge.get("/ia-master")
+    response = await bridge.get("/ia-master")
+    return _rewrite_bridge_paths(response, bridge)
 
 @router.get("/departments", response_model=List[dict])
 async def list_departments(
@@ -236,7 +252,8 @@ async def get_all_ias(
     bridge: BridgeClient = Depends(get_bridge_client)
 ):
     """Proxy List IAs request to the Bridge (usually just returns the owner)."""
-    return await bridge.get("/ia-master")
+    response = await bridge.get("/ia-master")
+    return _rewrite_bridge_paths(response, bridge)
 
 @router.get("/{ia_id}/pdf")
 async def download_ia_pdf(
