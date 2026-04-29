@@ -268,31 +268,31 @@ class IAPDFGenerator:
                 pdf.set_font("helvetica", "B", 8)
                 pdf.set_text_color(30, 30, 30)
                 
-                pdf.cell(45, 10, " Name", 1, 0, 'L', fill=True)
-                pdf.cell(35, 10, " Designation (Type)", 1, 0, 'L', fill=True)
-                pdf.cell(25, 10, " Staff Code", 1, 0, 'C', fill=True)
-                pdf.cell(35, 10, " IA Reg No", 1, 0, 'C', fill=True)
-                pdf.cell(25, 10, " Expiry", 1, 0, 'C', fill=True)
-                pdf.cell(25, 10, " Joined", 1, 1, 'C', fill=True)
+                pdf.cell(40, 10, " Name", 1, 0, 'L', fill=True)
+                pdf.cell(60, 10, " Designation (Type)", 1, 0, 'L', fill=True)
+                pdf.cell(20, 10, " Staff Code", 1, 0, 'C', fill=True)
+                pdf.cell(30, 10, " IA Reg No", 1, 0, 'C', fill=True)
+                pdf.cell(20, 10, " Expiry", 1, 0, 'C', fill=True)
+                pdf.cell(20, 10, " Joined", 1, 1, 'C', fill=True)
                 
                 pdf.set_font("helvetica", "", 8)
                 pdf.set_text_color(0, 0, 0)
                 
                 for emp in staff_list:
                     # Formatting values
-                    name = str(get_person_name(emp))[:22]
+                    name = str(get_person_name(emp))
                     raw_desig = emp.get('designation')
                     raw_type = emp.get('employee_type')
                     
                     if not raw_desig or str(raw_desig).strip().lower() in ('none', ''):
                         desig_str = "Principle Officer"
                     else:
-                        desig_str = str(raw_desig)[:15]
+                        desig_str = str(raw_desig)
                         
                     if not raw_type or str(raw_type).strip().lower() in ('none', ''):
                         e_type = "Owner"
                     else:
-                        e_type = str(raw_type).split('-')[-1].capitalize()
+                        e_type = "-".join([part.capitalize() for part in str(raw_type).split('-')])
                         
                     desig = f"{desig_str} ({e_type})"
                     s_code = str(emp.get('staff_code') or '-')
@@ -307,12 +307,12 @@ class IAPDFGenerator:
                     raw_joined = emp.get('date_of_joining')
                     joined = str(raw_joined).split('T')[0] if raw_joined and str(raw_joined).strip().lower() not in ('none', 'n/a', '') else '-'
                     
-                    pdf.cell(45, 9, f" {name}", 1, 0, 'L')
-                    pdf.cell(35, 9, f" {desig}", 1, 0, 'L')
-                    pdf.cell(25, 9, s_code, 1, 0, 'C')
-                    pdf.cell(35, 9, reg_no, 1, 0, 'C')
-                    pdf.cell(25, 9, expiry, 1, 0, 'C')
-                    pdf.cell(25, 9, joined, 1, 1, 'C')
+                    pdf.cell(40, 9, f" {name}", 1, 0, 'L')
+                    pdf.cell(60, 9, f" {desig}", 1, 0, 'L')
+                    pdf.cell(20, 9, s_code, 1, 0, 'C')
+                    pdf.cell(30, 9, reg_no, 1, 0, 'C')
+                    pdf.cell(20, 9, expiry, 1, 0, 'C')
+                    pdf.cell(20, 9, joined, 1, 1, 'C')
                 
                 pdf.ln(8)
 

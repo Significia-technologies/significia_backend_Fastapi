@@ -19,6 +19,8 @@ async def resolve_logo_to_local_path(db_path: Optional[str], db: Session) -> Opt
 
     # 1. Full URL (e.g. from a cloud provider or external link)
     if db_path.startswith(("http://", "https://")):
+        if "0.0.0.0" in db_path:
+            db_path = db_path.replace("0.0.0.0", "127.0.0.1")
         try:
             with open("debug_logo.log", "a") as f:
                 f.write(f"DEBUG: Attempting to download from URL: {db_path}\n")
