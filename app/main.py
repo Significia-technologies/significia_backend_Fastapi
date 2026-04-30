@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 import os
 
 from app.core.config import settings
@@ -11,6 +12,9 @@ app = FastAPI(
     title=settings.PROJECT_NAME,
     openapi_url=f"{settings.API_V1_STR}/openapi.json"
 )
+
+# Trust proxy headers (X-Forwarded-Proto, etc.) to correctly handle HTTPS redirects
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
 # Create uploads directory if it doesn't exist
 os.makedirs("uploads/ia_documents", exist_ok=True)
