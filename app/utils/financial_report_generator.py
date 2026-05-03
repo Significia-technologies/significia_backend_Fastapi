@@ -1151,6 +1151,7 @@ class FinancialReportGenerator:
             add_table("1.2 Spouse Information", [
                 ["Particulars", "Details"],
                 ["Name", profile.spouse_name],
+                ["Date of Birth", str(profile.spouse_dob) if profile.spouse_dob else "N/A"],
                 ["Occupation", profile.spouse_occupation or "N/A"]
             ])
 
