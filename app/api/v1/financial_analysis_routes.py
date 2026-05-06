@@ -140,6 +140,8 @@ async def create_analysis_bridge(
             education_investment_pct=analysis_in.education_investment_pct,
             marriage_investment_pct=analysis_in.marriage_investment_pct,
             cash_at_bank=assets_dict.get('cash', 0),
+            spouse_name=analysis_in.spouse_name,
+            children=analysis_in.children,
         )
 
         hlv_data = FinancialCalculator.perform_hlv_calculations(
@@ -152,6 +154,8 @@ async def create_analysis_bridge(
             current_liabilities=total_liabilities,
             assumptions=assumptions_dict,
             spouse_life_expectancy=assumptions_dict.get('le_spouse', 85),
+            spouse_name=analysis_in.spouse_name,
+            children=analysis_in.children,
             land_building_value=assets_dict.get('land', 0),
             allocated_investment_education=assets_dict.get('inv', 0) * (analysis_in.education_investment_pct / 100),
             allocated_investment_marriage=assets_dict.get('inv', 0) * (analysis_in.marriage_investment_pct / 100),
@@ -382,25 +386,84 @@ async def get_analysis_details_bridge(
     # We reconstruct the 'details' list for the frontend
     details = []
     
-    # 1. HLV
+    # 1. HLV (Human Life Value)
+    hlv_income = calculations.get("hlv_income_method", 0)
+    hlv_expense = calculations.get("hlv_expense_method", 0)
+    
+    spouse_name = profile.get("spouse_name", "")
+    children = profile.get("children", [])
+    has_spouse = bool(spouse_name and spouse_name.strip())
+    has_children = len(children) > 0
+    
+    # HLV SECTION
+    hlv_steps = []
+    
+    # A. Income Replacement Method
+    # Show if either spouse or children exist, even if result is 0
+    if has_spouse or has_children:
+        hlv_steps.append({
+            'step': len(hlv_steps) + 1,
+            'description': 'Annual Income to be Replaced',
+            'formula': 'Income_Replaced = Annual_Income × SOL_HLV%',
+            'calculation': f'Rs {int(profile.get("annual_income", 0)):,} × {format_pct(assumptions.get("sol_hlv", 70))}%',
+            'result': f'Rs {int(profile.get("annual_income", 0) * (assumptions.get("sol_hlv", 70)/100)):,}',
+        })
+        hlv_steps.append({
+            'step': len(hlv_steps) + 1,
+            'description': 'Replacement Corpus (PV of Annuity)',
+            'formula': 'HLV = Income_Replaced × [(1 - (1+i/1+r)^n) / (r-i)]',
+            'calculation': f'Income: Rs {int(profile.get("annual_income", 0) * (assumptions.get("sol_hlv", 70)/100)):,} | i: {format_pct(assumptions.get("inflation", 6))}% | r: {format_pct(assumptions.get("pre_ret_rate", 12))}% | n: {calculations.get("years_considered_income", 0)} years',
+            'result': f'Total HLV: Rs {hlv_income:,}',
+        })
+    
+    # B. Expense Replacement Method (Need-Based)
+    # Show if spouse exists, even if result is 0
+    if has_spouse:
+        hlv_steps.append({
+            'step': len(hlv_steps) + 1,
+            'description': 'Annual Expenses to be Replaced',
+            'formula': 'Expenses_Replaced = Annual_Expenses × SOL_HLV%',
+            'calculation': f'Rs {int(total_expenses):,} × {format_pct(assumptions.get("sol_hlv", 70))}%',
+            'result': f'Rs {int(total_expenses * (assumptions.get("sol_hlv", 70)/100)):,}',
+        })
+        hlv_steps.append({
+            'step': len(hlv_steps) + 1,
+            'description': 'Need-Based Corpus (Inflation-Adjusted)',
+            'formula': 'HLV = Σ [Expenses_Replaced × (1 + i)^t]',
+            'calculation': f'Expenses: Rs {int(total_expenses * (assumptions.get("sol_hlv", 70)/100)):,} | i: {format_pct(assumptions.get("inflation", 6))}% | n: {calculations.get("years_considered_expense", 0)} years (Spouse Longevity)',
+            'result': f'Total HLV: Rs {hlv_expense:,}',
+        })
+
+    # C. Net HLV & Insurance Gap Analysis
+    # Show if HLV is calculated
+    if hlv_steps:
+        hlv_data = result.get("hlv_data", {})
+        hlv_steps.append({
+            'step': len(hlv_steps) + 1,
+            'description': 'Net Insurance Gap Calculation',
+            'formula': 'Net_Gap = Gross_HLV - Financial_Assets + Liabilities - Current_Insurance',
+            'calculation': (
+                f'Gross HLV: Rs {max(hlv_income, hlv_expense):,}\n'
+                f'- Existing Financial Assets: Rs {hlv_data.get("existing_financial_assets", 0):,}\n'
+                f'+ Current Liabilities: Rs {hlv_data.get("current_liabilities", 0):,}\n'
+                f'- Current Life Cover: Rs {hlv_data.get("current_life_cover", 0):,}'
+            ),
+            'result': f'Gap: Rs {max(hlv_data.get("net_hlv_income", 0), hlv_data.get("net_hlv_expense", 0)):,}'
+        })
+
+    # D. Handle Zero Case (No Spouse/Child)
+    if not hlv_steps:
+        hlv_steps.append({
+            'step': 1,
+            'description': 'HLV Not Applicable',
+            'formula': 'HLV = 0 (No dependents identified)',
+            'calculation': 'No spouse name or children provided in the analysis profile. HLV is calculated to protect dependents from loss of income.',
+            'result': 'Rs 0'
+        })
+
     details.append({
-        'section': 'Human Life Value (Income Replacement)',
-        'steps': [
-            {
-                'step': 1,
-                'description': 'Annual Income to be Replaced',
-                'formula': 'Income_Replaced = Annual_Income × SOL_HLV%',
-                'calculation': f'Rs {int(profile.get("annual_income", 0)):,} × {format_pct(assumptions.get("sol_hlv", 70))}%',
-                'result': f'Rs {int(profile.get("annual_income", 0) * (assumptions.get("sol_hlv", 70)/100)):,}',
-            },
-            {
-                'step': 2,
-                'description': 'Replacement Corpus (PV of Annuity)',
-                'formula': 'HLV = Income_Replaced × [(1 - (1+i/1+r)^n) / (r-i)]',
-                'calculation': f'Income: Rs {int(profile.get("annual_income", 0) * (assumptions.get("sol_hlv", 70)/100)):,} | i: {format_pct(assumptions.get("inflation", 6))}% | r: {format_pct(assumptions.get("pre_ret_rate", 12))}% | n: {years_to_retirement or 0} years',
-                'result': f'Total HLV: Rs {calculations.get("hlv_income_method", 0):,}',
-            }
-        ]
+        'section': 'Human Life Value (HLV) Calculation',
+        'steps': hlv_steps
     })
 
     # 2. Retirement

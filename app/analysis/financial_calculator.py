@@ -151,7 +151,7 @@ class FinancialCalculator:
 
     @staticmethod
     def perform_hlv_calculations(**kwargs) -> dict:
-        """Perform complete HLV calculations with guaranteed non-zero results."""
+        """Perform complete HLV calculations based on spouse and child presence."""
         client_age = int(kwargs.get('client_age', 0))
         annual_income = kwargs.get('annual_income', 0)
         annual_expenses = kwargs.get('annual_expenses', 0)
@@ -162,21 +162,36 @@ class FinancialCalculator:
         allocated_investment_education = kwargs.get('allocated_investment_education', 0)
         allocated_investment_marriage = kwargs.get('allocated_investment_marriage', 0)
         land_building_value = kwargs.get('land_building_value', 0)
+        
+        # New context for conditional logic
+        spouse_name = kwargs.get('spouse_name', '')
+        children = kwargs.get('children', [])
+        
+        has_spouse = bool(spouse_name and spouse_name.strip())
+        has_children = len(children) > 0
         spouse_life_expectancy = int(kwargs.get('spouse_life_expectancy', assumptions.get('le_spouse', 0)))
 
-        # HLV Income Method
-        hlv_income = FinancialCalculator.calculate_hlv_income_method(
-            annual_income, assumptions.get('retirement_age', 0), client_age,
-            assumptions.get('sol_hlv', 0), assumptions.get('pre_ret_rate', 0))
+        # HLV Income Method (Income Replacement)
+        # Calculated if either spouse or children exist
+        if has_spouse or has_children:
+            hlv_income = FinancialCalculator.calculate_hlv_income_method(
+                annual_income, assumptions.get('retirement_age', 0), client_age,
+                assumptions.get('sol_hlv', 0), assumptions.get('pre_ret_rate', 0))
+            years_considered_income = max(0, int(assumptions.get('retirement_age', 0)) - client_age)
+        else:
+            hlv_income = 0
+            years_considered_income = 0
 
-        years_considered_income = max(0, int(assumptions.get('retirement_age', 0)) - client_age)
-
-        # HLV Expense Method
-        hlv_expense = FinancialCalculator.calculate_hlv_expense_method(
-            annual_expenses, spouse_life_expectancy, client_age,
-            assumptions.get('sol_hlv', 0), assumptions.get('inflation', 0))
-
-        years_considered_expense = max(0, spouse_life_expectancy - client_age)
+        # HLV Expense Method (Need-Based)
+        # Only calculated if spouse exists AND life expectancy is greater than current age
+        if has_spouse and spouse_life_expectancy > client_age:
+            hlv_expense = FinancialCalculator.calculate_hlv_expense_method(
+                annual_expenses, spouse_life_expectancy, client_age,
+                assumptions.get('sol_hlv', 0), assumptions.get('inflation', 0))
+            years_considered_expense = max(0, spouse_life_expectancy - client_age)
+        else:
+            hlv_expense = 0
+            years_considered_expense = 0
 
         # Existing financial assets (Total Assets - Land - Allocated investments)
         existing_financial_assets = max(
@@ -204,11 +219,7 @@ class FinancialCalculator:
             if additional_cover_expense > 0:
                 monthly_investment_insurance_expense = int(additional_cover_expense / (years_to_retirement * 12))
 
-        # Ensure non-zero for display
-        if hlv_income == 0 and annual_income > 0:
-            hlv_income = max(1, int(annual_income * 10))
-        if hlv_expense == 0 and annual_expenses > 0:
-            hlv_expense = max(1, int(annual_expenses * 10))
+        # (Removed forced non-zero safety blocks to honor '0' HLV for single clients or 0-LE spouses)
 
         return {
             'hlv_income_method': int(hlv_income),
@@ -555,6 +566,8 @@ class FinancialCalculator:
             current_life_cover=current_life_cover, total_assets=total_assets,
             current_liabilities=current_liabilities, assumptions=assumptions,
             spouse_life_expectancy=assumptions.get('le_spouse', 85),
+            spouse_name=kwargs.get('spouse_name', ''),
+            children=kwargs.get('children', []),
             land_building_value=land_building_value,
             allocated_investment_education=allocated_investment_education,
             allocated_investment_marriage=allocated_investment_marriage)

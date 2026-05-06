@@ -66,6 +66,8 @@ class FinancialAnalysisService:
             education_investment_pct=analysis_in.education_investment_pct,
             marriage_investment_pct=analysis_in.marriage_investment_pct,
             cash_at_bank=assets_dict.get('cash', 0),
+            spouse_name=analysis_in.spouse_name,
+            children=analysis_in.children,
         )
 
         # 5. Perform separate HLV and Medical calculations for storage
@@ -79,6 +81,8 @@ class FinancialAnalysisService:
             current_liabilities=total_liabilities,
             assumptions=assumptions_dict,
             spouse_life_expectancy=assumptions_dict.get('le_spouse', 0),
+            spouse_name=analysis_in.spouse_name,
+            children=analysis_in.children,
             land_building_value=assets_dict.get('land', 0),
             allocated_investment_education=assets_dict.get('inv', 0) * (analysis_in.education_investment_pct / 100),
             allocated_investment_marriage=assets_dict.get('inv', 0) * (analysis_in.marriage_investment_pct / 100),

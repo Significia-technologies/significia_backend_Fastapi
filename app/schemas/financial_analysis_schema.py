@@ -16,6 +16,13 @@ class ChildInfo(BaseModel):
     dob: Optional[date] = None
     occupation: Optional[str] = None
 
+    @field_validator('dob', mode='before')
+    @classmethod
+    def empty_string_to_none(cls, v):
+        if v == "":
+            return None
+        return v
+
 
 class ExpensesInput(BaseModel):
     """11 expense categories from finplan.py (exact match)."""
@@ -158,6 +165,13 @@ class FinancialAnalysisCreate(BaseModel):
     discussion_notes: Optional[str] = None
     record_version_control_statement: Optional[str] = None
     previous_profile_id: Optional[uuid.UUID] = None
+
+    @field_validator('spouse_dob', mode='before')
+    @classmethod
+    def empty_string_to_none(cls, v):
+        if v == "":
+            return None
+        return v
 
 
 # ─── Response Schemas ───
