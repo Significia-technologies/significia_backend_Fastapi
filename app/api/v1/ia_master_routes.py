@@ -30,7 +30,7 @@ def _rewrite_bridge_paths(response: Any, bridge: BridgeClient) -> Any:
     storage_base = bridge.base_url.split("/api/v1/bridge")[0] + "/api/v1/bridge/storage"
     storage_base = storage_base.replace("0.0.0.0", "localhost")
     
-    path_fields = ["ia_logo_path", "ia_certificate_path", "ia_signature_path"]
+    path_fields = ["ia_logo_path", "ia_certificate_path", "ia_signature_path", "favicon_path"]
     for field in path_fields:
         if field in response and response[field]:
             if not str(response[field]).startswith("http"):
@@ -68,6 +68,10 @@ async def create_ia_entry(
     ia_certificate: Optional[UploadFile] = File(None),
     ia_signature: Optional[UploadFile] = File(None),
     ia_logo: Optional[UploadFile] = File(None),
+    ia_favicon: Optional[UploadFile] = File(None),
+    brand_color: Optional[str] = Form(None),
+    portal_title: Optional[str] = Form(None),
+    portal_description: Optional[str] = Form(None),
     bridge: BridgeClient = Depends(get_bridge_client),
     db: Session = Depends(get_db),
     tenant: Tenant = Depends(get_current_tenant)
@@ -98,6 +102,14 @@ async def create_ia_entry(
             "ifsc_code": ifsc_code,
         }
 
+        # Add optional branding fields
+        if brand_color is not None:
+            data["brand_color"] = brand_color
+        if portal_title is not None:
+            data["portal_title"] = portal_title
+        if portal_description is not None:
+            data["portal_description"] = portal_description
+
         # 2. Prepare Files
         files = {}
         if ia_certificate:
@@ -106,6 +118,8 @@ async def create_ia_entry(
             files["ia_signature"] = (ia_signature.filename, await ia_signature.read(), ia_signature.content_type)
         if ia_logo:
             files["ia_logo"] = (ia_logo.filename, await ia_logo.read(), ia_logo.content_type)
+        if ia_favicon:
+            files["ia_favicon"] = (ia_favicon.filename, await ia_favicon.read(), ia_favicon.content_type)
         
         # Note: employee_certificates handling could be added if needed on Bridge side
         
@@ -148,6 +162,10 @@ async def update_ia_entry(
     ia_certificate: Optional[UploadFile] = File(None),
     ia_signature: Optional[UploadFile] = File(None),
     ia_logo: Optional[UploadFile] = File(None),
+    ia_favicon: Optional[UploadFile] = File(None),
+    brand_color: Optional[str] = Form(None),
+    portal_title: Optional[str] = Form(None),
+    portal_description: Optional[str] = Form(None),
     change_reason_type: str = Form("data_update"),
     change_reason_text: str = Form("Manual update"),
     bridge: BridgeClient = Depends(get_bridge_client),
@@ -176,6 +194,9 @@ async def update_ia_entry(
                 "editing_user_id": str(current_user.id),
                 "change_reason_type": change_reason_type,
                 "change_reason_text": change_reason_text,
+                "brand_color": brand_color,
+                "portal_title": portal_title,
+                "portal_description": portal_description,
             }.items() if v is not None
         }
 
@@ -187,6 +208,8 @@ async def update_ia_entry(
             files["ia_signature"] = (ia_signature.filename, await ia_signature.read(), ia_signature.content_type)
         if ia_logo:
             files["ia_logo"] = (ia_logo.filename, await ia_logo.read(), ia_logo.content_type)
+        if ia_favicon:
+            files["ia_favicon"] = (ia_favicon.filename, await ia_favicon.read(), ia_favicon.content_type)
         
         # 3. Forward to Bridge
         response = await bridge.post_multipart("/ia-master", data=data, files=files)

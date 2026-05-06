@@ -2,9 +2,12 @@ from fastapi import APIRouter, Depends, Header, Request, HTTPException
 from sqlalchemy.orm import Session
 from typing import Optional
 import httpx
+import logging
 
 from app.api.deps import get_db
 from app.models.tenant import Tenant
+
+logger = logging.getLogger("significia.public")
 
 router = APIRouter()
 
@@ -19,6 +22,9 @@ async def get_tenant_branding(
     Public endpoint to fetch tenant branding information.
     Used by the login page and dashboard to show the correct logo/name.
     Does NOT require authentication.
+    
+    Returns brand_color, portal_title, portal_description, and favicon_url
+    for white-labeled IA portals.
     """
     # 1. Resolve Tenant Slug
     tenant = None
@@ -61,19 +67,72 @@ async def get_tenant_branding(
         raise HTTPException(status_code=404, detail="Tenant context could not be resolved")
 
 
-    # 2. Branding Logic
+    # 2. Base Branding Logic
     branding = {
         "name": "Significia" if tenant.subdomain == "master" else tenant.name,
         "is_master": tenant.subdomain == "master",
         "logo_type": "shield", 
-        "logo_url": None
+        "logo_url": None,
+        "brand_color": None,
+        "portal_title": None,
+        "portal_description": None,
+        "favicon_url": None,
     }
 
     if (tenant.subdomain == "master"):
         branding["logo_type"] = "significia"
         branding["logo_url"] = "/logo.png"
     else:
-        # Default subtenant branding
+        # 3. For IA tenants, fetch branding from their Bridge silo
         branding["logo_type"] = "shield"
+        
+        if tenant.bridge_url and tenant.bridge_api_secret and tenant.bridge_status == "ACTIVE":
+            try:
+                bridge_base = f"{tenant.bridge_url.rstrip('/')}/api/v1/bridge"
+                headers = {
+                    "Authorization": f"Bearer {tenant.bridge_api_secret}",
+                    "Content-Type": "application/json",
+                }
+                
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    resp = await client.get(f"{bridge_base}/ia-master", headers=headers)
+                    
+                if resp.status_code == 200:
+                    ia_data = resp.json()
+                    
+                    # Logo
+                    if ia_data.get("ia_logo_path"):
+                        storage_base = bridge_base.split("/api/v1/bridge")[0] + "/api/v1/bridge/storage"
+                        storage_base = storage_base.replace("0.0.0.0", "localhost")
+                        logo_path = ia_data["ia_logo_path"]
+                        if not logo_path.startswith("http"):
+                            logo_path = f"{storage_base}/{logo_path}"
+                        branding["logo_type"] = "custom"
+                        branding["logo_url"] = logo_path
+                    
+                    # Favicon
+                    if ia_data.get("favicon_path"):
+                        storage_base = bridge_base.split("/api/v1/bridge")[0] + "/api/v1/bridge/storage"
+                        storage_base = storage_base.replace("0.0.0.0", "localhost")
+                        fav_path = ia_data["favicon_path"]
+                        if not fav_path.startswith("http"):
+                            fav_path = f"{storage_base}/{fav_path}"
+                        branding["favicon_url"] = fav_path
+                    
+                    # Brand color
+                    if ia_data.get("brand_color"):
+                        branding["brand_color"] = ia_data["brand_color"]
+                    
+                    # Portal meta
+                    if ia_data.get("portal_title"):
+                        branding["portal_title"] = ia_data["portal_title"]
+                    if ia_data.get("portal_description"):
+                        branding["portal_description"] = ia_data["portal_description"]
+                else:
+                    logger.warning(f"Bridge returned {resp.status_code} for tenant {tenant.name}")
+                        
+            except Exception as e:
+                logger.warning(f"Failed to fetch branding from Bridge for tenant {tenant.name}: {e}")
+                # Graceful fallback — return default branding
         
     return branding
