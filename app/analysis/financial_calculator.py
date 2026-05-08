@@ -307,7 +307,11 @@ class FinancialCalculator:
 
         # Use strictly DB values
         retirement_age = int(assumptions.get('retirement_age', 0))
-        life_expectancy = int(assumptions.get('le_spouse', 0))
+        # Use max of client or spouse life expectancy (handles single clients correctly)
+        le_client = int(assumptions.get('le_client', 0))
+        le_spouse = int(assumptions.get('le_spouse', 0))
+        life_expectancy = max(le_client, le_spouse)
+
         medical_inflation = float(assumptions.get('medical_inflation', 0))
 
         (
