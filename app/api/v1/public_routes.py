@@ -103,7 +103,6 @@ async def get_tenant_branding(
                     # Logo
                     if ia_data.get("ia_logo_path"):
                         storage_base = bridge_base.split("/api/v1/bridge")[0] + "/api/v1/bridge/storage"
-                        storage_base = storage_base.replace("0.0.0.0", "localhost")
                         logo_path = ia_data["ia_logo_path"]
                         if not logo_path.startswith("http"):
                             logo_path = f"{storage_base}/{logo_path}"
@@ -113,7 +112,6 @@ async def get_tenant_branding(
                     # Favicon
                     if ia_data.get("favicon_path"):
                         storage_base = bridge_base.split("/api/v1/bridge")[0] + "/api/v1/bridge/storage"
-                        storage_base = storage_base.replace("0.0.0.0", "localhost")
                         fav_path = ia_data["favicon_path"]
                         if not fav_path.startswith("http"):
                             fav_path = f"{storage_base}/{fav_path}"

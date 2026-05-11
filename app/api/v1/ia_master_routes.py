@@ -28,7 +28,6 @@ def _rewrite_bridge_paths(response: Any, bridge: BridgeClient) -> Any:
         return response
         
     storage_base = bridge.base_url.split("/api/v1/bridge")[0] + "/api/v1/bridge/storage"
-    storage_base = storage_base.replace("0.0.0.0", "localhost")
     
     path_fields = ["ia_logo_path", "ia_certificate_path", "ia_signature_path", "favicon_path"]
     for field in path_fields:
