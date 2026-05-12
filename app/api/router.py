@@ -7,6 +7,7 @@ from app.api.v1 import (
     bridge_routes, ia_auth_routes, billing_routes, public_routes, tenant_routes,
     team_routes, email_routes, rectification_routes, department_routes,
     product_master_routes, investor_master_routes, investor_ips_routes,
+    target_portfolio_routes,
 )
 
 api_router = APIRouter()
@@ -44,6 +45,7 @@ api_router.include_router(email_routes.router, prefix="/email", tags=["Email Man
 api_router.include_router(product_master_routes.router, prefix="/product-master", tags=["Product Master"], dependencies=[Depends(require_profile_completed)])
 api_router.include_router(investor_master_routes.router, prefix="/portfolio", tags=["Investor Master"], dependencies=[Depends(require_profile_completed)])
 api_router.include_router(investor_ips_routes.router, prefix="/portfolio", tags=["Investor IPS"], dependencies=[Depends(require_profile_completed)])
+api_router.include_router(target_portfolio_routes.router, prefix="/portfolio", tags=["Target Portfolio"], dependencies=[Depends(require_profile_completed)])
 
 @api_router.get("/health", status_code=200)
 def health_check() -> dict:
