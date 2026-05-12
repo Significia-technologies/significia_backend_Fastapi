@@ -60,3 +60,6 @@ reportlab>=4.1.0
 python-docx>=1.1.0
 matplotlib>=3.8.0
 numpy<2.0.0
+
+# Excel support (Product Master)
+openpyxl>=3.1.2
