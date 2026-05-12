@@ -1,0 +1,295 @@
+import os
+from datetime import datetime, timedelta
+from typing import Optional
+from app.utils.pdf_generator import BaseReportPDF
+
+
+class TargetPortfolioPDFGenerator:
+
+    @staticmethod
+    def _render_cover_page(
+        pdf: BaseReportPDF,
+        client_name: str,
+        client_code: str,
+        member_name: str,
+        investor_code: str,
+        objective: str,
+        ia_data: Optional[dict],
+        generated_on: str,
+        logo_path: Optional[str] = None,
+    ):
+        pdf.add_page()
+
+        primary_blue = (0, 70, 160)
+        accent_blue = (0, 102, 204)
+        text_dark = (20, 20, 20)
+        text_muted = (120, 120, 120)
+
+        # Full-page border
+        pdf.set_draw_color(*primary_blue)
+        pdf.set_line_width(0.5)
+        pdf.rect(5, 5, 200, 287)
+        pdf.set_line_width(0.2)
+
+        # IA Logo (centered)
+        pdf.set_y(40)
+        if logo_path and os.path.exists(logo_path):
+            pdf.image(logo_path, 85, pdf.get_y(), 40)
+            pdf.set_y(pdf.get_y() + 50)
+        else:
+            pdf.set_y(60)
+
+        # Entity name
+        ia_entity = ""
+        if ia_data:
+            ia_entity = ia_data.get("name_of_entity") or ia_data.get("name_of_ia", "")
+        if ia_entity:
+            pdf.set_font("helvetica", "B", 13)
+            pdf.set_text_color(*text_dark)
+            pdf.cell(0, 8, ia_entity.upper(), ln=True, align="C")
+
+        # Report title
+        pdf.ln(20)
+        pdf.set_font("helvetica", "B", 26)
+        pdf.set_text_color(*accent_blue)
+        pdf.cell(0, 14, "TARGET PORTFOLIO REPORT", ln=True, align="C")
+
+        # Subtitle
+        pdf.set_font("helvetica", "", 10)
+        pdf.set_text_color(*text_muted)
+        pdf.cell(0, 6, "Objective-wise Investment Summary", ln=True, align="C")
+
+        # Decorative bar
+        pdf.ln(4)
+        pdf.set_fill_color(*accent_blue)
+        pdf.set_xy(75, pdf.get_y())
+        pdf.cell(60, 1.5, "", fill=True, ln=True)
+
+        # Client & investor info block
+        pdf.ln(30)
+        pdf.set_font("helvetica", "B", 16)
+        pdf.set_text_color(*text_dark)
+        pdf.cell(0, 10, client_name.upper(), ln=True, align="C")
+        pdf.set_font("helvetica", "B", 11)
+        pdf.set_text_color(*text_muted)
+        pdf.cell(0, 6, f"CLIENT CODE: {client_code}", ln=True, align="C")
+
+        pdf.ln(6)
+        pdf.set_font("helvetica", "B", 13)
+        pdf.set_text_color(*text_dark)
+        pdf.cell(0, 8, member_name.upper() if member_name else "--", ln=True, align="C")
+        pdf.set_font("helvetica", "", 10)
+        pdf.set_text_color(*text_muted)
+        pdf.cell(0, 6, f"INVESTOR SUB-CODE: {investor_code}", ln=True, align="C")
+
+        # Objective badge
+        pdf.ln(10)
+        pdf.set_font("helvetica", "B", 10)
+        pdf.set_text_color(0, 100, 40)
+        pdf.cell(0, 6, f"OBJECTIVE FILTER:  {objective.upper()}", ln=True, align="C")
+
+        # Cover footer
+        pdf.set_y(248)
+        pdf.set_font("helvetica", "I", 9)
+        pdf.set_text_color(*text_muted)
+        pdf.cell(0, 6, f"Report Generated on: {generated_on}", ln=True, align="C")
+
+        if ia_data:
+            reg_no = ia_data.get("ia_registration_number", "")
+            if reg_no:
+                pdf.set_font("helvetica", "", 9)
+                pdf.cell(0, 6, f"Investment Advisor Reg No: {reg_no}", ln=True, align="C")
+
+
+    @staticmethod
+    def generate_report(
+        report_data: dict,
+        client_name: str,
+        client_code: str,
+        ia_data: Optional[dict] = None,
+        logo_path: Optional[str] = None,
+    ) -> bytes:
+        advisor_name = ia_data.get("name_of_ia", "") if ia_data else ""
+        entity_name = ia_data.get("name_of_entity", "") if ia_data else ""
+        ia_reg_no = ia_data.get("ia_registration_number", "") if ia_data else ""
+
+        pdf = BaseReportPDF(
+            advisor_name=advisor_name,
+            entity_name=entity_name,
+            ia_reg_no=ia_reg_no,
+            header_text="Target Portfolio Report -- Confidential",
+        )
+
+        member_name: str = report_data.get("member_name", "")
+        investor_code: str = report_data.get("investor_code", "")
+        objective: str = report_data.get("objective", "")
+        sections: dict = report_data.get("sections", {})
+
+        now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
+        generated_on = now_ist.strftime("%d %b %Y, %I:%M %p")
+
+        # ── Cover page ──
+        TargetPortfolioPDFGenerator._render_cover_page(
+            pdf=pdf,
+            client_name=client_name,
+            client_code=client_code,
+            member_name=member_name,
+            investor_code=investor_code,
+            objective=objective,
+            ia_data=ia_data,
+            generated_on=generated_on,
+            logo_path=logo_path,
+        )
+
+        # ── Content page ──
+        pdf.add_page()
+
+        # Color palette
+        navy = (0, 31, 63)
+        accent_blue = (0, 70, 160)
+        light_blue_bg = (235, 244, 255)
+        accent_grey = (245, 246, 248)
+        table_header_bg = (220, 232, 246)
+        border_color = (200, 210, 220)
+        text_dark = (20, 20, 20)
+        text_muted = (110, 110, 110)
+        row_alt = (250, 251, 253)
+        green_bg = (235, 248, 235)
+
+        # ── Info summary bar ──
+        pdf.set_fill_color(*light_blue_bg)
+        pdf.rect(10, pdf.get_y(), 190, 22, "F")
+        info_y = pdf.get_y() + 4
+
+        def info_col(label, value, x):
+            pdf.set_xy(x, info_y)
+            pdf.set_font("helvetica", "B", 7)
+            pdf.set_text_color(*text_muted)
+            pdf.cell(60, 4, label.upper(), ln=True)
+            pdf.set_x(x)
+            pdf.set_font("helvetica", "B", 10)
+            pdf.set_text_color(*text_dark)
+            pdf.cell(60, 6, str(value or "--"))
+
+        info_col("Client", f"{client_name} ({client_code})", 13)
+        info_col("Investor", member_name, 85)
+        info_col("Sub-code", investor_code, 148)
+
+        # Objective badge on same bar
+        pdf.set_xy(13, info_y + 12)
+        pdf.set_font("helvetica", "B", 7)
+        pdf.set_text_color(*text_muted)
+        pdf.cell(32, 4, "OBJECTIVE FILTER")
+        pdf.set_xy(47, info_y + 11)
+        pdf.set_fill_color(*green_bg)
+        pdf.set_font("helvetica", "B", 9)
+        pdf.set_text_color(0, 120, 50)
+        pdf.cell(40, 6, f"  {objective}  ", border=1, fill=True, align="C")
+
+        pdf.set_y(info_y + 26)
+        pdf.ln(5)
+
+        # ── Section renderer ──
+        ASSET_CLASS_ORDER = ["shares", "mf", "etf", "life_insurance", "health_insurance"]
+
+        def draw_section(ac_key: str, section: dict):
+            label: str = section["label"]
+            entries: list = section["entries"]
+            is_life = ac_key == "life_insurance"
+            is_health = ac_key == "health_insurance"
+
+            # Section header bar
+            pdf.set_fill_color(*accent_grey)
+            pdf.rect(10, pdf.get_y(), 190, 9, "F")
+            pdf.set_draw_color(*border_color)
+            pdf.set_line_width(0.3)
+            pdf.rect(10, pdf.get_y(), 190, 9, "D")
+            pdf.set_fill_color(*accent_blue)
+            pdf.rect(10, pdf.get_y(), 3, 9, "F")
+
+            pdf.set_xy(16, pdf.get_y() + 2)
+            pdf.set_font("helvetica", "B", 10)
+            pdf.set_text_color(*navy)
+            pdf.cell(0, 5, label.upper(), ln=True)
+            pdf.ln(1)
+
+            # Column definitions
+            if is_life:
+                cols = [68, 22, 28, 32, 40]
+                headers = ["Product", "% HLV", "Objective", "Reason", "Suitability"]
+            elif is_health:
+                cols = [80, 28, 34, 48]
+                headers = ["Product", "% Health", "Objective", "Suitability"]
+            else:
+                cols = [87, 28, 33, 42]
+                headers = ["Product", "% Invest", "Objective", "Suitability"]
+
+            # Table header row
+            pdf.set_fill_color(*table_header_bg)
+            pdf.set_font("helvetica", "B", 8)
+            pdf.set_text_color(*navy)
+            for h, w in zip(headers, cols):
+                pdf.cell(w, 8, f" {h}", border=1, fill=True)
+            pdf.ln()
+
+            # Data rows
+            h_unit = 4.5
+            for idx, e in enumerate(entries):
+                product = e["product_name"]
+                pct = f"{e['percentage']:.1f}%"
+                obj_val = e["objective"]
+                reason = e["reason_for_investment"]
+                suitability = e["remarks"] or "--"
+
+                if is_life:
+                    cell_texts = [product, pct, obj_val, reason, suitability]
+                elif is_health:
+                    cell_texts = [product, pct, obj_val, suitability]
+                else:
+                    cell_texts = [product, pct, obj_val, suitability]
+
+                lines_per_col = [
+                    max(len(pdf.multi_cell(w, h_unit, str(t), split_only=True)), 1)
+                    for t, w in zip(cell_texts, cols)
+                ]
+                row_h = max(max(lines_per_col) * h_unit, 8)
+
+                if pdf.get_y() + row_h > 272:
+                    pdf.add_page()
+
+                fill_color = row_alt if idx % 2 == 1 else (255, 255, 255)
+                pdf.set_font("helvetica", "", 8)
+                pdf.set_text_color(*text_dark)
+
+                row_x, row_y = pdf.get_x(), pdf.get_y()
+                for t, w in zip(cell_texts, cols):
+                    pdf.set_fill_color(*fill_color)
+                    pdf.rect(row_x, row_y, w, row_h, "F")
+                    pdf.rect(row_x, row_y, w, row_h, "D")
+                    pdf.set_xy(row_x + 1, row_y + 1)
+                    pdf.multi_cell(w - 2, h_unit, str(t), align="L")
+                    row_x += w
+
+                pdf.set_y(row_y + row_h)
+
+            pdf.ln(7)
+
+        for ac_key in ASSET_CLASS_ORDER:
+            if ac_key in sections:
+                if pdf.get_y() > 252:
+                    pdf.add_page()
+                draw_section(ac_key, sections[ac_key])
+
+        # ── Disclaimer ──
+        pdf.ln(4)
+        pdf.set_font("helvetica", "I", 8)
+        pdf.set_text_color(*text_muted)
+        pdf.multi_cell(
+            0, 5,
+            "This report is generated for internal record and analytical purposes only. "
+            "The information is based on data recorded in the system and does not constitute investment advice. "
+            "Only active portfolio entries matching the selected objective are included.",
+            align="C",
+        )
+
+        return bytes(pdf.output())
