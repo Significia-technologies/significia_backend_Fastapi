@@ -46,6 +46,10 @@ class IAMaster(SiloBase):
     ia_signature_path: Mapped[Optional[str]] = mapped_column(String(512))
     ia_logo_path: Mapped[Optional[str]] = mapped_column(String(512))
     
+    # ── Brand Customization ────────────────────────────────────────
+    brand_background_color_light: Mapped[Optional[str]] = mapped_column(String(7))
+    brand_background_color_dark: Mapped[Optional[str]] = mapped_column(String(7))
+    
     max_client_permit: Mapped[int] = mapped_column(default=10, server_default="10")
     current_client_count: Mapped[int] = mapped_column(default=0, server_default="0")
     

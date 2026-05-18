@@ -69,6 +69,8 @@ async def create_ia_entry(
     ia_logo: Optional[UploadFile] = File(None),
     ia_favicon: Optional[UploadFile] = File(None),
     brand_color: Optional[str] = Form(None),
+    brand_background_color_light: Optional[str] = Form(None),
+    brand_background_color_dark: Optional[str] = Form(None),
     portal_title: Optional[str] = Form(None),
     portal_description: Optional[str] = Form(None),
     bridge: BridgeClient = Depends(get_bridge_client),
@@ -101,9 +103,12 @@ async def create_ia_entry(
             "ifsc_code": ifsc_code,
         }
 
-        # Add optional branding fields
         if brand_color is not None:
             data["brand_color"] = brand_color
+        if brand_background_color_light is not None:
+            data["brand_background_color_light"] = brand_background_color_light
+        if brand_background_color_dark is not None:
+            data["brand_background_color_dark"] = brand_background_color_dark
         if portal_title is not None:
             data["portal_title"] = portal_title
         if portal_description is not None:
@@ -163,6 +168,8 @@ async def update_ia_entry(
     ia_logo: Optional[UploadFile] = File(None),
     ia_favicon: Optional[UploadFile] = File(None),
     brand_color: Optional[str] = Form(None),
+    brand_background_color_light: Optional[str] = Form(None),
+    brand_background_color_dark: Optional[str] = Form(None),
     portal_title: Optional[str] = Form(None),
     portal_description: Optional[str] = Form(None),
     change_reason_type: str = Form("data_update"),
@@ -194,6 +201,8 @@ async def update_ia_entry(
                 "change_reason_type": change_reason_type,
                 "change_reason_text": change_reason_text,
                 "brand_color": brand_color,
+                "brand_background_color_light": brand_background_color_light,
+                "brand_background_color_dark": brand_background_color_dark,
                 "portal_title": portal_title,
                 "portal_description": portal_description,
             }.items() if v is not None

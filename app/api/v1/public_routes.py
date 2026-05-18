@@ -74,6 +74,8 @@ async def get_tenant_branding(
         "logo_type": "shield", 
         "logo_url": None,
         "brand_color": None,
+        "brand_background_color_light": None,
+        "brand_background_color_dark": None,
         "portal_title": None,
         "portal_description": None,
         "favicon_url": None,
@@ -120,6 +122,12 @@ async def get_tenant_branding(
                     # Brand color
                     if ia_data.get("brand_color"):
                         branding["brand_color"] = ia_data["brand_color"]
+                    
+                    # Background colors (light/dark mode)
+                    if ia_data.get("brand_background_color_light"):
+                        branding["brand_background_color_light"] = ia_data["brand_background_color_light"]
+                    if ia_data.get("brand_background_color_dark"):
+                        branding["brand_background_color_dark"] = ia_data["brand_background_color_dark"]
                     
                     # Portal meta
                     if ia_data.get("portal_title"):
