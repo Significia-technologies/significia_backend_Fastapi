@@ -33,15 +33,18 @@ class AssetAllocation(SiloBase):
     stocks_percentage: Mapped[float] = mapped_column(Float, default=0.0)
     mutual_fund_equity_percentage: Mapped[float] = mapped_column(Float, default=0.0)
     ulip_equity_percentage: Mapped[float] = mapped_column(Float, default=0.0)
+    etf_equity_percentage: Mapped[float] = mapped_column(Float, default=0.0)
     
     # Debt Sub-Assets
     fixed_deposits_bonds_percentage: Mapped[float] = mapped_column(Float, default=0.0)
     mutual_fund_debt_percentage: Mapped[float] = mapped_column(Float, default=0.0)
     ulip_debt_percentage: Mapped[float] = mapped_column(Float, default=0.0)
+    etf_debt_percentage: Mapped[float] = mapped_column(Float, default=0.0)
     
     # Commodities Sub-Assets
     gold_etf_percentage: Mapped[float] = mapped_column(Float, default=0.0)
     silver_etf_percentage: Mapped[float] = mapped_column(Float, default=0.0)
+    etf_commodity_percentage: Mapped[float] = mapped_column(Float, default=0.0)
     
     # Content and Documentation
     system_conclusion: Mapped[Optional[str]] = mapped_column(Text)

@@ -11,13 +11,16 @@ class AssetAllocationBase(BaseModel):
     stocks_percentage: float = 0.0
     mutual_fund_equity_percentage: float = 0.0
     ulip_equity_percentage: float = 0.0
+    etf_equity_percentage: float = 0.0
     
     fixed_deposits_bonds_percentage: float = 0.0
     mutual_fund_debt_percentage: float = 0.0
     ulip_debt_percentage: float = 0.0
+    etf_debt_percentage: float = 0.0
     
     gold_etf_percentage: float = 0.0
     silver_etf_percentage: float = 0.0
+    etf_commodity_percentage: float = 0.0
     
     generate_system_conclusion: bool = True
     system_conclusion: Optional[str] = None

@@ -150,6 +150,7 @@ class AssetAllocationReportUtils:
             ["Sub-asset", "Allocation %", "Within Equities", "Within Total Portfolio"],
             ["Stocks", "______%", "______%", "______%"],
             ["Mutual Funds (Equity)", "______%", "______%", "______%"],
+            ["ETF (Equity)", "______%", "______%", "______%"],
             ["ULIP (Equity)", "______%", "______%", "______%"],
             ["TOTAL", "100.0%", "100.0%", "______%"]
         ]
@@ -162,6 +163,7 @@ class AssetAllocationReportUtils:
             ["Sub-asset", "Allocation %", "Within Debt", "Within Total Portfolio"],
             ["Fixed Deposits & Bonds", "______%", "______%", "______%"],
             ["Mutual Funds (Debt)", "______%", "______%", "______%"],
+            ["ETF (Debt)", "______%", "______%", "______%"],
             ["ULIP (Debt)", "______%", "______%", "______%"],
             ["TOTAL", "100.0%", "100.0%", "______%"]
         ]
@@ -174,6 +176,7 @@ class AssetAllocationReportUtils:
             ["Sub-asset", "Allocation %", "Within Commodities", "Within Total Portfolio"],
             ["Gold ETF", "______%", "______%", "______%"],
             ["Silver ETF", "______%", "______%", "______%"],
+            ["ETF", "______%", "______%", "______%"],
             ["TOTAL", "100.0%", "100.0%", "______%"]
         ]
         comm_table = Table(comm_data, colWidths=[2.3*inch, 1.2*inch, 1.2*inch, 1.8*inch])
@@ -380,6 +383,7 @@ class AssetAllocationReportUtils:
                 ["Sub-asset", "Allocation %", "Within Equities", "Within Total Portfolio"],
                 ["Stocks", f"{allocation.stocks_percentage:.1f}%", f"{allocation.stocks_percentage:.1f}%", f"{(allocation.stocks_percentage * allocation.equities_percentage / 100):.1f}%"],
                 ["Mutual Funds (Equity)", f"{allocation.mutual_fund_equity_percentage:.1f}%", f"{allocation.mutual_fund_equity_percentage:.1f}%", f"{(allocation.mutual_fund_equity_percentage * allocation.equities_percentage / 100):.1f}%"],
+                ["ETF (Equity)", f"{allocation.etf_equity_percentage:.1f}%", f"{allocation.etf_equity_percentage:.1f}%", f"{(allocation.etf_equity_percentage * allocation.equities_percentage / 100):.1f}%"],
                 ["ULIP (Equity)", f"{allocation.ulip_equity_percentage:.1f}%", f"{allocation.ulip_equity_percentage:.1f}%", f"{(allocation.ulip_equity_percentage * allocation.equities_percentage / 100):.1f}%"],
                 ["TOTAL", "100.0%", "100.0%", f"{allocation.equities_percentage:.1f}%"]
             ]
@@ -397,10 +401,11 @@ class AssetAllocationReportUtils:
             eq_sizes = []
             if allocation.stocks_percentage > 0: eq_labels.append('Stocks'); eq_sizes.append(allocation.stocks_percentage)
             if allocation.mutual_fund_equity_percentage > 0: eq_labels.append('Mutual Funds'); eq_sizes.append(allocation.mutual_fund_equity_percentage)
+            if allocation.etf_equity_percentage > 0: eq_labels.append('ETF'); eq_sizes.append(allocation.etf_equity_percentage)
             if allocation.ulip_equity_percentage > 0: eq_labels.append('ULIP'); eq_sizes.append(allocation.ulip_equity_percentage)
             
             if eq_sizes:
-                chart_bytes = AssetAllocationReportUtils.create_pie_chart(eq_labels, eq_sizes, "Equities Sub-Asset Allocation", ['#ef4444', '#f06565', '#f38787'])
+                chart_bytes = AssetAllocationReportUtils.create_pie_chart(eq_labels, eq_sizes, "Equities Sub-Asset Allocation", ['#ef4444', '#f06565', '#f38787', '#f87171'])
                 img = Image(io.BytesIO(chart_bytes), width=2.5*inch, height=2*inch)
                 story.append(Spacer(1, 10))
                 story.append(img)
@@ -413,6 +418,7 @@ class AssetAllocationReportUtils:
                 ["Sub-asset", "Allocation %", "Within Debt", "Within Total Portfolio"],
                 ["Fixed Deposits & Bonds", f"{allocation.fixed_deposits_bonds_percentage:.1f}%", f"{allocation.fixed_deposits_bonds_percentage:.1f}%", f"{(allocation.fixed_deposits_bonds_percentage * allocation.debt_securities_percentage / 100):.1f}%"],
                 ["Mutual Funds (Debt)", f"{allocation.mutual_fund_debt_percentage:.1f}%", f"{allocation.mutual_fund_debt_percentage:.1f}%", f"{(allocation.mutual_fund_debt_percentage * allocation.debt_securities_percentage / 100):.1f}%"],
+                ["ETF (Debt)", f"{allocation.etf_debt_percentage:.1f}%", f"{allocation.etf_debt_percentage:.1f}%", f"{(allocation.etf_debt_percentage * allocation.debt_securities_percentage / 100):.1f}%"],
                 ["ULIP (Debt)", f"{allocation.ulip_debt_percentage:.1f}%", f"{allocation.ulip_debt_percentage:.1f}%", f"{(allocation.ulip_debt_percentage * allocation.debt_securities_percentage / 100):.1f}%"],
                 ["TOTAL", "100.0%", "100.0%", f"{allocation.debt_securities_percentage:.1f}%"]
             ]
@@ -430,10 +436,11 @@ class AssetAllocationReportUtils:
             debt_sizes = []
             if allocation.fixed_deposits_bonds_percentage > 0: debt_labels.append('FD/Bonds'); debt_sizes.append(allocation.fixed_deposits_bonds_percentage)
             if allocation.mutual_fund_debt_percentage > 0: debt_labels.append('Mutual Funds'); debt_sizes.append(allocation.mutual_fund_debt_percentage)
+            if allocation.etf_debt_percentage > 0: debt_labels.append('ETF'); debt_sizes.append(allocation.etf_debt_percentage)
             if allocation.ulip_debt_percentage > 0: debt_labels.append('ULIP'); debt_sizes.append(allocation.ulip_debt_percentage)
             
             if debt_sizes:
-                chart_bytes = AssetAllocationReportUtils.create_pie_chart(debt_labels, debt_sizes, "Debt Sub-Asset Allocation", ['#3b82f6', '#619bf8', '#88b4fa'])
+                chart_bytes = AssetAllocationReportUtils.create_pie_chart(debt_labels, debt_sizes, "Debt Sub-Asset Allocation", ['#3b82f6', '#619bf8', '#88b4fa', '#93c5fd'])
                 img = Image(io.BytesIO(chart_bytes), width=2.5*inch, height=2*inch)
                 story.append(Spacer(1, 10))
                 story.append(img)
@@ -446,6 +453,7 @@ class AssetAllocationReportUtils:
                 ["Sub-asset", "Allocation %", "Within Commodities", "Within Total Portfolio"],
                 ["Gold ETF", f"{allocation.gold_etf_percentage:.1f}%", f"{allocation.gold_etf_percentage:.1f}%", f"{(allocation.gold_etf_percentage * allocation.commodities_percentage / 100):.1f}%"],
                 ["Silver ETF", f"{allocation.silver_etf_percentage:.1f}%", f"{allocation.silver_etf_percentage:.1f}%", f"{(allocation.silver_etf_percentage * allocation.commodities_percentage / 100):.1f}%"],
+                ["ETF", f"{allocation.etf_commodity_percentage:.1f}%", f"{allocation.etf_commodity_percentage:.1f}%", f"{(allocation.etf_commodity_percentage * allocation.commodities_percentage / 100):.1f}%"],
                 ["TOTAL", "100.0%", "100.0%", f"{allocation.commodities_percentage:.1f}%"]
             ]
             comm_table = Table(comm_data, colWidths=[2.3*inch, 1.2*inch, 1.2*inch, 1.8*inch])
@@ -462,9 +470,10 @@ class AssetAllocationReportUtils:
             comm_sizes = []
             if allocation.gold_etf_percentage > 0: comm_labels.append('Gold ETF'); comm_sizes.append(allocation.gold_etf_percentage)
             if allocation.silver_etf_percentage > 0: comm_labels.append('Silver ETF'); comm_sizes.append(allocation.silver_etf_percentage)
+            if allocation.etf_commodity_percentage > 0: comm_labels.append('ETF'); comm_sizes.append(allocation.etf_commodity_percentage)
             
             if comm_sizes:
-                chart_bytes = AssetAllocationReportUtils.create_pie_chart(comm_labels, comm_sizes, "Commodities Sub-Asset Allocation", ['#f59e0b', '#f7b13c', '#fac56d'])
+                chart_bytes = AssetAllocationReportUtils.create_pie_chart(comm_labels, comm_sizes, "Commodities Sub-Asset Allocation", ['#f59e0b', '#f7b13c', '#fac56d', '#fcd34d'])
                 img = Image(io.BytesIO(chart_bytes), width=2.5*inch, height=2*inch)
                 story.append(Spacer(1, 10))
                 story.append(img)
@@ -592,7 +601,7 @@ class AssetAllocationReportUtils:
         # 3. Equities Breakdown
         if allocation.equities_percentage > 0:
             doc.add_heading('EQUITIES SUB-ASSET ALLOCATION', level=2)
-            eq_table = doc.add_table(rows=5, cols=4)
+            eq_table = doc.add_table(rows=6, cols=4)
             eq_table.style = 'Table Grid'
             hdr = eq_table.rows[0].cells
             hdr[0].text, hdr[1].text, hdr[2].text, hdr[3].text = "Sub-asset", "Allocation %", "Within Equities", "Within Total Portfolio"
@@ -600,6 +609,7 @@ class AssetAllocationReportUtils:
             eq_data = [
                 ("Stocks", f"{allocation.stocks_percentage:.1f}%", f"{allocation.stocks_percentage:.1f}%", f"{(allocation.stocks_percentage * allocation.equities_percentage / 100):.1f}%"),
                 ("Mutual Funds", f"{allocation.mutual_fund_equity_percentage:.1f}%", f"{allocation.mutual_fund_equity_percentage:.1f}%", f"{(allocation.mutual_fund_equity_percentage * allocation.equities_percentage / 100):.1f}%"),
+                ("ETF", f"{allocation.etf_equity_percentage:.1f}%", f"{allocation.etf_equity_percentage:.1f}%", f"{(allocation.etf_equity_percentage * allocation.equities_percentage / 100):.1f}%"),
                 ("ULIP", f"{allocation.ulip_equity_percentage:.1f}%", f"{allocation.ulip_equity_percentage:.1f}%", f"{(allocation.ulip_equity_percentage * allocation.equities_percentage / 100):.1f}%"),
                 ("TOTAL", "100.0%", "100.0%", f"{allocation.equities_percentage:.1f}%")
             ]
@@ -611,15 +621,16 @@ class AssetAllocationReportUtils:
             eq_l, eq_s = [], []
             if allocation.stocks_percentage > 0: eq_l.append('Stocks'); eq_s.append(allocation.stocks_percentage)
             if allocation.mutual_fund_equity_percentage > 0: eq_l.append('Mutual Funds'); eq_s.append(allocation.mutual_fund_equity_percentage)
+            if allocation.etf_equity_percentage > 0: eq_l.append('ETF'); eq_s.append(allocation.etf_equity_percentage)
             if allocation.ulip_equity_percentage > 0: eq_l.append('ULIP'); eq_s.append(allocation.ulip_equity_percentage)
             if eq_s:
-                chart_bytes = AssetAllocationReportUtils.create_pie_chart(eq_l, eq_s, "Equities Breakdown", ['#ef4444', '#f06565', '#f38787'])
+                chart_bytes = AssetAllocationReportUtils.create_pie_chart(eq_l, eq_s, "Equities Breakdown", ['#ef4444', '#f06565', '#f38787', '#f87171'])
                 doc.add_picture(io.BytesIO(chart_bytes), width=Inches(3.5))
 
         # 4. Debt Breakdown
         if allocation.debt_securities_percentage > 0:
             doc.add_heading('DEBT SECURITIES SUB-ASSET ALLOCATION', level=2)
-            db_table = doc.add_table(rows=5, cols=4)
+            db_table = doc.add_table(rows=6, cols=4)
             db_table.style = 'Table Grid'
             hdr = db_table.rows[0].cells
             hdr[0].text, hdr[1].text, hdr[2].text, hdr[3].text = "Sub-asset", "Allocation %", "Within Debt", "Within Total Portfolio"
@@ -627,6 +638,7 @@ class AssetAllocationReportUtils:
             db_data = [
                 ("FD/Bonds", f"{allocation.fixed_deposits_bonds_percentage:.1f}%", f"{allocation.fixed_deposits_bonds_percentage:.1f}%", f"{(allocation.fixed_deposits_bonds_percentage * allocation.debt_securities_percentage / 100):.1f}%"),
                 ("Mutual Funds", f"{allocation.mutual_fund_debt_percentage:.1f}%", f"{allocation.mutual_fund_debt_percentage:.1f}%", f"{(allocation.mutual_fund_debt_percentage * allocation.debt_securities_percentage / 100):.1f}%"),
+                ("ETF", f"{allocation.etf_debt_percentage:.1f}%", f"{allocation.etf_debt_percentage:.1f}%", f"{(allocation.etf_debt_percentage * allocation.debt_securities_percentage / 100):.1f}%"),
                 ("ULIP", f"{allocation.ulip_debt_percentage:.1f}%", f"{allocation.ulip_debt_percentage:.1f}%", f"{(allocation.ulip_debt_percentage * allocation.debt_securities_percentage / 100):.1f}%"),
                 ("TOTAL", "100.0%", "100.0%", f"{allocation.debt_securities_percentage:.1f}%")
             ]
@@ -638,15 +650,16 @@ class AssetAllocationReportUtils:
             db_l, db_s = [], []
             if allocation.fixed_deposits_bonds_percentage > 0: db_l.append('FD/Bonds'); db_s.append(allocation.fixed_deposits_bonds_percentage)
             if allocation.mutual_fund_debt_percentage > 0: db_l.append('Mutual Funds'); db_s.append(allocation.mutual_fund_debt_percentage)
+            if allocation.etf_debt_percentage > 0: db_l.append('ETF'); db_s.append(allocation.etf_debt_percentage)
             if allocation.ulip_debt_percentage > 0: db_l.append('ULIP'); db_s.append(allocation.ulip_debt_percentage)
             if db_s:
-                chart_bytes = AssetAllocationReportUtils.create_pie_chart(db_l, db_s, "Debt Breakdown", ['#3b82f6', '#619bf8', '#88b4fa'])
+                chart_bytes = AssetAllocationReportUtils.create_pie_chart(db_l, db_s, "Debt Breakdown", ['#3b82f6', '#619bf8', '#88b4fa', '#93c5fd'])
                 doc.add_picture(io.BytesIO(chart_bytes), width=Inches(3.5))
 
         # 5. Commodities Breakdown
         if allocation.commodities_percentage > 0:
             doc.add_heading('COMMODITIES SUB-ASSET ALLOCATION', level=2)
-            cm_table = doc.add_table(rows=4, cols=4)
+            cm_table = doc.add_table(rows=5, cols=4)
             cm_table.style = 'Table Grid'
             hdr = cm_table.rows[0].cells
             hdr[0].text, hdr[1].text, hdr[2].text, hdr[3].text = "Sub-asset", "Allocation %", "Within Commodities", "Within Total Portfolio"
@@ -654,6 +667,7 @@ class AssetAllocationReportUtils:
             cm_data = [
                 ("Gold ETF", f"{allocation.gold_etf_percentage:.1f}%", f"{allocation.gold_etf_percentage:.1f}%", f"{(allocation.gold_etf_percentage * allocation.commodities_percentage / 100):.1f}%"),
                 ("Silver ETF", f"{allocation.silver_etf_percentage:.1f}%", f"{allocation.silver_etf_percentage:.1f}%", f"{(allocation.silver_etf_percentage * allocation.commodities_percentage / 100):.1f}%"),
+                ("ETF", f"{allocation.etf_commodity_percentage:.1f}%", f"{allocation.etf_commodity_percentage:.1f}%", f"{(allocation.etf_commodity_percentage * allocation.commodities_percentage / 100):.1f}%"),
                 ("TOTAL", "100.0%", "100.0%", f"{allocation.commodities_percentage:.1f}%")
             ]
             for i, (s, a, wc, wp) in enumerate(cm_data, 1):
@@ -664,8 +678,9 @@ class AssetAllocationReportUtils:
             cm_l, cm_s = [], []
             if allocation.gold_etf_percentage > 0: cm_l.append('Gold'); cm_s.append(allocation.gold_etf_percentage)
             if allocation.silver_etf_percentage > 0: cm_l.append('Silver'); cm_s.append(allocation.silver_etf_percentage)
+            if allocation.etf_commodity_percentage > 0: cm_l.append('ETF'); cm_s.append(allocation.etf_commodity_percentage)
             if cm_s:
-                chart_bytes = AssetAllocationReportUtils.create_pie_chart(cm_l, cm_s, "Commodities Breakdown", ['#f59e0b', '#f7b13c', '#fac56d'])
+                chart_bytes = AssetAllocationReportUtils.create_pie_chart(cm_l, cm_s, "Commodities Breakdown", ['#f59e0b', '#f7b13c', '#fac56d', '#fcd34d'])
                 doc.add_picture(io.BytesIO(chart_bytes), width=Inches(3.5))
 
         # 6. Advisor Recommendation & Conclusion
