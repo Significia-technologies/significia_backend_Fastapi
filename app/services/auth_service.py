@@ -81,6 +81,27 @@ class AuthService:
         if user.status != "active":
             raise HTTPException(status_code=403, detail="Account is disabled")
 
+        # 3. Check for Active Session (JioHotstar-like concurrent session check)
+        is_session_active = False
+        if user.refresh_token and user.last_login_at:
+            # Session is considered active if last login is within 7 days and they haven't explicitly logged out
+            session_lifespan = timedelta(days=7)
+            if get_now_ist() - user.last_login_at < session_lifespan:
+                is_session_active = True
+
+        if is_session_active and not request.force:
+            tenant = self.tenant_repo.get_by_id(db, user.tenant_id)
+            subdomain = tenant.subdomain if tenant else None
+            return TokenResponse(
+                status="active_session_exists",
+                device_info={
+                    "ip": user.last_login_ip or "Unknown IP",
+                    "last_active": user.last_login_at.isoformat() if user.last_login_at else None
+                },
+                subdomain=subdomain,
+                is_profile_completed=tenant.is_profile_completed if tenant else False
+            )
+
         # Increment session version (Single Device Login logic)
         user.refresh_token_version += 1
         
@@ -97,7 +118,7 @@ class AuthService:
             version=user.refresh_token_version
         )
 
-        # 3. Successful Login Logic
+        # 4. Successful Login Logic
         # Update last login info, refresh token, and reset failed attempts
         user.last_login_at = get_now_ist()
         user.last_login_ip = request_ip
@@ -118,6 +139,13 @@ class AuthService:
             subdomain=subdomain,
             is_profile_completed=tenant.is_profile_completed if tenant else False
         )
+
+    def logout_user(self, db: Session, user: User) -> dict:
+        """Clear the refresh token on explicit user logout."""
+        user.refresh_token = None
+        self.user_repo.update(db, user)
+        db.commit()
+        return {"status": "success", "message": "Successfully logged out"}
 
     def refresh_access_token(self, db: Session, refresh_token: str) -> TokenResponse:
         rt_hash = hashlib.sha256(refresh_token.encode()).hexdigest()

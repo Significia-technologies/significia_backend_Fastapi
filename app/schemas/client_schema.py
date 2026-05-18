@@ -6,6 +6,7 @@ from datetime import datetime, date
 class ClientLoginRequest(BaseModel):
     email: EmailStr
     password: str
+    force: Optional[bool] = False
 
 class ClientTokenResponse(BaseModel):
     access_token: str

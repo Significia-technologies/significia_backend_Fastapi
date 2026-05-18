@@ -46,6 +46,16 @@ def refresh_token(request: RefreshTokenRequest, db: Session = Depends(get_db)):
 def get_user_me(current_user: User = Depends(get_current_user)):
     return current_user
 
+@router.post("/logout")
+def logout(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Explicitly log out the current user and invalidate their session in the DB.
+    """
+    return auth_service.logout_user(db, current_user)
+
 @router.post("/logout-others")
 def logout_others(
     db: Session = Depends(get_db), 

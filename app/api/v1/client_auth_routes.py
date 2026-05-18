@@ -9,13 +9,14 @@ from sqlalchemy.orm import Session
 from app.api.deps import (
     get_bridge_client, get_current_tenant,
     get_tenant_by_slug, get_current_client,
-    oauth2_scheme, get_db
+    oauth2_scheme, get_db, get_current_user
 )
 from app.services.bridge_client import BridgeClient
 from app.models.tenant import Tenant
 from app.schemas.client_schema import ClientLoginRequest, ClientTokenResponse, ClientResponse
 from app.services.client_auth_service import ClientAuthService
 from app.models.client import ClientProfile
+from app.models.user import User
 
 router = APIRouter()
 client_auth_service = ClientAuthService()
@@ -44,13 +45,19 @@ async def login_bridge(
     client_ip = request.client.host if request.client else "0.0.0.0"
 
     try:
-        # 1. Attempt Client Verification (Now including password & IP on Bridge)
+        # 1. Attempt Client Verification (Now including password, IP & force on Bridge)
         payload = {
             "email": login_data.email,
             "password": login_data.password,
-            "ip": client_ip
+            "ip": client_ip,
+            "force": login_data.force
         }
         client_data = await bridge.post("/auth/verify-client", payload)
+        
+        # Check if the result has concurrent active session status
+        if isinstance(client_data, dict) and client_data.get("status") == "active_session_exists":
+            return client_data
+
         user_id = client_data["id"]
         role = "client"
         user_name = client_data["name"]
@@ -62,8 +69,14 @@ async def login_bridge(
                 ia_data = await bridge.post("/auth/verify-ia-user", {
                     "email": login_data.email,
                     "password": login_data.password,
-                    "ip": client_ip
+                    "ip": client_ip,
+                    "force": login_data.force
                 })
+                
+                # Check if the result has concurrent active session status
+                if isinstance(ia_data, dict) and ia_data.get("status") == "active_session_exists":
+                    return ia_data
+
                 user_id = ia_data["id"]
                 user_name = ia_data["name"]
                 role = ia_data["role"]
@@ -117,6 +130,24 @@ async def login_bridge(
         },
         "subdomain": tenant.subdomain,
     }
+
+
+@router.post("/bridge/logout")
+async def logout_bridge(
+    db: Session = Depends(get_db),
+    tenant: Tenant = Depends(get_current_tenant),
+    bridge: BridgeClient = Depends(get_bridge_client),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Proxy explicit logout to the tenant's Bridge silo to clear session in Bridge DB.
+    """
+    try:
+        await bridge.post("/auth/logout", {"user_id": str(current_user.id)})
+    except Exception as e:
+        import logging
+        logging.warning(f"Failed to notify Bridge of logout: {e}")
+    return {"status": "success", "message": "Successfully logged out of silo"}
 
 
 # ════════════════════════════════════════════════════════════════════

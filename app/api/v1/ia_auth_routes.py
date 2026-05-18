@@ -28,15 +28,18 @@ router = APIRouter()
 class IAStaffLoginRequest(BaseModel):
     email: str
     password: str
+    force: Optional[bool] = False
 
 
 class IAStaffLoginResponse(BaseModel):
-    access_token: str
-    refresh_token: str
+    access_token: Optional[str] = None
+    refresh_token: Optional[str] = None
     token_type: str = "bearer"
-    user_name: str
-    user_role: str
-    tenant_name: str
+    user_name: Optional[str] = None
+    user_role: Optional[str] = None
+    tenant_name: Optional[str] = None
+    status: Optional[str] = None
+    device_info: Optional[dict] = None
 
 
 @router.post("/login", response_model=IAStaffLoginResponse)
@@ -58,12 +61,24 @@ async def ia_staff_login(
     # Authenticate via Bridge
     try:
         print(f"[AUTH DEBUG] Attempting IA login for: {login_data.email} (Proxying to Bridge)")
-        # We now send email, password, and IP to the Bridge
+        # We now send email, password, IP, and force to the Bridge
         user_data = await bridge.post("/auth/verify-ia-user", {
             "email": login_data.email,
             "password": login_data.password,
-            "ip": client_ip
+            "ip": client_ip,
+            "force": login_data.force
         })
+        
+        # Check if the result has concurrent active session status
+        if isinstance(user_data, dict) and user_data.get("status") == "active_session_exists":
+            return IAStaffLoginResponse(
+                status="active_session_exists",
+                device_info=user_data.get("device_info"),
+                user_name="",
+                user_role="",
+                tenant_name=tenant.name
+            )
+
         print(f"[AUTH DEBUG] Bridge login SUCCESS: User {user_data.get('email')} verified locally")
     except HTTPException as e:
         if e.status_code == 401:

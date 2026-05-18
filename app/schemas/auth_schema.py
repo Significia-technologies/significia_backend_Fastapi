@@ -11,13 +11,16 @@ class UserRegisterRequest(BaseModel):
 class UserLoginRequest(BaseModel):
     email: EmailStr
     password: str
+    force: Optional[bool] = False
 
 class TokenResponse(BaseModel):
-    access_token: str
-    refresh_token: str
+    access_token: Optional[str] = None
+    refresh_token: Optional[str] = None
     token_type: str = "bearer"
     subdomain: Optional[str] = None
     is_profile_completed: bool = False
+    status: Optional[str] = None
+    device_info: Optional[dict] = None
 
 class UserResponse(BaseModel):
     id: uuid.UUID
