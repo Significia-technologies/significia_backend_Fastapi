@@ -15,6 +15,8 @@ from sqlalchemy.orm import Session
 from app.services.bridge_client import BridgeClient
 from app.services.ia_master_service import IAMasterService
 from app.models.tenant import Tenant
+from app.utils.encryption import decrypt_string
+from app.utils.reports.letterhead_generator import generate_letterhead_pdf
 
 # Legacy schemas kept for typed responses
 from app.schemas.ia_master import IAMasterRead, IANumberValidationResponse, IAMasterPermitUpdate, IAMasterListResponse
@@ -675,3 +677,60 @@ async def get_change_summary(
 ):
     """Proxy: Get human-readable change summary for IA Master."""
     return await bridge.get("/sebi/ia-master/change-summary")
+
+
+@router.get("/letterhead")
+async def download_advisor_letterhead(
+    bridge: BridgeClient = Depends(get_bridge_client),
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user)
+):
+    """
+    Generate and download a blank corporate letterhead PDF for the active IA.
+    This dynamically applies brand colors, advisor contact details, and the resolved logo.
+    """
+    try:
+        # 1. Fetch IA Master details from the local Bridge silo
+        ia_data = await bridge.get("/ia-master")
+        if not ia_data:
+            raise HTTPException(status_code=404, detail="IA Master profile not found")
+
+        # 2. Decrypt PII Fields for compliance
+        ia_data["name_of_ia"] = decrypt_string(ia_data.get("name_of_ia"))
+        ia_data["name_of_entity"] = decrypt_string(ia_data.get("name_of_entity"))
+        ia_data["registered_address"] = decrypt_string(ia_data.get("registered_address"))
+        ia_data["registered_contact_number"] = decrypt_string(ia_data.get("registered_contact_number"))
+        ia_data["registered_email_id"] = decrypt_string(ia_data.get("registered_email_id"))
+        ia_data["basl_membership_id"] = decrypt_string(ia_data.get("basl_membership_id"))
+        ia_data["ia_registration_number"] = decrypt_string(ia_data.get("ia_registration_number"))
+        ia_data["brand_color"] = decrypt_string(ia_data.get("brand_color"))
+
+        # 3. Resolve logo to local filesystem path
+        logo_path = None
+        ia_logo_key = ia_data.get("ia_logo_path")
+        if ia_logo_key:
+            try:
+                from app.utils.file_utils import resolve_logo_to_local_path
+                url_resp = await bridge.get("/storage/url", params={"key": ia_logo_key})
+                signed_url = url_resp.get("url")
+                if signed_url:
+                    logo_path = await resolve_logo_to_local_path(signed_url, db)
+            except Exception as logo_err:
+                logger.warning(f"Failed to resolve IA logo for letterhead: {logo_err}")
+
+        # 4. Generate the dynamic PDF letterhead
+        pdf_buffer = generate_letterhead_pdf(ia_data, logo_path)
+
+        # 5. Return Response
+        return Response(
+            content=pdf_buffer.getvalue(),
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": "attachment; filename=Advisor_Letterhead.pdf"
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to generate advisor letterhead: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate advisor letterhead: {str(e)}")
