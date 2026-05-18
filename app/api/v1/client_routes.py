@@ -31,6 +31,7 @@ router = APIRouter()
 async def create_client_bridge(
     client_in: ClientCreate,
     bridge: BridgeClient = Depends(get_bridge_client),
+    current_user: Any = Depends(get_current_user),
 ):
     """Create a new client via the Bridge (enforces client limit on Bridge side)."""
     try:
@@ -51,6 +52,7 @@ async def list_clients_bridge(
     limit: int = 100,
     search: str = None,
     bridge: BridgeClient = Depends(get_bridge_client),
+    current_user: Any = Depends(get_current_user),
 ):
     """List all clients via the Bridge."""
     params = {"skip": skip, "limit": limit}
@@ -63,6 +65,7 @@ async def list_clients_bridge(
 async def get_client_bridge(
     client_id: uuid.UUID,
     bridge: BridgeClient = Depends(get_bridge_client),
+    current_user: Any = Depends(get_current_user),
 ):
     """Get a single client via the Bridge."""
     return await bridge.get(f"/clients/{client_id}")
@@ -72,6 +75,7 @@ async def get_client_bridge(
 async def get_client_by_pan_bridge(
     pan: str,
     bridge: BridgeClient = Depends(get_bridge_client),
+    current_user: Any = Depends(get_current_user),
 ):
     """Get client by PAN via the Bridge."""
     result = await bridge.get("/clients", params={"search": pan})
@@ -86,6 +90,7 @@ async def get_client_by_pan_bridge(
 async def get_client_by_code_bridge(
     code: str,
     bridge: BridgeClient = Depends(get_bridge_client),
+    current_user: Any = Depends(get_current_user),
 ):
     """Get client by client code via the Bridge."""
     return await bridge.get(f"/clients/code/{code}")
@@ -96,6 +101,7 @@ async def update_client_bridge(
     client_id: uuid.UUID,
     client_in: ClientUpdate,
     bridge: BridgeClient = Depends(get_bridge_client),
+    current_user: Any = Depends(get_current_user),
 ):
     """Update a client via the Bridge."""
     update_data = client_in.model_dump(exclude_unset=True)
@@ -106,6 +112,7 @@ async def update_client_bridge(
 async def delete_client_bridge(
     client_id: uuid.UUID,
     bridge: BridgeClient = Depends(get_bridge_client),
+    current_user: Any = Depends(get_current_user),
 ):
     """Soft-delete a client via the Bridge."""
     await bridge.delete(f"/clients/{client_id}")
@@ -136,6 +143,7 @@ async def upload_client_document_bridge(
     document_type: str = Form(...),
     file: UploadFile = File(...),
     bridge: BridgeClient = Depends(get_bridge_client),
+    current_user: Any = Depends(get_current_user),
 ):
     """
     Upload a document for a client via the Bridge.
@@ -163,6 +171,7 @@ async def upload_client_document_bridge(
 async def list_client_versions_bridge(
     client_id: uuid.UUID,
     bridge: BridgeClient = Depends(get_bridge_client),
+    current_user: Any = Depends(get_current_user),
 ):
     """List all historical versions of a client via the Bridge."""
     return await bridge.get(f"/clients/{client_id}/versions")
@@ -173,6 +182,7 @@ async def get_client_version_bridge(
     client_id: uuid.UUID,
     version_id: uuid.UUID,
     bridge: BridgeClient = Depends(get_bridge_client),
+    current_user: Any = Depends(get_current_user),
 ):
     """Get a specific version snapshot of a client via the Bridge."""
     return await bridge.get(f"/clients/{client_id}/versions/{version_id}")
@@ -297,6 +307,7 @@ async def get_client_version_at_date_bridge(
     client_id: uuid.UUID,
     target_date: str = FastAPIQuery(..., description="ISO date or datetime, e.g. 2025-04-15"),
     bridge: BridgeClient = Depends(get_bridge_client),
+    current_user: Any = Depends(get_current_user),
 ):
     """SEBI Point-in-Time Query: Get the version of a client active on a specific date."""
     return await bridge.get(f"/clients/{client_id}/version-at", params={"target_date": target_date})
@@ -351,6 +362,7 @@ async def download_blank_registration_form(
 @router.get("/billing/client-count", response_model=dict)
 async def get_client_count_bridge(
     bridge: BridgeClient = Depends(get_bridge_client),
+    current_user: Any = Depends(get_current_user),
 ):
     """Get client count (billing metric) from the Bridge."""
     return await bridge.get("/billing/client-count")
