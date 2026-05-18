@@ -14,7 +14,7 @@ import json
 import io
 import hashlib
 
-from app.api.deps import get_bridge_client, get_db
+from app.api.deps import get_bridge_client, get_db, get_current_ia_admin
 from app.services.bridge_client import BridgeClient
 from app.services.report_service import ReportService
 
@@ -173,6 +173,7 @@ async def list_questionnaires_bridge(
 async def create_questionnaire_bridge(
     payload: RiskQuestionnaireCreate,
     bridge: BridgeClient = Depends(get_bridge_client),
+    current_user = Depends(get_current_ia_admin),
 ):
     """Create a risk questionnaire via the Bridge."""
     return await bridge.post("/risk-questionnaires", payload.model_dump())
@@ -192,6 +193,7 @@ async def update_questionnaire_bridge(
     q_id: str,
     payload: RiskQuestionnaireUpdate,
     bridge: BridgeClient = Depends(get_bridge_client),
+    current_user = Depends(get_current_ia_admin),
 ):
     """Update a risk questionnaire via the Bridge."""
     return await bridge.patch(f"/risk-questionnaires/{q_id}", payload.model_dump(exclude_unset=True))
