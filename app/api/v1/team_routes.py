@@ -25,8 +25,15 @@ async def list_team_members(
     """
     try:
         bridge_staff = await bridge.get("/employees")
+        storage_base = bridge.base_url.split("/api/v1/bridge")[0] + "/api/v1/bridge/storage"
         formatted = []
         for emp in bridge_staff:
+            cert_path = emp.get("certificate_path")
+            sig_path = emp.get("signature_path")
+            if cert_path and not str(cert_path).startswith("http"):
+                cert_path = f"{storage_base}/{cert_path}"
+            if sig_path and not str(sig_path).startswith("http"):
+                sig_path = f"{storage_base}/{sig_path}"
             formatted.append({
                 "id": emp.get("id"),
                 "email": emp.get("email"),
@@ -43,7 +50,9 @@ async def list_team_members(
                 "date_of_joining": emp.get("date_of_joining"),
                 "date_of_leaving": emp.get("date_of_leaving"),
                 "employee_type": emp.get("employee_type"),
-                "certificate_issue_date": emp.get("certificate_issue_date")
+                "certificate_issue_date": emp.get("certificate_issue_date"),
+                "certificate_path": cert_path,
+                "signature_path": sig_path
             })
         return formatted
     except Exception as e:
@@ -68,6 +77,7 @@ async def onboard_team_member(
     date_of_registration_expiry: Optional[str] = Form(None),
     certificate_issue_date: Optional[str] = Form(None),
     certificate: Optional[UploadFile] = File(None),
+    signature: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
     current_admin: User = Depends(get_current_ia_admin),
     bridge: BridgeClient = Depends(get_bridge_client),
@@ -123,7 +133,10 @@ async def onboard_team_member(
     files = {}
     if certificate:
         content = await certificate.read()
-        files = {"certificate": (certificate.filename, content, certificate.content_type)}
+        files["certificate"] = (certificate.filename, content, certificate.content_type)
+    if signature:
+        content = await signature.read()
+        files["signature"] = (signature.filename, content, signature.content_type)
     
     # BridgeClient post method needs support for files or we use bridge.request
     bridge_res = await bridge.post_multipart("/employees", data=bridge_payload, files=files)
@@ -233,3 +246,16 @@ async def update_team_member_permissions(
 ):
     """Update member permissions in the Bridge Silo."""
     return await bridge.put(f"/employees/{str(user_id)}/permissions", data=permissions)
+
+
+@router.post("/{user_id}/signature", response_model=dict)
+async def upload_employee_signature(
+    user_id: UUID,
+    signature: UploadFile = File(...),
+    bridge: BridgeClient = Depends(get_bridge_client),
+    current_admin: User = Depends(get_current_ia_admin)
+):
+    """Update signature for a team member (or upload one if none exists)."""
+    content = await signature.read()
+    files = {"signature": (signature.filename, content, signature.content_type)}
+    return await bridge.post_multipart(f"/employees/{str(user_id)}/signature", data={}, files=files)

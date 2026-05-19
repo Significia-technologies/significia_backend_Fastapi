@@ -79,6 +79,8 @@ class StaffUserBase(BaseModel):
     date_of_leaving: Optional[str] = None
     employee_type: Optional[str] = "non-advisory"
     certificate_issue_date: Optional[str] = None
+    certificate_path: Optional[str] = None
+    signature_path: Optional[str] = None
 
 class StaffUserCreate(StaffUserBase):
     password: str = Field(..., min_length=8)
@@ -100,6 +102,8 @@ class StaffUserUpdate(BaseModel):
     date_of_leaving: Optional[str] = None
     employee_type: Optional[str] = None
     certificate_issue_date: Optional[str] = None
+    certificate_path: Optional[str] = None
+    signature_path: Optional[str] = None
     change_reason_type: Optional[str] = "data_update"
     change_reason_text: Optional[str] = "Staff profile updated"
 

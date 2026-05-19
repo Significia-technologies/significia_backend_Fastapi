@@ -37,6 +37,13 @@ def _rewrite_bridge_paths(response: Any, bridge: BridgeClient) -> Any:
             if not str(response[field]).startswith("http"):
                 response[field] = f"{storage_base}/{response[field]}"
                 
+    if "employees" in response and isinstance(response["employees"], list):
+        for emp in response["employees"]:
+            for field in ["certificate_path", "signature_path"]:
+                if field in emp and emp[field]:
+                    if not str(emp[field]).startswith("http"):
+                        emp[field] = f"{storage_base}/{emp[field]}"
+                        
     return response
 
 @router.get("/validate/{ia_number}", response_model=IANumberValidationResponse)

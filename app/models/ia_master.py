@@ -92,6 +92,7 @@ class EmployeeDetails(SiloBase):
     certificate_issue_date: Mapped[Optional[Date]] = mapped_column(Date)
     date_of_registration_expiry: Mapped[Optional[Date]] = mapped_column(Date)
     certificate_path: Mapped[Optional[str]] = mapped_column(String(512))
+    signature_path: Mapped[Optional[str]] = mapped_column(String(512))
     
     version_number: Mapped[int] = mapped_column(default=1, server_default="1")
     
