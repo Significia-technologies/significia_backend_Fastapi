@@ -55,6 +55,10 @@ async def get_tenant_branding(
                     tenant = db.query(Tenant).filter(Tenant.subdomain == slug).first()
                     break
             
+            # If not a subdomain, check if it matches a custom domain
+            if not is_subdomain and not tenant:
+                tenant = db.query(Tenant).filter(Tenant.custom_domain == clean_host).first()
+
             # If it was a subdomain but no tenant was found in DB
             if is_subdomain and not tenant:
                 raise HTTPException(status_code=404, detail="Tenant not found")
