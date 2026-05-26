@@ -32,6 +32,7 @@ class UserResponse(BaseModel):
     is_profile_completed: bool = False
     max_client_permit: int = 5
     plan_expiry_date: Optional[str] = None
+    permissions: Optional[list] = None
     
     class Config:
         from_attributes = True

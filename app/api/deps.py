@@ -39,7 +39,7 @@ class AuthUser:
     A lightweight mock object representing a decentralized user from a Bridge Silo.
     Provides duck-typing compatibility with the SQLAlchemy User model for downstream dependencies.
     """
-    def __init__(self, id, email, role, status, refresh_token_version, tenant):
+    def __init__(self, id, email, role, status, refresh_token_version, tenant, permissions=None):
         self.id = uuid.UUID(id) if isinstance(id, str) else id
         self.email = email
         self.role = role
@@ -51,6 +51,7 @@ class AuthUser:
         self.max_client_permit = tenant.max_client_permit
         self.plan_expiry_date = str(tenant.plan_expiry_date) if tenant.plan_expiry_date else None
         self.is_profile_completed = tenant.is_profile_completed
+        self.permissions = permissions or []
 
 async def get_current_user(
     db: Session = Depends(get_db), token: str | None = Depends(oauth2_scheme)
@@ -129,7 +130,8 @@ async def get_current_user(
         role=bridge_user.get("role", role),
         status=status_str,
         refresh_token_version=remote_version,
-        tenant=tenant
+        tenant=tenant,
+        permissions=bridge_user.get("permissions", [])
     )
 
 async def get_current_user_optional(
