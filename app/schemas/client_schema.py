@@ -70,6 +70,20 @@ class ClientBase(BaseModel):
     ipv_done_by_id: Optional[uuid.UUID] = None
     ipv_date: Optional[date] = None
 
+    @field_validator("phone_number")
+    @classmethod
+    def validate_phone(cls, v: str) -> str:
+        if not v.isdigit() or len(v) != 10:
+            raise ValueError("Phone number must be exactly 10 digits")
+        return v
+
+    @field_validator("bank_account_number")
+    @classmethod
+    def validate_bank_account(cls, v: str) -> str:
+        if not v.isalnum() or not (9 <= len(v) <= 18):
+            raise ValueError("Bank account number must be between 9 and 18 alphanumeric characters")
+        return v
+
     @field_validator("date_of_birth")
     @classmethod
     def validate_age(cls, v: date) -> date:
