@@ -147,36 +147,81 @@ class AuthService:
         db.commit()
         return {"status": "success", "message": "Successfully logged out"}
 
-    def refresh_access_token(self, db: Session, refresh_token: str) -> TokenResponse:
-        rt_hash = hashlib.sha256(refresh_token.encode()).hexdigest()
-        user = db.query(User).filter(User.refresh_token == rt_hash).first()
-        
-        if not user or user.status != "active":
-            raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
-
-        # Verify session version
+    async def refresh_access_token(self, db: Session, refresh_token: str) -> TokenResponse:
+        from app.core.jwt import decode_token
         try:
-            from app.core.jwt import decode_token
             payload = decode_token(refresh_token)
+            user_id = payload.get("sub")
+            tenant_id = payload.get("tenant_id")
             token_version = payload.get("version")
-            if token_version != user.refresh_token_version:
-                raise HTTPException(status_code=401, detail="Session invalidated. Please log in again.")
+            token_type = payload.get("type")
+            if token_type != "refresh":
+                raise HTTPException(status_code=401, detail="Invalid token type")
         except Exception:
             raise HTTPException(status_code=401, detail="Invalid session token")
 
-        new_access_token = create_access_token(
-            subject=str(user.id), 
-            tenant_id=str(user.tenant_id), 
-            role=user.role,
-            version=user.refresh_token_version
-        )
+        rt_hash = hashlib.sha256(refresh_token.encode()).hexdigest()
+        user = db.query(User).filter(User.refresh_token == rt_hash).first()
         
-        tenant = self.tenant_repo.get_by_id(db, user.tenant_id)
-        subdomain = tenant.subdomain if tenant else None
+        if user:
+            if user.status != "active":
+                raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+            
+            if token_version != user.refresh_token_version:
+                raise HTTPException(status_code=401, detail="Session invalidated. Please log in again.")
+                
+            new_access_token = create_access_token(
+                subject=str(user.id), 
+                tenant_id=str(user.tenant_id), 
+                role=user.role,
+                version=user.refresh_token_version
+            )
+            
+            tenant = self.tenant_repo.get_by_id(db, user.tenant_id)
+            subdomain = tenant.subdomain if tenant else None
 
-        return TokenResponse(
-            access_token=new_access_token, 
-            refresh_token=refresh_token,
-            subdomain=subdomain,
-            is_profile_completed=tenant.is_profile_completed if tenant else False
-        )
+            return TokenResponse(
+                access_token=new_access_token, 
+                refresh_token=refresh_token,
+                subdomain=subdomain,
+                is_profile_completed=tenant.is_profile_completed if tenant else False
+            )
+
+        # Fallback: If user is not found in central database, but tenant_id is in JWT, check Bridge silo
+        if tenant_id:
+            from app.models.tenant import Tenant
+            from app.services.bridge_client import BridgeClient
+            import uuid
+
+            tenant = db.query(Tenant).filter(Tenant.id == uuid.UUID(tenant_id)).first()
+            if not tenant or not tenant.is_active:
+                raise HTTPException(status_code=401, detail="Tenant not found or inactive")
+                
+            try:
+                bridge = BridgeClient(tenant)
+                bridge_user = await bridge.get(f"/auth/profile/{user_id}")
+            except Exception:
+                raise HTTPException(status_code=401, detail="Tenant silo is currently offline or user not found.")
+                
+            if not bridge_user.get("is_active", True) or bridge_user.get("status") == "inactive":
+                raise HTTPException(status_code=401, detail="User account is deactivated")
+                
+            remote_version = bridge_user.get("refresh_token_version", 1)
+            if token_version is None or token_version != remote_version:
+                raise HTTPException(status_code=401, detail="Session invalidated. Please log in again.")
+                
+            new_access_token = create_access_token(
+                subject=str(user_id), 
+                tenant_id=str(tenant.id), 
+                role=bridge_user.get("role", "ia_staff"),
+                version=remote_version
+            )
+            
+            return TokenResponse(
+                access_token=new_access_token, 
+                refresh_token=refresh_token,
+                subdomain=tenant.subdomain,
+                is_profile_completed=tenant.is_profile_completed
+            )
+
+        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")

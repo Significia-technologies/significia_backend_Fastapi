@@ -39,8 +39,8 @@ def swagger_login(
     return auth_service.authenticate_user(db, request, request_ip=ip_address, user_agent=user_agent)
 
 @router.post("/refresh", response_model=TokenResponse)
-def refresh_token(request: RefreshTokenRequest, db: Session = Depends(get_db)):
-    return auth_service.refresh_access_token(db, request.refresh_token)
+async def refresh_token(request: RefreshTokenRequest, db: Session = Depends(get_db)):
+    return await auth_service.refresh_access_token(db, request.refresh_token)
 
 @router.get("/me", response_model=UserResponse)
 def get_user_me(current_user: User = Depends(get_current_user)):
