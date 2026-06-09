@@ -639,20 +639,40 @@ class InvestmentAdviceNotePDF:
         InvestmentAdviceNotePDF._section_header(pdf, "Section F - Risk Disclosures")
 
         risk_disclosures = [
-            ("Market / Price Risk", "Equity and ETF investments are subject to market fluctuations. Past performance is not indicative of future returns."),
-            ("Mutual Fund Risk", "Mutual Fund investments are subject to market risks. Please read all scheme documents carefully before investing."),
-            ("Interest Rate Risk", "Debt fund NAVs are affected by interest rate movements. Suitable only for investors with appropriate horizon."),
-            ("Commodity Risk", "Gold/Silver ETFs track commodity prices influenced by global factors and INR/USD exchange rates."),
-            ("Concentration Risk", "Individual equity positions carry stock-specific risk. Portfolio diversification is recommended."),
+            ("Market / Price Risk", "Equity and ETF investments are subject to market fluctuations. Past performance is not indicative of future returns. The value of investments may fall below the invested amount."),
+            ("Mutual Fund Risk", "Mutual Fund investments are subject to market risks. Please read all scheme documents (SID and KIM) carefully before investing. NAV may go up or down depending on market conditions."),
+            ("Interest Rate / Duration Risk", "SBI Magnum Medium Duration Fund carries interest rate duration risk. A rise in interest rates will negatively affect NAV. Suitable only for investors with a minimum 2-3 year horizon."),
+            ("Gold / Commodity Risk", "Gold Bees ETF tracks domestic gold prices influenced by global commodity prices, INR/USD exchange rates and geopolitical factors. Gold does not generate any income (no dividend or interest)."),
+            ("Concentration / Stock Risk", "Individual equity positions carry stock-specific risk including regulatory action, management changes, sector headwinds and liquidity events. Portfolio diversification is recommended."),
         ]
+
+        has_insurance = recommendations and any(
+            rec.get("product_type", "").lower() in ("life-insurance", "life_insurance") 
+            for rec in recommendations
+        )
+        if has_insurance:
+            risk_disclosures.append((
+                "Life Insurance — IRDAI Regulated *",
+                "Life insurance is regulated by IRDAI, NOT SEBI. SEBI has no jurisdiction over this product. Any grievance relating to insurance advice must be directed to IRDAI (www.irdai.gov.in). The IA's advisory services for this product are outside SEBI's regulatory purview and no recourse is available from SEBI or IAASB. Client has signed a separate non-SEBI disclosure and declaration."
+            ))
 
         for label, text in risk_disclosures:
             if pdf.get_y() > 265:
                 pdf.add_page()
             pdf.set_x(10)
-            pdf.set_font("helvetica", "B", 7.5)
-            pdf.set_text_color(*_NAVY)
-            pdf.cell(38, 6, f" {label}", border="LTB")
+            
+            is_insurance = label.startswith("Life Insurance")
+            
+            if is_insurance:
+                pdf.set_fill_color(254, 236, 236)  # Pink background for insurance key cell
+                pdf.set_font("helvetica", "B", 7.5)
+                pdf.set_text_color(180, 60, 60)   # Red text color
+                pdf.cell(38, 6, f" {label}", border="LTB", fill=True)
+            else:
+                pdf.set_font("helvetica", "B", 7.5)
+                pdf.set_text_color(*_NAVY)
+                pdf.cell(38, 6, f" {label}", border="LTB")
+                
             pdf.set_font("helvetica", "", 7)
             pdf.set_text_color(*_TEXT_DARK)
             pdf.multi_cell(152, 6, f" {text}", border="RTB")
@@ -940,13 +960,25 @@ class InvestmentAdviceNoteDOCX:
             
             # Left key cell
             cell_k = row.cells[0]
-            InvestmentAdviceNoteDOCX._style_cell(cell_k, bg_color="F4F6F9", border_color="D3D3D3")
-            pk = cell_k.paragraphs[0]
-            run_k = pk.add_run(str(k))
-            run_k.bold = True
-            run_k.font.size = Pt(9)
-            run_k.font.name = 'Arial'
-            run_k.font.color.rgb = RGBColor(0x1F, 0x51, 0x88)
+            is_insurance = str(k).startswith("Life Insurance")
+            
+            if is_insurance:
+                # Pink background for insurance key cell
+                InvestmentAdviceNoteDOCX._style_cell(cell_k, bg_color="FEECEC", border_color="D3D3D3")
+                pk = cell_k.paragraphs[0]
+                run_k = pk.add_run(str(k))
+                run_k.bold = True
+                run_k.font.size = Pt(9)
+                run_k.font.name = 'Arial'
+                run_k.font.color.rgb = RGBColor(180, 60, 60)  # Red text
+            else:
+                InvestmentAdviceNoteDOCX._style_cell(cell_k, bg_color="F4F6F9", border_color="D3D3D3")
+                pk = cell_k.paragraphs[0]
+                run_k = pk.add_run(str(k))
+                run_k.bold = True
+                run_k.font.size = Pt(9)
+                run_k.font.name = 'Arial'
+                run_k.font.color.rgb = RGBColor(0x1F, 0x51, 0x88)
             
             # Right value cell
             cell_v = row.cells[1]
@@ -1321,12 +1353,23 @@ class InvestmentAdviceNoteDOCX:
 
         # ══════════════════ SECTION F ══════════════════
         fields_f = [
-            ("Market / Price Risk", "Equity and ETF investments are subject to market fluctuations. Past performance is not indicative of future returns."),
-            ("Mutual Fund Risk", "Mutual Fund investments are subject to market risks. Please read all scheme documents carefully before investing."),
-            ("Interest Rate Risk", "Debt fund NAVs are affected by interest rate movements."),
-            ("Commodity Risk", "Gold/Silver ETFs track commodity prices influenced by global factors and INR/USD exchange rates."),
-            ("Concentration Risk", "Individual equity positions carry stock-specific risk. Portfolio diversification is recommended."),
+            ("Market / Price Risk", "Equity and ETF investments are subject to market fluctuations. Past performance is not indicative of future returns. The value of investments may fall below the invested amount."),
+            ("Mutual Fund Risk", "Mutual Fund investments are subject to market risks. Please read all scheme documents (SID and KIM) carefully before investing. NAV may go up or down depending on market conditions."),
+            ("Interest Rate / Duration Risk", "SBI Magnum Medium Duration Fund carries interest rate duration risk. A rise in interest rates will negatively affect NAV. Suitable only for investors with a minimum 2-3 year horizon."),
+            ("Gold / Commodity Risk", "Gold Bees ETF tracks domestic gold prices influenced by global commodity prices, INR/USD exchange rates and geopolitical factors. Gold does not generate any income (no dividend or interest)."),
+            ("Concentration / Stock Risk", "Individual equity positions carry stock-specific risk including regulatory action, management changes, sector headwinds and liquidity events. Portfolio diversification is recommended."),
         ]
+        
+        has_insurance = recommendations and any(
+            rec.get("product_type", "").lower() in ("life-insurance", "life_insurance") 
+            for rec in recommendations
+        )
+        if has_insurance:
+            fields_f.append((
+                "Life Insurance — IRDAI Regulated *",
+                "Life insurance is regulated by IRDAI, NOT SEBI. SEBI has no jurisdiction over this product. Any grievance relating to insurance advice must be directed to IRDAI (www.irdai.gov.in). The IA's advisory services for this product are outside SEBI's regulatory purview and no recourse is available from SEBI or IAASB. Client has signed a separate non-SEBI disclosure and declaration."
+            ))
+
         InvestmentAdviceNoteDOCX._add_section_heading(doc, "Section F — Risk Disclosures")
         InvestmentAdviceNoteDOCX._add_two_column_table(
             doc, 
