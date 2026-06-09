@@ -21,6 +21,8 @@ try:
     from docx.shared import Inches, Pt, RGBColor, Cm, Emu
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.enum.table import WD_TABLE_ALIGNMENT
+    from docx.oxml import parse_xml
+    from docx.oxml.ns import nsdecls
     DOCX_AVAILABLE = True
 except ImportError:
     DOCX_AVAILABLE = False
@@ -133,6 +135,46 @@ def format_amount_units_python(rec):
     return rec.get("amount_units") or ""
 
 
+def calculate_age(dob_str):
+    if not dob_str:
+        return None
+    try:
+        import re
+        parts = re.findall(r'\d+', dob_str)
+        if len(parts) >= 3:
+            # Check if first part is year (4 digits)
+            if len(parts[0]) == 4:
+                year = int(parts[0])
+            elif len(parts[2]) == 4:
+                year = int(parts[2])
+            else:
+                return None
+            return 2026 - year
+    except Exception:
+        pass
+    return None
+
+
+def format_dob(dob_str):
+    if not dob_str:
+        return "N/A"
+    try:
+        dt = datetime.strptime(dob_str.split('T')[0], "%Y-%m-%d")
+        return dt.strftime("%d %B %Y")
+    except Exception:
+        return dob_str
+
+
+def format_date_issue(date_str):
+    if not date_str:
+        return "N/A"
+    try:
+        dt = datetime.strptime(date_str.split('T')[0], "%Y-%m-%d")
+        return dt.strftime("%d %B %Y")
+    except Exception:
+        return date_str
+
+
 class InvestmentAdviceNotePDF:
     """Generates a SEBI-compliant Investment Advice Note PDF using fpdf2."""
 
@@ -241,7 +283,7 @@ class InvestmentAdviceNotePDF:
         pdf.set_font("helvetica", "B", 10)
         pdf.set_text_color(*_NAVY)
         pdf.cell(0, 5, title.upper(), ln=True)
-        pdf.ln(2)
+        pdf.ln(4)
 
     @staticmethod
     def _kv_row(pdf: BaseReportPDF, label: str, value: str, label_w: int = 42, val_w: int = 53):
@@ -457,16 +499,16 @@ class InvestmentAdviceNotePDF:
         pdf.ln(6)
 
         # ══════════════════ SECTION D - Recommendations ══════════════════
-        InvestmentAdviceNotePDF._section_header(pdf, "Section D - Investment Recommendations [Regulation 16]")
+        InvestmentAdviceNotePDF._section_header(pdf, "Section D - Investment Recommendations")
 
         if recommendations:
             # Table header
             cols = [8, 52, 30, 30, 16, 28, 26]
-            headers = ["#", "Product / Scheme", "ISIN / Code", "Type", "Action", "Amount", "Price/NAV"]
+            headers = ["#", "Product / Scheme Name", "ISIN / Scheme Code", "Product Type", "Action", "Amount / Units", "Price / NAV"]
 
-            pdf.set_fill_color(*_TABLE_HEADER_BG)
+            pdf.set_fill_color(*_NAVY)
             pdf.set_font("helvetica", "B", 7)
-            pdf.set_text_color(*_NAVY)
+            pdf.set_text_color(255, 255, 255)
             pdf.set_x(10)
             for h, w in zip(headers, cols):
                 pdf.cell(w, 8, f" {h}", border=1, fill=True)
@@ -530,7 +572,7 @@ class InvestmentAdviceNotePDF:
         if recommendations and any(r.get("rationale") for r in recommendations):
             if pdf.get_y() > 230:
                 pdf.add_page()
-            InvestmentAdviceNotePDF._section_header(pdf, "Section E - Rationale for Advice [Regulation 16(c)]")
+            InvestmentAdviceNotePDF._section_header(pdf, "Section E - Rationale for Advice")
 
             for rec in recommendations:
                 rationale = rec.get("rationale", "")
@@ -553,7 +595,7 @@ class InvestmentAdviceNotePDF:
         # ══════════════════ SECTION F - Risk Disclosures ══════════════════
         if pdf.get_y() > 230:
             pdf.add_page()
-        InvestmentAdviceNotePDF._section_header(pdf, "Section F - Risk Disclosures [Regulation 16(d)]")
+        InvestmentAdviceNotePDF._section_header(pdf, "Section F - Risk Disclosures")
 
         risk_disclosures = [
             ("Market / Price Risk", "Equity and ETF investments are subject to market fluctuations. Past performance is not indicative of future returns."),
@@ -579,7 +621,7 @@ class InvestmentAdviceNotePDF:
         if pdf.get_y() > 210:
             pdf.add_page()
         InvestmentAdviceNotePDF._section_header(
-            pdf, "Section G - Conflict of Interest and AI Usage Disclosure [Reg. 18 & 15(14)]"
+            pdf, "Section G - Conflict of Interest and AI Usage Disclosure"
         )
 
         disclosure_fields = [
@@ -681,59 +723,329 @@ class InvestmentAdviceNoteDOCX:
     """Generates a SEBI-compliant Investment Advice Note Word document."""
 
     @staticmethod
-    def _add_kv_table(doc, fields: List[tuple], style: str = "Table Grid"):
-        """Add a 2-column key-value table."""
-        table = doc.add_table(rows=len(fields), cols=2)
-        table.style = style
-        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    def _style_cell(
+        cell, 
+        bg_color=None, 
+        border_color="CCCCCC", 
+        top=True, 
+        bottom=True, 
+        left=True, 
+        right=True, 
+        top_pad=80, 
+        bottom_pad=80, 
+        left_pad=120, 
+        right_pad=120
+    ):
+        """Apply shading, custom borders, cell margins, and paragraph spacing to a cell."""
+        tcPr = cell._tc.get_or_add_tcPr()
+        
+        # 1. Shading (Background Color)
+        if bg_color:
+            shd = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{bg_color}"/>')
+            tcPr.append(shd)
+            
+        # 2. Borders
+        borders_str = f'<w:tcBorders {nsdecls("w")}>'
+        borders_str += f'<w:top w:val="{"single" if top else "nil"}" w:sz="4" w:space="0" w:color="{border_color}"/>'
+        borders_str += f'<w:bottom w:val="{"single" if bottom else "nil"}" w:sz="4" w:space="0" w:color="{border_color}"/>'
+        borders_str += f'<w:left w:val="{"single" if left else "nil"}" w:sz="4" w:space="0" w:color="{border_color}"/>'
+        borders_str += f'<w:right w:val="{"single" if right else "nil"}" w:sz="4" w:space="0" w:color="{border_color}"/>'
+        borders_str += '</w:tcBorders>'
+        tcPr.append(parse_xml(borders_str))
+        
+        # 3. Cell margins (padding)
+        tcMar = parse_xml(
+            f'<w:tcMar {nsdecls("w")}>'
+            f'<w:top w:w="{top_pad}" w:type="dxa"/>'
+            f'<w:bottom w:w="{bottom_pad}" w:type="dxa"/>'
+            f'<w:left w:w="{left_pad}" w:type="dxa"/>'
+            f'<w:right w:w="{right_pad}" w:type="dxa"/>'
+            f'</w:tcMar>'
+        )
+        tcPr.append(tcMar)
 
-        for i, (label, value) in enumerate(fields):
-            cell_label = table.cell(i, 0)
-            cell_value = table.cell(i, 1)
-
-            p_label = cell_label.paragraphs[0]
-            run_label = p_label.add_run(str(label))
-            run_label.bold = True
-            run_label.font.size = Pt(9)
-
-            p_value = cell_value.paragraphs[0]
-            run_value = p_value.add_run(str(value or "N/A"))
-            run_value.font.size = Pt(9)
+        # 4. Paragraph formatting for all paragraphs inside cell
+        for p in cell.paragraphs:
+            p.paragraph_format.line_spacing = 1.15
+            p.paragraph_format.space_before = Pt(2)
+            p.paragraph_format.space_after = Pt(2)
 
     @staticmethod
-    def _add_recommendation_table(doc, recommendations: List[dict]):
-        """Add the recommendations table (Section D)."""
-        headers = ["#", "Product / Scheme", "ISIN / Code", "Type", "Action", "Amount / Units", "Price / NAV"]
-        table = doc.add_table(rows=1 + len(recommendations), cols=len(headers))
-        table.style = "Light Grid Accent 1"
-        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    def _add_section_heading(doc, text: str):
+        """Add a professional styled section heading with dark blue color."""
+        p = doc.add_paragraph()
+        p.paragraph_format.space_before = Pt(14)
+        p.paragraph_format.space_after = Pt(10)
+        p.paragraph_format.keep_with_next = True
+        run = p.add_run(text)
+        run.bold = True
+        run.font.size = Pt(11)
+        run.font.name = 'Arial'
+        run.font.color.rgb = RGBColor(0x1F, 0x51, 0x88)
+        return p
 
-        # Header row
+    @staticmethod
+    def _add_kv_grid_table(doc, fields: List[tuple]):
+        """Add a 4-column key-value grid table."""
+        rows_data = []
+        i = 0
+        while i < len(fields):
+            f1 = fields[i]
+            is_full_width_1 = len(f1) > 2 and f1[2]
+            
+            if is_full_width_1:
+                rows_data.append((f1[0], f1[1], None, None))
+                i += 1
+            else:
+                if i + 1 < len(fields):
+                    f2 = fields[i+1]
+                    is_full_width_2 = len(f2) > 2 and f2[2]
+                    if is_full_width_2:
+                        rows_data.append((f1[0], f1[1], "", ""))
+                        i += 1
+                    else:
+                        rows_data.append((f1[0], f1[1], f2[0], f2[1]))
+                        i += 2
+                else:
+                    rows_data.append((f1[0], f1[1], "", ""))
+                    i += 1
+
+        # Add table
+        table = doc.add_table(rows=len(rows_data), cols=4)
+        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        
+        # Column widths: 
+        # Key 1: 1.2 inches, Val 1: 2.3 inches, Key 2: 1.2 inches, Val 2: 2.3 inches
+        col_widths = [Inches(1.2), Inches(2.3), Inches(1.2), Inches(2.3)]
+        
+        for r_idx, (k1, v1, k2, v2) in enumerate(rows_data):
+            row = table.rows[r_idx]
+            
+            if k2 is None and v2 is None:
+                # Full width row (merge cells 1, 2, and 3)
+                cell_k = row.cells[0]
+                cell_v = row.cells[1]
+                cell_v.merge(row.cells[2]).merge(row.cells[3])
+                
+                # Key style
+                InvestmentAdviceNoteDOCX._style_cell(cell_k, bg_color="F4F6F9", border_color="D3D3D3")
+                pk = cell_k.paragraphs[0]
+                run_k = pk.add_run(str(k1))
+                run_k.bold = True
+                run_k.font.size = Pt(9)
+                run_k.font.name = 'Arial'
+                run_k.font.color.rgb = RGBColor(0x1F, 0x51, 0x88)
+                
+                # Val style
+                InvestmentAdviceNoteDOCX._style_cell(cell_v, bg_color="FFFFFF", border_color="D3D3D3")
+                pv = cell_v.paragraphs[0]
+                run_v = pv.add_run(str(v1 or "N/A"))
+                run_v.font.size = Pt(9)
+                run_v.font.name = 'Arial'
+            else:
+                # Key 1
+                cell_k1 = row.cells[0]
+                InvestmentAdviceNoteDOCX._style_cell(cell_k1, bg_color="F4F6F9", border_color="D3D3D3")
+                pk1 = cell_k1.paragraphs[0]
+                run_k1 = pk1.add_run(str(k1))
+                run_k1.bold = True
+                run_k1.font.size = Pt(9)
+                run_k1.font.name = 'Arial'
+                run_k1.font.color.rgb = RGBColor(0x1F, 0x51, 0x88)
+                
+                # Val 1
+                cell_v1 = row.cells[1]
+                InvestmentAdviceNoteDOCX._style_cell(cell_v1, bg_color="FFFFFF", border_color="D3D3D3")
+                pv1 = cell_v1.paragraphs[0]
+                run_v1 = pv1.add_run(str(v1 or "N/A"))
+                run_v1.font.size = Pt(9)
+                run_v1.font.name = 'Arial'
+                
+                # Key 2
+                cell_k2 = row.cells[2]
+                InvestmentAdviceNoteDOCX._style_cell(cell_k2, bg_color="F4F6F9", border_color="D3D3D3")
+                pk2 = cell_k2.paragraphs[0]
+                run_k2 = pk2.add_run(str(k2))
+                run_k2.bold = True
+                run_k2.font.size = Pt(9)
+                run_k2.font.name = 'Arial'
+                run_k2.font.color.rgb = RGBColor(0x1F, 0x51, 0x88)
+                
+                # Val 2
+                cell_v2 = row.cells[3]
+                InvestmentAdviceNoteDOCX._style_cell(cell_v2, bg_color="FFFFFF", border_color="D3D3D3")
+                pv2 = cell_v2.paragraphs[0]
+                run_v2 = pv2.add_run(str(v2 or "N/A"))
+                run_v2.font.size = Pt(9)
+                run_v2.font.name = 'Arial'
+
+        # Set widths on all unmerged cells
+        for row in table.rows:
+            if len(row.cells) == 4:
+                for idx, w in enumerate(col_widths):
+                    row.cells[idx].width = w
+
+    @staticmethod
+    def _add_two_column_table(doc, fields: List[tuple]):
+        """Add a 2-column table (for Section E, F, G)."""
+        table = doc.add_table(rows=len(fields), cols=2)
+        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        
+        # Column widths: Left: 1.8 inches, Right: 5.2 inches (Total = 7.0 inches)
+        col_widths = [Inches(1.8), Inches(5.2)]
+        
+        for r_idx, (k, v) in enumerate(fields):
+            row = table.rows[r_idx]
+            
+            # Left key cell
+            cell_k = row.cells[0]
+            InvestmentAdviceNoteDOCX._style_cell(cell_k, bg_color="F4F6F9", border_color="D3D3D3")
+            pk = cell_k.paragraphs[0]
+            run_k = pk.add_run(str(k))
+            run_k.bold = True
+            run_k.font.size = Pt(9)
+            run_k.font.name = 'Arial'
+            run_k.font.color.rgb = RGBColor(0x1F, 0x51, 0x88)
+            
+            # Right value cell
+            cell_v = row.cells[1]
+            InvestmentAdviceNoteDOCX._style_cell(cell_v, bg_color="FFFFFF", border_color="D3D3D3")
+            pv = cell_v.paragraphs[0]
+            run_v = pv.add_run(str(v or "N/A"))
+            run_v.font.size = Pt(9)
+            run_v.font.name = 'Arial'
+            
+        # Set widths
+        for row in table.rows:
+            if len(row.cells) == 2:
+                row.cells[0].width = col_widths[0]
+                row.cells[1].width = col_widths[1]
+
+    @staticmethod
+    def _add_recommendation_table(doc, recommendations: List[dict], date_of_issue: str = ""):
+        """Add the recommendations table with styled columns, color-coded actions, and merged footnote (Section D)."""
+        headers = [
+            "#", 
+            "Product / Scheme Name", 
+            "ISIN / Scheme Code", 
+            "Product Type", 
+            "Action", 
+            "Amount / Units", 
+            "Indicative Price / NAV (Rs.)/Premium"
+        ]
+        
+        # 1 header row + N data rows + 1 footnote row
+        total_rows = 1 + len(recommendations) + 1
+        table = doc.add_table(rows=total_rows, cols=len(headers))
+        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        
+        # 1. Style Header Row (Row 0)
         hdr_row = table.rows[0]
         for i, h in enumerate(headers):
             cell = hdr_row.cells[i]
+            InvestmentAdviceNoteDOCX._style_cell(cell, bg_color="1F5188", border_color="1F5188", top_pad=100, bottom_pad=100)
             p = cell.paragraphs[0]
+            p.paragraph_format.space_before = Pt(3)
+            p.paragraph_format.space_after = Pt(3)
+            
+            # Header Alignments
+            if h == "#" or h == "Action" or "ISIN" in h or "Type" in h:
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            elif "Price" in h:
+                p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            else:
+                p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                
             run = p.add_run(h)
             run.bold = True
-            run.font.size = Pt(8)
-
-        # Data rows
+            run.font.size = Pt(8.5)
+            run.font.name = 'Arial'
+            run.font.color.rgb = RGBColor(255, 255, 255)
+            
+        # Data Rows (Row 1 to N)
         for idx, rec in enumerate(recommendations):
             row = table.rows[idx + 1]
-            values = [
-                str(idx + 1),
-                rec.get("product_name", "N/A"),
-                rec.get("isin_code_scheme_code_uin", ""),
-                rec.get("product_type", "").replace("_", " ").title(),
-                rec.get("action", "BUY"),
-                format_amount_units_python(rec),
-                f"Rs. {float(rec['indicative_price_nav']):,.2f}" if rec.get("indicative_price_nav") else "N/A",
-            ]
+            bg_color = "FFFFFF" if idx % 2 == 0 else "F4F6F9"
+            
+            p_name = rec.get("product_name", "N/A")
+            isin = rec.get("isin_code_scheme_code_uin", "") or "N/A"
+            p_type = rec.get("product_type", "").replace("_", " ").title()
+            action = rec.get("action", "BUY")
+            amt_units = format_amount_units_python(rec)
+            
+            price_val = rec.get("indicative_price_nav")
+            if price_val:
+                try:
+                    price_str = f"{float(price_val):,.2f}"
+                except Exception:
+                    price_str = str(price_val)
+            else:
+                price_str = "N/A"
+                
+            # Values array
+            values = [str(idx + 1), p_name, isin, p_type, action, amt_units, price_str]
+            
             for i, val in enumerate(values):
                 cell = row.cells[i]
+                InvestmentAdviceNoteDOCX._style_cell(cell, bg_color=bg_color, border_color="D3D3D3")
                 p = cell.paragraphs[0]
-                run = p.add_run(str(val))
-                run.font.size = Pt(8)
+                p.paragraph_format.space_before = Pt(3)
+                p.paragraph_format.space_after = Pt(3)
+                
+                # Alignments
+                if i in (0, 2, 3, 4):
+                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                elif i == 6:
+                    p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                else:
+                    p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                    
+                run = p.add_run(val)
+                run.font.size = Pt(8.5)
+                run.font.name = 'Arial'
+                
+                # Special colors for Action column
+                if i == 4:
+                    run.bold = True
+                    if val == "BUY":
+                        run.font.color.rgb = RGBColor(0, 128, 0)
+                    elif val == "HOLD":
+                        run.font.color.rgb = RGBColor(0, 70, 160)
+                    elif val == "SELL":
+                        run.font.color.rgb = RGBColor(180, 60, 60)
+                    elif val == "REVIEW":
+                        run.font.color.rgb = RGBColor(139, 69, 19)
+                        
+        # Footnote Row (Row N+1)
+        ft_row = table.rows[len(recommendations) + 1]
+        ft_cell = ft_row.cells[0]
+        for c in range(1, len(headers)):
+            ft_cell.merge(ft_row.cells[c])
+            
+        InvestmentAdviceNoteDOCX._style_cell(ft_cell, bg_color="EBF8EB", border_color="D3D3D3", top_pad=80, bottom_pad=80)
+        p = ft_cell.paragraphs[0]
+        p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        p.paragraph_format.space_before = Pt(3)
+        p.paragraph_format.space_after = Pt(3)
+        
+        issue_date_str = date_of_issue or "______________"
+        footnote_text = (
+            f"* Prices and NAVs are indicative as of {issue_date_str}. Actual execution price will be "
+            "the prevailing market price or NAV at time of transaction. Insurance premium is annual. "
+            "Items marked * are IRDAI-regulated products outside SEBI purview — see Section F."
+        )
+        run = p.add_run(footnote_text)
+        run.italic = True
+        run.font.size = Pt(8)
+        run.font.name = 'Arial'
+        run.font.color.rgb = RGBColor(46, 125, 50)
+        
+        # Set column widths (Total = 7.0 inches)
+        col_widths = [Inches(0.35), Inches(2.0), Inches(1.15), Inches(0.9), Inches(0.6), Inches(1.1), Inches(0.9)]
+        for row in table.rows:
+            if len(row.cells) == len(headers):
+                for idx, w in enumerate(col_widths):
+                    row.cells[idx].width = w
 
     @staticmethod
     def generate_docx(
@@ -741,12 +1053,26 @@ class InvestmentAdviceNoteDOCX:
         ia_data: Optional[dict] = None,
     ) -> io.BytesIO:
         """
-        Generate a SEBI Investment Advice Note as a Word document.
+        Generate a SEBI Investment Advice Note as a beautifully styled Word document.
         """
         if not DOCX_AVAILABLE:
             raise ImportError("python-docx is not installed on this system.")
 
         doc = Document()
+        
+        # Set Page Margins to 0.75" on all sides
+        section = doc.sections[0]
+        section.top_margin = Inches(0.75)
+        section.bottom_margin = Inches(0.75)
+        section.left_margin = Inches(0.75)
+        section.right_margin = Inches(0.75)
+
+        # Set Normal text style defaults
+        style = doc.styles['Normal']
+        font = style.font
+        font.name = 'Arial'
+        font.size = Pt(9.5)
+
         client = note_data.get("client_snapshot", {})
         recommendations = note_data.get("recommendations", [])
 
@@ -755,54 +1081,64 @@ class InvestmentAdviceNoteDOCX:
         ia_reg_no = ia_data.get("ia_registration_number", "") if ia_data else ""
 
         # ── Header ──
-        section = doc.sections[0]
         header = section.header
         h_para = header.paragraphs[0] if header.paragraphs else header.add_paragraph()
         h_para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        h_run = h_para.add_run(f"{entity_name}\nSEBI Reg: {ia_reg_no}")
+        h_para.text = ""
+        h_run = h_para.add_run(f"{entity_name or advisor_name}  |  SEBI Reg: {ia_reg_no}")
         h_run.font.size = Pt(8)
+        h_run.font.name = 'Arial'
         h_run.font.color.rgb = RGBColor(0x60, 0x60, 0x60)
 
-        # ── Title ──
-        title = doc.add_heading("INVESTMENT ADVICE NOTE", level=0)
-        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        subtitle = doc.add_paragraph(
-            "Issued under SEBI (Investment Advisers) Regulations, 2013  |  Regulation 16 & 17"
-        )
-        subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        for run in subtitle.runs:
-            run.font.size = Pt(9)
-            run.font.color.rgb = RGBColor(0x80, 0x80, 0x80)
+        # ── Document Title ──
+        title_para = doc.add_paragraph()
+        title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        title_para.paragraph_format.space_before = Pt(12)
+        title_para.paragraph_format.space_after = Pt(2)
+        t_run = title_para.add_run("INVESTMENT ADVICE NOTE")
+        t_run.bold = True
+        t_run.font.size = Pt(18)
+        t_run.font.name = 'Arial'
+        t_run.font.color.rgb = RGBColor(0x1F, 0x51, 0x88)
 
-        doc.add_paragraph()
+        sub_para = doc.add_paragraph()
+        sub_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        sub_para.paragraph_format.space_after = Pt(18)
+        s_run = sub_para.add_run("Issued under SEBI (Investment Advisers) Regulations, 2013  |  Regulation 16 & 17")
+        s_run.font.size = Pt(9)
+        s_run.font.name = 'Arial'
+        s_run.font.color.rgb = RGBColor(0x80, 0x80, 0x80)
 
         # ══════════════════ SECTION A ══════════════════
-        doc.add_heading("Section A - Investment Adviser Details", level=1)
         basl_id = ia_data.get("basl_membership_id", "") if ia_data else ""
         website_val = ia_data.get("website", "") if ia_data else ""
+        addr = ia_data.get("registered_address", "N/A") if ia_data else "N/A"
+        po_name = note_data.get("principal_officer_name", "N/A")
+        po_reg = note_data.get("principal_officer_reg_no", "")
+        po_display = f"{po_name}, Reg No: {po_reg}" if po_reg else po_name
+        issue_date_formatted = format_date_issue(note_data.get("date_of_issue"))
 
-        InvestmentAdviceNoteDOCX._add_kv_table(doc, [
+        fields_a = [
             ("IA / Firm Name", entity_name or advisor_name),
-            ("SEBI Registration No.", ia_reg_no),
-            ("IAASB", f"BSE Limited (IAASB) - {basl_id}" if basl_id else "BSE Limited (IAASB)"),
-            ("Website", website_val or "N/A"),
             ("Advice Note No.", note_data.get("advice_note_no", "N/A")),
-            ("Date of Issue", note_data.get("date_of_issue", "N/A")),
-            ("Principal Officer", note_data.get("principal_officer_name", "N/A")),
-            ("PO Reg. No.", note_data.get("principal_officer_reg_no", "N/A")),
-            ("Advice Category", note_data.get("advice_category", "Comprehensive Advisory")),
+            ("SEBI Registration No.", ia_reg_no),
+            ("Date of Issue", issue_date_formatted),
+            ("IAASB", f"BSE Limited (IAASB) - {basl_id}" if basl_id else "BSE Limited (IAASB)"),
             ("Advice Validity", note_data.get("advice_validity_custom_text", "N/A")),
-            ("Registered Address", ia_data.get("registered_address", "N/A") if ia_data else "N/A"),
-        ])
+            ("Registered Address", addr),
+            ("Principal Officer", po_display),
+            ("Website", website_val or "N/A"),
+            ("Advice Category", note_data.get("advice_category", "Comprehensive Advisory")),
+        ]
+        InvestmentAdviceNoteDOCX._add_section_heading(doc, "Section A — Investment Adviser Details")
+        InvestmentAdviceNoteDOCX._add_kv_grid_table(doc, fields_a)
         doc.add_paragraph()
 
         # ══════════════════ SECTION B ══════════════════
-        doc.add_heading("Section B - Client Details and Risk Profile", level=1)
-
         risk_score = client.get("risk_profile_score")
         risk_profile_str = client.get("risk_profile", "N/A")
         if risk_score and risk_score != "N/A":
-            risk_profile_str = f"{risk_profile_str} (Score: {risk_score}/100)"
+            risk_profile_str = f"{risk_profile_str} (Risk Score: {risk_score} / 100)"
 
         liabilities_val = client.get("existing_liabilities")
         if liabilities_val is not None:
@@ -812,6 +1148,26 @@ class InvestmentAdviceNoteDOCX:
                 liabilities_str = str(liabilities_val)
         else:
             liabilities_str = "N/A"
+
+        # Email & Mobile
+        email = client.get("email") or ""
+        phone = client.get("phone_number") or ""
+        email_mobile = f"{email} | {phone}" if email and phone else (email or phone or "N/A")
+
+        # DOB & Age
+        dob_val = client.get("date_of_birth", "")
+        dob_formatted = format_dob(dob_val)
+        age = calculate_age(dob_val)
+        dob_display = f"{dob_formatted} (Age: {age} years)" if age else dob_formatted
+
+        # Fee Mode and Amount
+        fee_mode = note_data.get("fee_mode", "N/A").replace("_", " ").title()
+        fee_amount = float(note_data.get("fee_amount", 0))
+        fee_display = f"{fee_mode} | Rs. {fee_amount:,.0f}" if fee_amount > 0 else fee_mode
+
+        # Assets Under Advice
+        aua = float(note_data.get("assets_under_advice", 0))
+        aua_display = f"Rs. {aua:,.0f} (approx.)" if aua > 0 else "N/A"
 
         # Recommended Asset Allocation
         rec_alloc = note_data.get("recommended_asset_allocation")
@@ -863,74 +1219,94 @@ class InvestmentAdviceNoteDOCX:
             if sub_parts:
                 alloc_text += "\nSub-Asset Breakdown:\n" + "\n".join(f"• {x}" for x in sub_parts)
 
-        InvestmentAdviceNoteDOCX._add_kv_table(doc, [
+        fields_b = [
             ("Client Full Name", client.get("client_name", "N/A")),
             ("Client ID", client.get("client_code", "N/A")),
             ("PAN Number", client.get("pan_number", "N/A")),
-            ("Client DOB", client.get("date_of_birth", "N/A")),
+            ("Date of Birth", dob_display),
             ("Address", client.get("address", "N/A")),
-            ("Email", client.get("email", "N/A")),
-            ("Mobile", client.get("phone_number", "N/A")),
-            ("Risk Profile", risk_profile_str),
-            ("Risk Profile Date", client.get("risk_profile_date", "N/A")),
+            ("Email / Mobile", email_mobile),
+            ("Risk Profile Category", risk_profile_str),
+            ("Risk Profiling Date", format_dob(client.get("risk_profile_date"))),
             ("Investment Horizon", client.get("investment_horizon", "N/A")),
             ("Annual Income Band", note_data.get("annual_income_band", "N/A")),
-            ("Existing Liabilities", liabilities_str),
-            ("Assets Under Advice", f"Rs. {float(note_data.get('assets_under_advice', 0)):,.0f}"),
-            ("Primary Financial Goal", note_data.get("primary_financial_goal", "N/A")),
-            ("Fee Mode", note_data.get("fee_mode", "N/A").replace("_", " ").title()),
-            ("Fee Amount", f"Rs. {float(note_data.get('fee_amount', 0)):,.0f}"),
-            ("Recommended Asset Allocation", alloc_text),
-            ("Date of Allocation", str(note_data.get("date_of_allocation", "N/A"))),
-        ])
+            ("Assets Under Advice", aua_display),
+            ("Fee Mode and Amount", fee_display),
+            ("Recommended Asset Allocation", alloc_text, True),
+            ("Date of Allocation", format_dob(note_data.get("date_of_allocation"))),
+        ]
+        InvestmentAdviceNoteDOCX._add_section_heading(doc, "Section B — Client Details and Risk Profile")
+        InvestmentAdviceNoteDOCX._add_kv_grid_table(doc, fields_b)
         doc.add_paragraph()
 
         # ══════════════════ SECTION C ══════════════════
-        doc.add_heading("Section C - Suitability Assessment [Regulation 17]", level=1)
-        InvestmentAdviceNoteDOCX._add_kv_table(doc, [
+        fields_c = [
             ("Advice Suitable?", note_data.get("suitability_assessment", "N/A")),
-            ("Suitability Basis", note_data.get("suitability_basis", "N/A")),
-            ("Current Asset Allocation", note_data.get("current_asset_allocation", "N/A")),
-            ("Rebalancing Rationale", note_data.get("rebalancing_rationale", "N/A")),
-        ])
+            ("Date of Allocation", format_dob(note_data.get("date_of_allocation"))),
+            ("Suitability Basis", note_data.get("suitability_basis", "N/A"), True),
+            ("Current Asset Allocation", note_data.get("current_asset_allocation", "N/A"), True),
+            ("Rebalancing Rationale", note_data.get("rebalancing_rationale", "N/A"), True),
+        ]
+        InvestmentAdviceNoteDOCX._add_section_heading(doc, "Section C — Suitability Assessment [Regulation 17]")
+        InvestmentAdviceNoteDOCX._add_kv_grid_table(doc, fields_c)
         doc.add_paragraph()
 
         # ══════════════════ SECTION D ══════════════════
-        doc.add_heading("Section D - Investment Recommendations [Regulation 16]", level=1)
+        InvestmentAdviceNoteDOCX._add_section_heading(doc, "Section D — Investment Recommendations [Regulation 16]")
         if recommendations:
-            InvestmentAdviceNoteDOCX._add_recommendation_table(doc, recommendations)
+            InvestmentAdviceNoteDOCX._add_recommendation_table(doc, recommendations, date_of_issue=issue_date_formatted)
         else:
             doc.add_paragraph("No recommendations attached to this advice note.").italic = True
         doc.add_paragraph()
 
         # ══════════════════ SECTION E ══════════════════
         if recommendations and any(r.get("rationale") for r in recommendations):
-            doc.add_heading("Section E - Rationale for Advice [Regulation 16(c)]", level=1)
-            rationale_rows = [
-                (rec.get("product_name", "Product"), f"{rec.get('action', '')}. {rec.get('rationale', '')}")
-                for rec in recommendations if rec.get("rationale")
-            ]
-            InvestmentAdviceNoteDOCX._add_kv_table(doc, rationale_rows)
-            doc.add_paragraph()
+            rationale_rows = []
+            r_idx = 1
+            for rec in recommendations:
+                if rec.get("rationale"):
+                    prod_name = rec.get("product_name", "Product")
+                    rationale_text = f"{rec.get('action', '')}. {rec.get('rationale', '')}"
+                    rationale_rows.append((f"{r_idx}. {prod_name}", rationale_text))
+                    r_idx += 1
+            
+            if rationale_rows:
+                InvestmentAdviceNoteDOCX._add_section_heading(doc, "Section E — Rationale for Advice [Regulation 16(c)]")
+                InvestmentAdviceNoteDOCX._add_two_column_table(
+                    doc, 
+                    rationale_rows
+                )
+                doc.add_paragraph()
 
         # ══════════════════ SECTION F ══════════════════
-        doc.add_heading("Section F - Risk Disclosures [Regulation 16(d)]", level=1)
-        InvestmentAdviceNoteDOCX._add_kv_table(doc, [
+        fields_f = [
             ("Market / Price Risk", "Equity and ETF investments are subject to market fluctuations. Past performance is not indicative of future returns."),
             ("Mutual Fund Risk", "Mutual Fund investments are subject to market risks. Please read all scheme documents carefully before investing."),
             ("Interest Rate Risk", "Debt fund NAVs are affected by interest rate movements."),
             ("Commodity Risk", "Gold/Silver ETFs track commodity prices influenced by global factors and INR/USD exchange rates."),
             ("Concentration Risk", "Individual equity positions carry stock-specific risk. Portfolio diversification is recommended."),
-        ])
+        ]
+        InvestmentAdviceNoteDOCX._add_section_heading(doc, "Section F — Risk Disclosures [Regulation 16(d)]")
+        InvestmentAdviceNoteDOCX._add_two_column_table(
+            doc, 
+            fields_f
+        )
         doc.add_paragraph()
 
         # ══════════════════ SECTION G ══════════════════
-        doc.add_heading("Section G - Conflict of Interest and AI Usage Disclosure", level=1)
-        InvestmentAdviceNoteDOCX._add_kv_table(doc, [
+        fields_g = [
             ("Conflict of Interest", note_data.get("conflict_of_interest_text", "No conflicts of interest declared.")),
             ("No Execution by IA", note_data.get("no_execution_text", "The IA is not authorised to execute trades on behalf of the client.")),
             ("AI Tool Disclosure", note_data.get("ai_usage_text", "No AI tools were used in the preparation of this advice note.")),
-        ])
+        ]
+        InvestmentAdviceNoteDOCX._add_section_heading(
+            doc, 
+            "Section G — Conflict of Interest and AI Usage Disclosure [Reg. 18 and 15(14)]"
+        )
+        InvestmentAdviceNoteDOCX._add_two_column_table(
+            doc, 
+            fields_g
+        )
         doc.add_paragraph()
 
         # ══════════════════ DISCLAIMER ══════════════════
@@ -938,17 +1314,21 @@ class InvestmentAdviceNoteDOCX:
         disclaimer_para = doc.add_paragraph(_SEBI_DISCLAIMER)
         disclaimer_para.style = doc.styles["Intense Quote"]
         for run in disclaimer_para.runs:
-            run.font.size = Pt(8)
+            run.font.size = Pt(8.5)
+            run.font.name = 'Arial'
+            run.font.color.rgb = RGBColor(0x1F, 0x51, 0x88)
 
         # ══════════════════ SIGNATURES ══════════════════
         doc.add_paragraph()
         sig_table = doc.add_table(rows=4, cols=2)
+        
         # Left: IA
         sig_table.cell(0, 0).text = f"For {entity_name or advisor_name or 'Investment Advisor'}"
         sig_table.cell(1, 0).text = "\n\n__________________________"
         po_name = note_data.get("principal_officer_name", "Principal Officer")
         sig_table.cell(2, 0).text = f"{po_name}\nPrincipal Officer\nSEBI Reg. No.: {ia_reg_no}"
-        sig_table.cell(3, 0).text = f"Date: {note_data.get('date_of_issue', '_____________')}"
+        sig_table.cell(3, 0).text = f"Date: {issue_date_formatted}"
+        
         # Right: Client
         sig_table.cell(0, 1).text = "Client Acknowledgement"
         sig_table.cell(1, 1).text = "\n\n__________________________"
@@ -962,12 +1342,29 @@ class InvestmentAdviceNoteDOCX:
             f"Date: ___________________"
         )
 
-        # Format signature cells
+        # Set column widths & style signature cells to be borderless and padded
         for row in sig_table.rows:
+            row.cells[0].width = Inches(3.5)
+            row.cells[1].width = Inches(3.5)
             for cell in row.cells:
+                InvestmentAdviceNoteDOCX._style_cell(
+                    cell, 
+                    bg_color="FFFFFF", 
+                    top=False, 
+                    bottom=False, 
+                    left=False, 
+                    right=False,
+                    top_pad=60,
+                    bottom_pad=60,
+                    left_pad=100,
+                    right_pad=100
+                )
+                
+                # Make text runs 9 pt Arial
                 for para in cell.paragraphs:
                     for run in para.runs:
                         run.font.size = Pt(9)
+                        run.font.name = 'Arial'
 
         # Record retention
         doc.add_paragraph()
@@ -976,16 +1373,19 @@ class InvestmentAdviceNoteDOCX:
         for run in retention.runs:
             run.font.size = Pt(7)
             run.italic = True
+            run.font.name = 'Arial'
             run.font.color.rgb = RGBColor(0x80, 0x80, 0x80)
 
         # ── Footer ──
         footer = section.footer
         f_p = footer.paragraphs[0] if footer.paragraphs else footer.add_paragraph()
         f_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        f_p.text = ""
         f_run = f_p.add_run(
             f"Prepared by: {advisor_name}  |  Entity: {entity_name}  |  Reg No: {ia_reg_no}"
         )
         f_run.font.size = Pt(7)
+        f_run.font.name = 'Arial'
         f_run.font.color.rgb = RGBColor(0x80, 0x80, 0x80)
         f_run.italic = True
 
