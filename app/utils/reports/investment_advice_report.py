@@ -287,14 +287,34 @@ class InvestmentAdviceNotePDF:
 
     @staticmethod
     def _kv_row(pdf: BaseReportPDF, label: str, value: str, label_w: int = 42, val_w: int = 53):
-        """Render a label:value pair in a 2-column grid row."""
+        """Render a label:value pair in a 2-column grid row with dynamic font size scaling to prevent overflow."""
         pdf.set_font("helvetica", "B", 8)
         pdf.set_text_color(*_TEXT_MUTED)
         pdf.set_draw_color(*_BORDER)
         pdf.cell(label_w, 7, f" {label}", border="LBT")
+        
         pdf.set_font("helvetica", "", 9)
         pdf.set_text_color(*_TEXT_DARK)
-        pdf.cell(val_w, 7, f" {value or 'N/A'}", border="RBT")
+        
+        val_str = f" {value or 'N/A'}"
+        
+        # Calculate text width and scale down font size if it overflows the cell width (minus padding)
+        font_size = 9.0
+        width = pdf.get_string_width(val_str)
+        max_allowed_w = val_w - 3  # 3mm safety margin for padding
+        
+        while width > max_allowed_w and font_size > 6.0:
+            font_size -= 0.5
+            pdf.set_font("helvetica", "", font_size)
+            width = pdf.get_string_width(val_str)
+            
+        # If it still overflows at 6.0pt, truncate with ellipsis
+        if width > max_allowed_w:
+            while len(val_str) > 4 and width > max_allowed_w:
+                val_str = val_str[:-4] + "..."
+                width = pdf.get_string_width(val_str)
+                
+        pdf.cell(val_w, 7, val_str, border="RBT")
 
     @staticmethod
     def _kv_grid(pdf: BaseReportPDF, fields: List[tuple]):
@@ -404,7 +424,6 @@ class InvestmentAdviceNotePDF:
             ("Client ID", client.get("client_code", "N/A")),
             ("PAN Number", client.get("pan_number", "N/A")),
             ("Client DOB", client.get("date_of_birth", "N/A")),
-            ("Address", client.get("address", "N/A")),
             ("Email", client.get("email", "N/A")),
             ("Mobile", client.get("phone_number", "N/A")),
             ("Risk Profile", risk_profile_str),
@@ -413,11 +432,16 @@ class InvestmentAdviceNotePDF:
             ("Annual Income Band", note_data.get("annual_income_band", "N/A")),
             ("Existing Liabilities", liabilities_str),
             ("Assets Under Advice", f"Rs. {float(note_data.get('assets_under_advice', 0)):,.0f}"),
-            ("Primary Financial Goal", note_data.get("primary_financial_goal", "N/A")),
             ("Fee Mode", note_data.get("fee_mode", "N/A").replace("_", " ").title()),
             ("Fee Amount", f"Rs. {float(note_data.get('fee_amount', 0)):,.0f}"),
         ]
         InvestmentAdviceNotePDF._kv_grid(pdf, client_fields)
+        
+        # Address & Primary Financial Goal as full-width multi-line text boxes to prevent grid collision
+        InvestmentAdviceNotePDF._full_width_text(pdf, "Address", client.get("address", "N/A"))
+        InvestmentAdviceNotePDF._full_width_text(
+            pdf, "Primary Financial Goal", note_data.get("primary_financial_goal", "N/A")
+        )
 
         # Recommended Asset Allocation
         rec_alloc = note_data.get("recommended_asset_allocation")
@@ -483,11 +507,12 @@ class InvestmentAdviceNotePDF:
         # ══════════════════ SECTION C - Suitability ══════════════════
         InvestmentAdviceNotePDF._section_header(pdf, "Section C - Suitability Assessment [Regulation 17]")
 
-        suit_fields = [
-            ("Advice Suitable?", note_data.get("suitability_assessment", "N/A")),
-            ("Suitability Basis", note_data.get("suitability_basis", "N/A")),
-        ]
-        InvestmentAdviceNotePDF._kv_grid(pdf, suit_fields)
+        InvestmentAdviceNotePDF._full_width_text(
+            pdf, "Advice Suitable?", note_data.get("suitability_assessment", "N/A")
+        )
+        InvestmentAdviceNotePDF._full_width_text(
+            pdf, "Suitability Basis", note_data.get("suitability_basis", "N/A")
+        )
 
         # Current Asset Allocation & Rebalancing (manual text areas)
         InvestmentAdviceNotePDF._full_width_text(
@@ -582,7 +607,23 @@ class InvestmentAdviceNotePDF:
                     pdf.set_x(10)
                     pdf.set_font("helvetica", "B", 8)
                     pdf.set_text_color(*_NAVY)
-                    pdf.cell(42, 6, f" {name}", border="LT")
+                    
+                    name_txt = f" {name}"
+                    font_size = 8.0
+                    width = pdf.get_string_width(name_txt)
+                    max_allowed_w = 40  # 42mm total width, 2mm padding safety
+                    
+                    while width > max_allowed_w and font_size > 6.0:
+                        font_size -= 0.5
+                        pdf.set_font("helvetica", "B", font_size)
+                        width = pdf.get_string_width(name_txt)
+                        
+                    if width > max_allowed_w:
+                        while len(name_txt) > 4 and width > max_allowed_w:
+                            name_txt = name_txt[:-4] + "..."
+                            width = pdf.get_string_width(name_txt)
+                            
+                    pdf.cell(42, 6, name_txt, border="LT")
                     pdf.set_font("helvetica", "", 7.5)
                     pdf.set_text_color(*_TEXT_DARK)
                     pdf.multi_cell(148, 6, f" {action}. {rationale}", border="RT")
@@ -1247,7 +1288,7 @@ class InvestmentAdviceNoteDOCX:
             ("Current Asset Allocation", note_data.get("current_asset_allocation", "N/A"), True),
             ("Rebalancing Rationale", note_data.get("rebalancing_rationale", "N/A"), True),
         ]
-        InvestmentAdviceNoteDOCX._add_section_heading(doc, "Section C — Suitability Assessment [Regulation 17]")
+        InvestmentAdviceNoteDOCX._add_section_heading(doc, "Section C — Suitability Assessment")
         InvestmentAdviceNoteDOCX._add_kv_grid_table(doc, fields_c)
         doc.add_paragraph()
 
@@ -1271,7 +1312,7 @@ class InvestmentAdviceNoteDOCX:
                     r_idx += 1
             
             if rationale_rows:
-                InvestmentAdviceNoteDOCX._add_section_heading(doc, "Section E — Rationale for Advice [Regulation 16(c)]")
+                InvestmentAdviceNoteDOCX._add_section_heading(doc, "Section E — Rationale for Advice")
                 InvestmentAdviceNoteDOCX._add_two_column_table(
                     doc, 
                     rationale_rows
@@ -1286,7 +1327,7 @@ class InvestmentAdviceNoteDOCX:
             ("Commodity Risk", "Gold/Silver ETFs track commodity prices influenced by global factors and INR/USD exchange rates."),
             ("Concentration Risk", "Individual equity positions carry stock-specific risk. Portfolio diversification is recommended."),
         ]
-        InvestmentAdviceNoteDOCX._add_section_heading(doc, "Section F — Risk Disclosures [Regulation 16(d)]")
+        InvestmentAdviceNoteDOCX._add_section_heading(doc, "Section F — Risk Disclosures")
         InvestmentAdviceNoteDOCX._add_two_column_table(
             doc, 
             fields_f
