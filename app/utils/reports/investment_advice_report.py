@@ -59,6 +59,80 @@ _RECORD_RETENTION = (
 )
 
 
+def format_indian_number(val):
+    if val is None:
+        return ""
+    try:
+        val_float = float(val)
+        if val_float.is_integer():
+            int_part = str(int(val_float))
+            dec_part = ""
+        else:
+            s = f"{val_float:.2f}"
+            int_part, dec_part = s.split('.')
+            dec_part = "." + dec_part
+            
+        if len(int_part) <= 3:
+            grouped = int_part
+        else:
+            last_three = int_part[-3:]
+            rest = int_part[:-3]
+            rest_groups = []
+            while len(rest) > 2:
+                rest_groups.insert(0, rest[-2:])
+                rest = rest[:-2]
+            if rest:
+                rest_groups.insert(0, rest)
+            grouped = ",".join(rest_groups) + "," + last_three
+            
+        return grouped + dec_part
+    except Exception:
+        return str(val)
+
+
+def format_amount_units_python(rec):
+    ttype = rec.get("transaction_type")
+    if not ttype:
+        return rec.get("amount_units") or ""
+        
+    freq = rec.get("frequency")
+    amount = rec.get("amount")
+    custom_inst = rec.get("custom_instruction")
+    p_type = rec.get("product_type", "")
+    
+    is_life_insurance = False
+    if p_type:
+        is_life_insurance = p_type.lower() in ("life-insurance", "life_insurance")
+        
+    if ttype == 'HOLDING':
+        return "Existing holding"
+    elif ttype == 'TEXT_ONLY':
+        return custom_inst or ""
+    
+    formatted_amount = format_indian_number(amount) if amount is not None else ""
+    
+    if ttype == 'LUMP_SUM':
+        return f"Rs. {formatted_amount} lump sum"
+        
+    freq_label = ""
+    if freq == 'MONTHLY':
+        freq_label = "month"
+    elif freq == 'QUARTERLY':
+        freq_label = "quarter"
+    elif freq == 'HALF_YEARLY':
+        freq_label = "half-year"
+    elif freq == 'YEARLY':
+        freq_label = "year"
+        
+    if is_life_insurance and freq == 'YEARLY':
+        return f"Annual prem. Rs. {formatted_amount}"
+        
+    if ttype in ('SIP', 'STP', 'SWP'):
+        return f"Rs. {formatted_amount}/{freq_label} {ttype}"
+        
+    return rec.get("amount_units") or ""
+
+
 class InvestmentAdviceNotePDF:
     """Generates a SEBI-compliant Investment Advice Note PDF using fpdf2."""
 
@@ -407,7 +481,7 @@ class InvestmentAdviceNotePDF:
                     rec.get("isin_code_scheme_code_uin", ""),
                     rec.get("product_type", "").replace("_", " ").title(),
                     rec.get("action", "BUY"),
-                    rec.get("amount_units", ""),
+                    format_amount_units_python(rec),
                     f"Rs. {float(rec['indicative_price_nav']):,.2f}" if rec.get("indicative_price_nav") else "N/A",
                 ]
 
@@ -652,7 +726,7 @@ class InvestmentAdviceNoteDOCX:
                 rec.get("isin_code_scheme_code_uin", ""),
                 rec.get("product_type", "").replace("_", " ").title(),
                 rec.get("action", "BUY"),
-                rec.get("amount_units", ""),
+                format_amount_units_python(rec),
                 f"Rs. {float(rec['indicative_price_nav']):,.2f}" if rec.get("indicative_price_nav") else "N/A",
             ]
             for i, val in enumerate(values):
