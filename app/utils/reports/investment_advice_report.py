@@ -269,12 +269,33 @@ class InvestmentAdviceNotePDF:
         # ══════════════════ SECTION B - Client Details ══════════════════
         InvestmentAdviceNotePDF._section_header(pdf, "Section B - Client Details and Risk Profile")
 
+        risk_score = client.get("risk_profile_score")
+        risk_profile_str = client.get("risk_profile", "N/A")
+        if risk_score and risk_score != "N/A":
+            risk_profile_str = f"{risk_profile_str} (Score: {risk_score}/100)"
+
+        liabilities_val = client.get("existing_liabilities")
+        if liabilities_val is not None:
+            try:
+                liabilities_str = f"Rs. {float(liabilities_val):,.0f}"
+            except Exception:
+                liabilities_str = str(liabilities_val)
+        else:
+            liabilities_str = "N/A"
+
         client_fields = [
             ("Client Full Name", client.get("client_name", "N/A")),
             ("Client ID", client.get("client_code", "N/A")),
             ("PAN Number", client.get("pan_number", "N/A")),
-            ("Risk Profile", client.get("risk_profile", "N/A")),
+            ("Client DOB", client.get("date_of_birth", "N/A")),
+            ("Address", client.get("address", "N/A")),
+            ("Email", client.get("email", "N/A")),
+            ("Mobile", client.get("phone_number", "N/A")),
+            ("Risk Profile", risk_profile_str),
+            ("Risk Profile Date", client.get("risk_profile_date", "N/A")),
+            ("Investment Horizon", client.get("investment_horizon", "N/A")),
             ("Annual Income Band", note_data.get("annual_income_band", "N/A")),
+            ("Existing Liabilities", liabilities_str),
             ("Assets Under Advice", f"Rs. {float(note_data.get('assets_under_advice', 0)):,.0f}"),
             ("Primary Financial Goal", note_data.get("primary_financial_goal", "N/A")),
             ("Fee Mode", note_data.get("fee_mode", "N/A").replace("_", " ").title()),
@@ -284,17 +305,57 @@ class InvestmentAdviceNotePDF:
 
         # Recommended Asset Allocation
         rec_alloc = note_data.get("recommended_asset_allocation")
-        if rec_alloc and isinstance(rec_alloc, dict):
-            alloc_parts = []
-            for k, v in rec_alloc.items():
-                alloc_parts.append(f"{k}: {v}%")
-            alloc_text = "  |  ".join(alloc_parts) if alloc_parts else "N/A"
-        elif isinstance(rec_alloc, str) and rec_alloc != "{}":
-            alloc_text = rec_alloc
-        else:
-            alloc_text = "N/A"
+        alloc_text = "N/A"
+        sub_allocs = {}
+        if rec_alloc:
+            if isinstance(rec_alloc, str):
+                try:
+                    import json as _json
+                    rec_alloc = _json.loads(rec_alloc)
+                except Exception:
+                    pass
+            if isinstance(rec_alloc, dict):
+                sub_allocs = rec_alloc.get("sub_assets") or {}
+                alloc_parts = []
+                for k in ("Debt", "Equity", "Commodities"):
+                    if k in rec_alloc:
+                        alloc_parts.append(f"{k}: {rec_alloc[k]}%")
+                for k, v in rec_alloc.items():
+                    if k not in ("Debt", "Equity", "Commodities", "sub_assets"):
+                        alloc_parts.append(f"{k}: {v}%")
+                alloc_text = "  |  ".join(alloc_parts) if alloc_parts else "N/A"
+            elif isinstance(rec_alloc, str) and rec_alloc != "{}":
+                alloc_text = rec_alloc
 
-        InvestmentAdviceNotePDF._full_width_text(pdf, "Recommended Allocation", alloc_text)
+        InvestmentAdviceNotePDF._full_width_text(pdf, "Recommended Asset Allocation", alloc_text)
+
+        # Render sub-asset allocations if present
+        if sub_allocs:
+            label_map = {
+                "fixed_deposits_bonds_percentage": "Fixed Deposits / Bonds",
+                "mutual_fund_debt_percentage": "Debt Mutual Funds",
+                "ulip_debt_percentage": "Debt ULIPs",
+                "etf_debt_percentage": "Debt ETFs",
+                "stocks_percentage": "Direct Equity (Stocks)",
+                "mutual_fund_equity_percentage": "Equity Mutual Funds",
+                "ulip_equity_percentage": "Equity ULIPs",
+                "etf_equity_percentage": "Equity ETFs",
+                "gold_etf_percentage": "Gold ETFs",
+                "silver_etf_percentage": "Silver ETFs",
+                "etf_commodity_percentage": "Commodity ETFs"
+            }
+            sub_parts = []
+            for k, val in sub_allocs.items():
+                try:
+                    num_val = float(val) if val is not None else 0.0
+                except Exception:
+                    num_val = 0.0
+                if num_val > 0:
+                    friendly_name = label_map.get(k, k.replace("_percentage", "").replace("_", " ").title())
+                    sub_parts.append(f"{friendly_name}: {num_val}%")
+            if sub_parts:
+                sub_text = "  |  ".join(sub_parts)
+                InvestmentAdviceNotePDF._full_width_text(pdf, "Sub-Asset Breakdown", sub_text)
 
         date_of_alloc = note_data.get("date_of_allocation", "N/A")
         if date_of_alloc and date_of_alloc != "N/A":
@@ -663,16 +724,90 @@ class InvestmentAdviceNoteDOCX:
 
         # ══════════════════ SECTION B ══════════════════
         doc.add_heading("Section B - Client Details and Risk Profile", level=1)
+
+        risk_score = client.get("risk_profile_score")
+        risk_profile_str = client.get("risk_profile", "N/A")
+        if risk_score and risk_score != "N/A":
+            risk_profile_str = f"{risk_profile_str} (Score: {risk_score}/100)"
+
+        liabilities_val = client.get("existing_liabilities")
+        if liabilities_val is not None:
+            try:
+                liabilities_str = f"Rs. {float(liabilities_val):,.0f}"
+            except Exception:
+                liabilities_str = str(liabilities_val)
+        else:
+            liabilities_str = "N/A"
+
+        # Recommended Asset Allocation
+        rec_alloc = note_data.get("recommended_asset_allocation")
+        alloc_text = "N/A"
+        sub_allocs = {}
+        if rec_alloc:
+            if isinstance(rec_alloc, str):
+                try:
+                    import json as _json
+                    rec_alloc = _json.loads(rec_alloc)
+                except Exception:
+                    pass
+            if isinstance(rec_alloc, dict):
+                sub_allocs = rec_alloc.get("sub_assets") or {}
+                alloc_parts = []
+                for k in ("Debt", "Equity", "Commodities"):
+                    if k in rec_alloc:
+                        alloc_parts.append(f"{k}: {rec_alloc[k]}%")
+                for k, v in rec_alloc.items():
+                    if k not in ("Debt", "Equity", "Commodities", "sub_assets"):
+                        alloc_parts.append(f"{k}: {v}%")
+                alloc_text = "  |  ".join(alloc_parts) if alloc_parts else "N/A"
+            elif isinstance(rec_alloc, str) and rec_alloc != "{}":
+                alloc_text = rec_alloc
+
+        if sub_allocs:
+            label_map = {
+                "fixed_deposits_bonds_percentage": "Fixed Deposits / Bonds",
+                "mutual_fund_debt_percentage": "Debt Mutual Funds",
+                "ulip_debt_percentage": "Debt ULIPs",
+                "etf_debt_percentage": "Debt ETFs",
+                "stocks_percentage": "Direct Equity (Stocks)",
+                "mutual_fund_equity_percentage": "Equity Mutual Funds",
+                "ulip_equity_percentage": "Equity ULIPs",
+                "etf_equity_percentage": "Equity ETFs",
+                "gold_etf_percentage": "Gold ETFs",
+                "silver_etf_percentage": "Silver ETFs",
+                "etf_commodity_percentage": "Commodity ETFs"
+            }
+            sub_parts = []
+            for k, val in sub_allocs.items():
+                try:
+                    num_val = float(val) if val is not None else 0.0
+                except Exception:
+                    num_val = 0.0
+                if num_val > 0:
+                    friendly_name = label_map.get(k, k.replace("_percentage", "").replace("_", " ").title())
+                    sub_parts.append(f"{friendly_name}: {num_val}%")
+            if sub_parts:
+                alloc_text += "\nSub-Asset Breakdown:\n" + "\n".join(f"• {x}" for x in sub_parts)
+
         InvestmentAdviceNoteDOCX._add_kv_table(doc, [
             ("Client Full Name", client.get("client_name", "N/A")),
             ("Client ID", client.get("client_code", "N/A")),
             ("PAN Number", client.get("pan_number", "N/A")),
-            ("Risk Profile", client.get("risk_profile", "N/A")),
+            ("Client DOB", client.get("date_of_birth", "N/A")),
+            ("Address", client.get("address", "N/A")),
+            ("Email", client.get("email", "N/A")),
+            ("Mobile", client.get("phone_number", "N/A")),
+            ("Risk Profile", risk_profile_str),
+            ("Risk Profile Date", client.get("risk_profile_date", "N/A")),
+            ("Investment Horizon", client.get("investment_horizon", "N/A")),
             ("Annual Income Band", note_data.get("annual_income_band", "N/A")),
+            ("Existing Liabilities", liabilities_str),
             ("Assets Under Advice", f"Rs. {float(note_data.get('assets_under_advice', 0)):,.0f}"),
             ("Primary Financial Goal", note_data.get("primary_financial_goal", "N/A")),
             ("Fee Mode", note_data.get("fee_mode", "N/A").replace("_", " ").title()),
             ("Fee Amount", f"Rs. {float(note_data.get('fee_amount', 0)):,.0f}"),
+            ("Recommended Asset Allocation", alloc_text),
+            ("Date of Allocation", str(note_data.get("date_of_allocation", "N/A"))),
         ])
         doc.add_paragraph()
 
