@@ -17,6 +17,31 @@ class BaseReportPDF(FPDF):
         self.set_auto_page_break(auto=True, margin=15)
         self.alias_nb_pages()
 
+    def normalize_text(self, text):
+        if isinstance(text, str):
+            # Clean common unicode punctuation characters that core fonts don't support
+            replacements = {
+                "\u2014": "-",   # em-dash —
+                "\u2013": "-",   # en-dash –
+                "\u201c": "\"",  # left smart double quote “
+                "\u201d": "\"",  # right smart double quote ”
+                "\u2018": "'",   # left smart single quote ‘
+                "\u2019": "'",   # right smart single quote ’
+                "\u2022": "*",   # bullet point •
+                "\u20b9": "Rs.", # Rupee symbol ₹
+            }
+            for uni_char, ascii_char in replacements.items():
+                text = text.replace(uni_char, ascii_char)
+            
+            # Safely replace any other unencodable characters with '?' instead of crashing
+            encoding = getattr(self, "core_fonts_encoding", "latin-1")
+            try:
+                text.encode(encoding)
+            except UnicodeEncodeError:
+                text = text.encode(encoding, errors="replace").decode(encoding)
+                
+        return super().normalize_text(text)
+
     def header(self):
         # Only show header on pages after the cover page (Page 1)
         if self.page_no() > 1:
