@@ -267,6 +267,12 @@ class TargetPortfolioPDFGenerator:
             h_unit = 4.5
             for idx, e in enumerate(entries):
                 product = e["product_name"]
+                subtype = e.get("product_subtype")
+                nature_val = e.get("nature")
+                if subtype:
+                    suffix = f" — {nature_val}" if nature_val else ""
+                    product = f"{product} ({subtype}{suffix})"
+
                 pct = f"{e['percentage']:.1f}%"
                 obj_val = e["objective"]
                 reason = e["reason_for_investment"]
