@@ -4,6 +4,37 @@ from typing import Optional
 from app.utils.pdf_generator import BaseReportPDF
 
 
+def format_indian_number(val):
+    if val is None:
+        return ""
+    try:
+        val_float = float(val)
+        if val_float.is_integer():
+            int_part = str(int(val_float))
+            dec_part = ""
+        else:
+            s = f"{val_float:.2f}"
+            int_part, dec_part = s.split('.')
+            dec_part = "." + dec_part
+            
+        if len(int_part) <= 3:
+            grouped = int_part
+        else:
+            last_three = int_part[-3:]
+            rest = int_part[:-3]
+            rest_groups = []
+            while len(rest) > 2:
+                rest_groups.insert(0, rest[-2:])
+                rest = rest[:-2]
+            if rest:
+                rest_groups.insert(0, rest)
+            grouped = ",".join(rest_groups) + "," + last_three
+            
+        return grouped + dec_part
+    except Exception:
+        return str(val)
+
+
 class TargetPortfolioPDFGenerator:
 
     @staticmethod
@@ -215,14 +246,14 @@ class TargetPortfolioPDFGenerator:
 
             # Column definitions
             if is_life:
-                cols = [68, 22, 28, 32, 40]
-                headers = ["Product", "% HLV", "Objective", "Reason", "Suitability"]
+                cols = [55, 18, 25, 27, 30, 35]
+                headers = ["Product", "% HLV", "Suggested Amt", "Objective", "Reason", "Suitability"]
             elif is_health:
-                cols = [80, 28, 34, 48]
-                headers = ["Product", "% Health", "Objective", "Suitability"]
+                cols = [60, 20, 27, 33, 50]
+                headers = ["Product", "% Health", "Suggested Amt", "Objective", "Suitability"]
             else:
-                cols = [87, 28, 33, 42]
-                headers = ["Product", "% Invest", "Objective", "Suitability"]
+                cols = [65, 20, 27, 33, 45]
+                headers = ["Product", "% Invest", "Suggested Amt", "Objective", "Suitability"]
 
             # Table header row
             pdf.set_fill_color(*table_header_bg)
@@ -241,12 +272,15 @@ class TargetPortfolioPDFGenerator:
                 reason = e["reason_for_investment"]
                 suitability = e["remarks"] or "--"
 
+                suggested_val = e.get("suggested_investment_amount")
+                suggested_str = f"Rs. {format_indian_number(suggested_val)}" if suggested_val is not None else "--"
+
                 if is_life:
-                    cell_texts = [product, pct, obj_val, reason, suitability]
+                    cell_texts = [product, pct, suggested_str, obj_val, reason, suitability]
                 elif is_health:
-                    cell_texts = [product, pct, obj_val, suitability]
+                    cell_texts = [product, pct, suggested_str, obj_val, suitability]
                 else:
-                    cell_texts = [product, pct, obj_val, suitability]
+                    cell_texts = [product, pct, suggested_str, obj_val, suitability]
 
                 lines_per_col = [
                     max(len(pdf.multi_cell(w, h_unit, str(t), split_only=True)), 1)
