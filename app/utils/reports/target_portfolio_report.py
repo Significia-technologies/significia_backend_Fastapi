@@ -48,6 +48,8 @@ class TargetPortfolioPDFGenerator:
         ia_data: Optional[dict],
         generated_on: str,
         logo_path: Optional[str] = None,
+        export_basis: str = "objective",
+        asset_classes: Optional[list] = None,
     ):
         pdf.add_page()
 
@@ -88,7 +90,10 @@ class TargetPortfolioPDFGenerator:
         # Subtitle
         pdf.set_font("helvetica", "", 10)
         pdf.set_text_color(*text_muted)
-        pdf.cell(0, 6, "Objective-wise Investment Summary", ln=True, align="C")
+        if export_basis == "product":
+            pdf.cell(0, 6, "Product-wise Investment Summary", ln=True, align="C")
+        else:
+            pdf.cell(0, 6, "Objective-wise Investment Summary", ln=True, align="C")
 
         # Decorative bar
         pdf.ln(4)
@@ -117,7 +122,19 @@ class TargetPortfolioPDFGenerator:
         pdf.ln(10)
         pdf.set_font("helvetica", "B", 10)
         pdf.set_text_color(0, 100, 40)
-        pdf.cell(0, 6, f"OBJECTIVE FILTER:  {objective.upper()}", ln=True, align="C")
+        if export_basis == "product" and asset_classes:
+            friendly_labels = {
+                "shares": "Shares",
+                "mf": "Mutual Funds",
+                "etf": "ETF",
+                "life_insurance": "Life Insurance",
+                "health_insurance": "Health Insurance",
+            }
+            names = [friendly_labels.get(ac, ac.upper()) for ac in asset_classes]
+            filter_text = f"PRODUCT FILTER:  {', '.join(names).upper()}"
+        else:
+            filter_text = f"OBJECTIVE FILTER:  {objective.upper()}"
+        pdf.cell(0, 6, filter_text, ln=True, align="C")
 
         # Cover footer
         pdf.set_y(248)
@@ -139,6 +156,8 @@ class TargetPortfolioPDFGenerator:
         client_code: str,
         ia_data: Optional[dict] = None,
         logo_path: Optional[str] = None,
+        export_basis: str = "objective",
+        asset_classes: Optional[list] = None,
     ) -> bytes:
         advisor_name = ia_data.get("name_of_ia", "") if ia_data else ""
         entity_name = ia_data.get("name_of_entity", "") if ia_data else ""
@@ -170,6 +189,8 @@ class TargetPortfolioPDFGenerator:
             ia_data=ia_data,
             generated_on=generated_on,
             logo_path=logo_path,
+            export_basis=export_basis,
+            asset_classes=asset_classes,
         )
 
         # ── Content page ──
@@ -210,12 +231,29 @@ class TargetPortfolioPDFGenerator:
         pdf.set_xy(13, info_y + 12)
         pdf.set_font("helvetica", "B", 7)
         pdf.set_text_color(*text_muted)
-        pdf.cell(32, 4, "OBJECTIVE FILTER")
-        pdf.set_xy(47, info_y + 11)
-        pdf.set_fill_color(*green_bg)
-        pdf.set_font("helvetica", "B", 9)
-        pdf.set_text_color(0, 120, 50)
-        pdf.cell(40, 6, f"  {objective}  ", border=1, fill=True, align="C")
+        
+        if export_basis == "product" and asset_classes:
+            pdf.cell(32, 4, "PRODUCT FILTER")
+            pdf.set_xy(47, info_y + 11)
+            pdf.set_fill_color(*green_bg)
+            pdf.set_font("helvetica", "B", 8)
+            pdf.set_text_color(0, 120, 50)
+            friendly_labels = {
+                "shares": "Shares",
+                "mf": "Mutual Funds",
+                "etf": "ETF",
+                "life_insurance": "Life Ins",
+                "health_insurance": "Health Ins",
+            }
+            names = [friendly_labels.get(ac, ac.upper()) for ac in asset_classes]
+            pdf.cell(100, 6, f"  {', '.join(names)}  ", border=1, fill=True, align="C")
+        else:
+            pdf.cell(32, 4, "OBJECTIVE FILTER")
+            pdf.set_xy(47, info_y + 11)
+            pdf.set_fill_color(*green_bg)
+            pdf.set_font("helvetica", "B", 9)
+            pdf.set_text_color(0, 120, 50)
+            pdf.cell(40, 6, f"  {objective}  ", border=1, fill=True, align="C")
 
         pdf.set_y(info_y + 26)
         pdf.ln(5)
@@ -328,8 +366,45 @@ class TargetPortfolioPDFGenerator:
             0, 5,
             "This report is generated for internal record and analytical purposes only. "
             "The information is based on data recorded in the system and does not constitute investment advice. "
-            "Only active portfolio entries matching the selected objective are included.",
+            "Only active portfolio entries matching the selected filter are included.",
             align="C",
         )
+        pdf.ln(6)
+
+        # Signature Block
+        sig_y = pdf.get_y()
+        if sig_y > 240:
+            pdf.add_page()
+            sig_y = pdf.get_y()
+
+        pdf.set_font("helvetica", "B", 9)
+        pdf.set_text_color(*navy)
+
+        # Client sign
+        pdf.set_xy(10, sig_y)
+        pdf.cell(90, 5, "Client Signature:")
+        pdf.line(10, sig_y + 18, 85, sig_y + 18)
+        pdf.set_xy(10, sig_y + 19)
+        pdf.set_font("helvetica", "", 8)
+        pdf.set_text_color(*text_dark)
+        pdf.cell(90, 4, f"Name: {client_name}", ln=True)
+        pdf.set_x(10)
+        pdf.cell(90, 4, "Date: ____/____/________")
+
+        # Advisor sign
+        pdf.set_xy(110, sig_y)
+        pdf.set_font("helvetica", "B", 9)
+        pdf.set_text_color(*navy)
+        pdf.cell(90, 5, "Investment Advisor Signature:")
+        pdf.line(110, sig_y + 18, 185, sig_y + 18)
+        pdf.set_xy(110, sig_y + 19)
+        pdf.set_font("helvetica", "", 8)
+        pdf.set_text_color(*text_dark)
+        pdf.cell(90, 4, f"Name: {advisor_name}", ln=True)
+        if entity_name:
+            pdf.set_x(110)
+            pdf.cell(90, 4, f"For: {entity_name}", ln=True)
+        pdf.set_x(110)
+        pdf.cell(90, 4, "Date: ____/____/________")
 
         return bytes(pdf.output())

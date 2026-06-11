@@ -3,6 +3,7 @@ Target Portfolio Routes — Bridge Proxy
 ───────────────────────────────────────
 Proxies target portfolio requests to the tenant's Bridge.
 """
+from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
 
@@ -69,34 +70,50 @@ async def toggle_target_portfolio_entry(
 async def download_target_portfolio_report(
     client_id: str,
     member_id: str,
-    objective: str = Query(...),
+    export_basis: str = Query("objective"),
+    objective: Optional[str] = Query(None),
+    asset_classes: Optional[str] = Query(None),
     client_name: str = Query(""),
     client_code: str = Query(""),
     bridge: BridgeClient = Depends(get_bridge_client),
     current_user=Depends(get_current_user),
 ):
+    params = {}
+    if export_basis == "product" and asset_classes:
+        params["asset_classes"] = asset_classes.split(",")
+    else:
+        params["objective"] = objective
+
     report_data = await bridge.get(
         f"/target-portfolio/{client_id}/{member_id}/report-data",
-        params={"objective": objective},
+        params=params,
     )
 
     if not report_data.get("sections"):
         from fastapi import HTTPException
-        raise HTTPException(404, f"No active entries found for objective '{objective}'.")
+        filter_desc = f"objective '{objective}'" if export_basis == "objective" else "selected products"
+        raise HTTPException(404, f"No active entries found for {filter_desc}.")
 
     ia_data = await bridge.get("/ia-master")
+
+    asset_classes_list = asset_classes.split(",") if asset_classes else None
 
     pdf_bytes = TargetPortfolioPDFGenerator.generate_report(
         report_data=report_data,
         client_name=client_name,
         client_code=client_code,
         ia_data=ia_data if isinstance(ia_data, dict) else None,
+        export_basis=export_basis,
+        asset_classes=asset_classes_list,
     )
 
     safe_client = "".join(c if c.isalnum() else "_" for c in client_code)
     safe_code = report_data.get("investor_code", "investor").replace("/", "_")
-    safe_obj = "".join(c if c.isalnum() else "_" for c in objective)
-    filename = f"TargetPortfolio_{safe_client}_{safe_code}_{safe_obj}.pdf"
+    if export_basis == "product":
+        suffix = "Products"
+    else:
+        suffix = "".join(c if c.isalnum() else "_" for c in (objective or "Report"))
+    filename = f"TargetPortfolio_{safe_client}_{safe_code}_{suffix}.pdf"
 
     return Response(
         content=pdf_bytes,
