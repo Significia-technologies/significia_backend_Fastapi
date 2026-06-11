@@ -472,30 +472,60 @@ class InvestmentAdviceNotePDF:
         # Render sub-asset allocations if present
         if sub_allocs:
             label_map = {
-                "fixed_deposits_bonds_percentage": "Fixed Deposits / Bonds",
-                "mutual_fund_debt_percentage": "Debt Mutual Funds",
-                "ulip_debt_percentage": "Debt ULIPs",
-                "etf_debt_percentage": "Debt ETFs",
-                "stocks_percentage": "Direct Equity (Stocks)",
-                "mutual_fund_equity_percentage": "Equity Mutual Funds",
-                "ulip_equity_percentage": "Equity ULIPs",
-                "etf_equity_percentage": "Equity ETFs",
-                "gold_etf_percentage": "Gold ETFs",
-                "silver_etf_percentage": "Silver ETFs",
-                "etf_commodity_percentage": "Commodity ETFs"
+                "stocks_percentage": ("Direct Equity (Stocks)", "Equity"),
+                "mutual_fund_equity_percentage": ("Equity Mutual Funds", "Equity"),
+                "ulip_equity_percentage": ("Equity ULIPs", "Equity"),
+                "etf_equity_percentage": ("Equity ETFs", "Equity"),
+                
+                "fixed_deposits_bonds_percentage": ("Fixed Deposits / Bonds", "Debt"),
+                "mutual_fund_debt_percentage": ("Debt Mutual Funds", "Debt"),
+                "ulip_debt_percentage": ("Debt ULIPs", "Debt"),
+                "etf_debt_percentage": ("Debt ETFs", "Debt"),
+                
+                "gold_etf_percentage": ("Gold ETFs", "Commodities"),
+                "silver_etf_percentage": ("Silver ETFs", "Commodities"),
+                "etf_commodity_percentage": ("Commodity ETFs", "Commodities")
             }
-            sub_parts = []
+            active_sub_assets = []
             for k, val in sub_allocs.items():
                 try:
                     num_val = float(val) if val is not None else 0.0
                 except Exception:
                     num_val = 0.0
                 if num_val > 0:
-                    friendly_name = label_map.get(k, k.replace("_percentage", "").replace("_", " ").title())
-                    sub_parts.append(f"{friendly_name}: {num_val}%")
-            if sub_parts:
-                sub_text = "  |  ".join(sub_parts)
-                InvestmentAdviceNotePDF._full_width_text(pdf, "Sub-Asset Breakdown", sub_text)
+                    friendly_name, cat = label_map.get(k, (k.replace("_percentage", "").replace("_", " ").title(), "Other"))
+                    active_sub_assets.append((friendly_name, cat, f"{num_val:.1f}%"))
+            
+            if active_sub_assets:
+                pdf.set_x(10)
+                pdf.set_font("helvetica", "B", 8)
+                pdf.set_text_color(*_TEXT_MUTED)
+                pdf.set_draw_color(*_BORDER)
+                pdf.cell(190, 7, " Recommended Sub-Asset Allocation Breakdown", border="LRT", ln=True)
+                
+                # Table Header
+                pdf.set_x(10)
+                pdf.set_fill_color(*_TABLE_HEADER_BG)
+                pdf.set_font("helvetica", "B", 8)
+                pdf.set_text_color(*_NAVY)
+                pdf.cell(100, 6, "  Sub-Asset Class", border="1", fill=True)
+                pdf.cell(45, 6, "Category", border="1", fill=True, align="C")
+                pdf.cell(45, 6, "Allocation %", border="1", fill=True, align="R")
+                pdf.ln()
+
+                # Table Rows
+                pdf.set_font("helvetica", "", 8)
+                pdf.set_text_color(*_TEXT_DARK)
+                for idx, (name, cat, pct) in enumerate(active_sub_assets):
+                    pdf.set_x(10)
+                    fill = idx % 2 == 1
+                    if fill:
+                        pdf.set_fill_color(*_ROW_ALT)
+                    pdf.cell(100, 6, f"  {name}", border="1", fill=fill)
+                    pdf.cell(45, 6, cat, border="1", fill=fill, align="C")
+                    pdf.cell(45, 6, f"{pct} ", border="1", fill=fill, align="R")
+                    pdf.ln()
+                pdf.ln(1)
 
         date_of_alloc = note_data.get("date_of_allocation", "N/A")
         if date_of_alloc and date_of_alloc != "N/A":
