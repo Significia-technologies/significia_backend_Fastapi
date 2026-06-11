@@ -50,6 +50,7 @@ class TargetPortfolioPDFGenerator:
         logo_path: Optional[str] = None,
         export_basis: str = "objective",
         asset_classes: Optional[list] = None,
+        allocation_date: Optional[str] = None,
     ):
         pdf.add_page()
 
@@ -136,6 +137,13 @@ class TargetPortfolioPDFGenerator:
             filter_text = f"OBJECTIVE FILTER:  {objective.upper()}"
         pdf.cell(0, 6, filter_text, ln=True, align="C")
 
+        # Asset Allocation Date line
+        if allocation_date:
+            pdf.ln(4)
+            pdf.set_font("helvetica", "I", 10)
+            pdf.set_text_color(*text_muted)
+            pdf.cell(0, 6, f"Based on Asset Allocation dated {allocation_date}", ln=True, align="C")
+
         # Cover footer
         pdf.set_y(248)
         pdf.set_font("helvetica", "I", 9)
@@ -158,6 +166,7 @@ class TargetPortfolioPDFGenerator:
         logo_path: Optional[str] = None,
         export_basis: str = "objective",
         asset_classes: Optional[list] = None,
+        allocation_date: Optional[str] = None,
     ) -> bytes:
         advisor_name = ia_data.get("name_of_ia", "") if ia_data else ""
         entity_name = ia_data.get("name_of_entity", "") if ia_data else ""
@@ -191,6 +200,7 @@ class TargetPortfolioPDFGenerator:
             logo_path=logo_path,
             export_basis=export_basis,
             asset_classes=asset_classes,
+            allocation_date=allocation_date,
         )
 
         # ── Content page ──

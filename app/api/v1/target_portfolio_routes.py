@@ -96,6 +96,27 @@ async def download_target_portfolio_report(
 
     ia_data = await bridge.get("/ia-master")
 
+    # Fetch asset allocation date if available
+    allocation_date_str = None
+    try:
+        from datetime import datetime
+        allocations = await bridge.get("/asset-allocations", params={"client_id": client_id})
+        if allocations and isinstance(allocations, list):
+            allocations.sort(
+                key=lambda x: x.get("created_at") or "",
+                reverse=True
+            )
+            latest_allocation = allocations[0]
+            raw_date = latest_allocation.get("created_at")
+            if raw_date:
+                if "T" in raw_date:
+                    dt_obj = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
+                    allocation_date_str = dt_obj.strftime("%d %b %Y")
+                else:
+                    allocation_date_str = str(raw_date)[:10]
+    except Exception:
+        pass
+
     asset_classes_list = asset_classes.split(",") if asset_classes else None
 
     pdf_bytes = TargetPortfolioPDFGenerator.generate_report(
@@ -105,6 +126,7 @@ async def download_target_portfolio_report(
         ia_data=ia_data if isinstance(ia_data, dict) else None,
         export_basis=export_basis,
         asset_classes=asset_classes_list,
+        allocation_date=allocation_date_str,
     )
 
     safe_client = "".join(c if c.isalnum() else "_" for c in client_code)
