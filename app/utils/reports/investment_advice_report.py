@@ -471,59 +471,98 @@ class InvestmentAdviceNotePDF:
 
         # Render sub-asset allocations if present
         if sub_allocs:
-            label_map = {
-                "stocks_percentage": ("Direct Equity (Stocks)", "Equity"),
-                "mutual_fund_equity_percentage": ("Equity Mutual Funds", "Equity"),
-                "ulip_equity_percentage": ("Equity ULIPs", "Equity"),
-                "etf_equity_percentage": ("Equity ETFs", "Equity"),
-                
-                "fixed_deposits_bonds_percentage": ("Fixed Deposits / Bonds", "Debt"),
-                "mutual_fund_debt_percentage": ("Debt Mutual Funds", "Debt"),
-                "ulip_debt_percentage": ("Debt ULIPs", "Debt"),
-                "etf_debt_percentage": ("Debt ETFs", "Debt"),
-                
-                "gold_etf_percentage": ("Gold ETFs", "Commodities"),
-                "silver_etf_percentage": ("Silver ETFs", "Commodities"),
-                "etf_commodity_percentage": ("Commodity ETFs", "Commodities")
+            # Group sub-assets by category
+            equity_map = {
+                "stocks_percentage": "Direct Equity (Stocks)",
+                "mutual_fund_equity_percentage": "Equity Mutual Funds",
+                "ulip_equity_percentage": "Equity ULIPs",
+                "etf_equity_percentage": "Equity ETFs"
             }
-            active_sub_assets = []
+            debt_map = {
+                "fixed_deposits_bonds_percentage": "Fixed Deposits / Bonds",
+                "mutual_fund_debt_percentage": "Debt Mutual Funds",
+                "ulip_debt_percentage": "Debt ULIPs",
+                "etf_debt_percentage": "Debt ETFs"
+            }
+            comm_map = {
+                "gold_etf_percentage": "Gold ETFs",
+                "silver_etf_percentage": "Silver ETFs",
+                "etf_commodity_percentage": "Commodity ETFs"
+            }
+
+            eq_list = []
+            dt_list = []
+            cm_list = []
+
             for k, val in sub_allocs.items():
                 try:
                     num_val = float(val) if val is not None else 0.0
                 except Exception:
                     num_val = 0.0
                 if num_val > 0:
-                    friendly_name, cat = label_map.get(k, (k.replace("_percentage", "").replace("_", " ").title(), "Other"))
-                    active_sub_assets.append((friendly_name, cat, f"{num_val:.1f}%"))
-            
-            if active_sub_assets:
+                    pct_str = f"{num_val:.1f}%"
+                    if k in equity_map:
+                        eq_list.append((equity_map[k], pct_str))
+                    elif k in debt_map:
+                        dt_list.append((debt_map[k], pct_str))
+                    elif k in comm_map:
+                        cm_list.append((comm_map[k], pct_str))
+
+            if eq_list or dt_list or cm_list:
                 pdf.set_x(10)
                 pdf.set_font("helvetica", "B", 8)
                 pdf.set_text_color(*_TEXT_MUTED)
                 pdf.set_draw_color(*_BORDER)
                 pdf.cell(190, 7, " Recommended Sub-Asset Allocation Breakdown", border="LRT", ln=True)
-                
-                # Table Header
+
+                # Column Headers
                 pdf.set_x(10)
                 pdf.set_fill_color(*_TABLE_HEADER_BG)
                 pdf.set_font("helvetica", "B", 8)
                 pdf.set_text_color(*_NAVY)
-                pdf.cell(100, 6, "  Sub-Asset Class", border="1", fill=True)
-                pdf.cell(45, 6, "Category", border="1", fill=True, align="C")
-                pdf.cell(45, 6, "Allocation %", border="1", fill=True, align="R")
+                pdf.cell(63, 6, "  Equity Sub-Assets", border="1", fill=True, align="L")
+                pdf.cell(63, 6, "  Debt Sub-Assets", border="1", fill=True, align="L")
+                pdf.cell(64, 6, "  Commodities Sub-Assets", border="1", fill=True, align="L")
                 pdf.ln()
 
-                # Table Rows
-                pdf.set_font("helvetica", "", 8)
+                # Print Rows
+                max_len = max(len(eq_list), len(dt_list), len(cm_list))
+                pdf.set_font("helvetica", "", 7.5) # Compact font size
                 pdf.set_text_color(*_TEXT_DARK)
-                for idx, (name, cat, pct) in enumerate(active_sub_assets):
+
+                for idx in range(max_len):
                     pdf.set_x(10)
                     fill = idx % 2 == 1
                     if fill:
                         pdf.set_fill_color(*_ROW_ALT)
-                    pdf.cell(100, 6, f"  {name}", border="1", fill=fill)
-                    pdf.cell(45, 6, cat, border="1", fill=fill, align="C")
-                    pdf.cell(45, 6, f"{pct} ", border="1", fill=fill, align="R")
+
+                    # 1. Equity Column (width: 47 name, 16 percentage)
+                    if idx < len(eq_list):
+                        name, pct = eq_list[idx]
+                        pdf.cell(47, 6, f"  {name}", border="1", fill=fill)
+                        pdf.cell(16, 6, f"{pct} ", border="1", fill=fill, align="R")
+                    else:
+                        pdf.cell(47, 6, "", border="1", fill=fill)
+                        pdf.cell(16, 6, "", border="1", fill=fill)
+
+                    # 2. Debt Column (width: 47 name, 16 percentage)
+                    if idx < len(dt_list):
+                        name, pct = dt_list[idx]
+                        pdf.cell(47, 6, f"  {name}", border="1", fill=fill)
+                        pdf.cell(16, 6, f"{pct} ", border="1", fill=fill, align="R")
+                    else:
+                        pdf.cell(47, 6, "", border="1", fill=fill)
+                        pdf.cell(16, 6, "", border="1", fill=fill)
+
+                    # 3. Commodities Column (width: 48 name, 16 percentage)
+                    if idx < len(cm_list):
+                        name, pct = cm_list[idx]
+                        pdf.cell(48, 6, f"  {name}", border="1", fill=fill)
+                        pdf.cell(16, 6, f"{pct} ", border="1", fill=fill, align="R")
+                    else:
+                        pdf.cell(48, 6, "", border="1", fill=fill)
+                        pdf.cell(16, 6, "", border="1", fill=fill)
+
                     pdf.ln()
                 pdf.ln(1)
 
