@@ -513,6 +513,9 @@ class InvestmentAdviceNotePDF:
         InvestmentAdviceNotePDF._full_width_text(
             pdf, "Suitability Basis", note_data.get("suitability_basis", "N/A")
         )
+        InvestmentAdviceNotePDF._full_width_text(
+            pdf, "Investor Advice", note_data.get("investor_advice", "N/A")
+        )
 
         # Current Asset Allocation & Rebalancing (manual text areas)
         InvestmentAdviceNotePDF._full_width_text(
@@ -1317,6 +1320,7 @@ class InvestmentAdviceNoteDOCX:
             ("Advice Suitable?", note_data.get("suitability_assessment", "N/A")),
             ("Date of Allocation", format_dob(note_data.get("date_of_allocation"))),
             ("Suitability Basis", note_data.get("suitability_basis", "N/A"), True),
+            ("Investor Advice", note_data.get("investor_advice", "N/A"), True),
             ("Current Asset Allocation", note_data.get("current_asset_allocation", "N/A"), True),
             ("Rebalancing Rationale", note_data.get("rebalancing_rationale", "N/A"), True),
         ]
