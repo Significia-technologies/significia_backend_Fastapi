@@ -115,6 +115,14 @@ def format_amount_units_python(rec):
     
     if ttype == 'LUMP_SUM':
         return f"Rs. {formatted_amount} lump sum"
+    if ttype == 'SWITCH_IN':
+        return f"Rs. {formatted_amount} Switch In"
+    if ttype == 'SWITCH_OUT':
+        return f"Rs. {formatted_amount} Switch Out"
+    if ttype == 'TRANSFER_IN':
+        return f"Rs. {formatted_amount} Transfer In"
+    if ttype == 'TRANSFER_OUT':
+        return f"Rs. {formatted_amount} Transfer Out"
         
     freq_label = ""
     if freq == 'MONTHLY':
