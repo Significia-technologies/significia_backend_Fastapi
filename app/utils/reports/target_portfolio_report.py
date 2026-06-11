@@ -321,6 +321,38 @@ class TargetPortfolioPDFGenerator:
                     suffix = f" — {nature_val}" if nature_val else ""
                     product = f"{product} ({subtype}{suffix})"
 
+                tx_type = e.get("transaction_type")
+                freq = e.get("frequency")
+                if tx_type or freq:
+                    tx_type_map = {
+                        "LUMP_SUM": "Lumpsum",
+                        "SIP": "SIP",
+                        "STP": "STP",
+                        "SINGLE_PAY": "Single Pay",
+                        "RECURRING": "Recurring",
+                    }
+                    freq_map = {
+                        "LUMP_SUM": "Lumpsum",
+                        "WEEKLY": "Weekly",
+                        "MONTHLY": "Monthly",
+                        "QUARTERLY": "Quarterly",
+                        "HALF_YEARLY": "Half-yearly",
+                        "ANNUAL": "Annual",
+                        "BI_YEARLY": "Bi-yearly",
+                        "SINGLE_PAY": "Single Pay",
+                        "ANNUALLY": "Annually",
+                    }
+                    tx_label = tx_type_map.get(tx_type, str(tx_type)) if tx_type else ""
+                    freq_label = freq_map.get(freq, str(freq)) if freq else ""
+                    if tx_label and freq_label:
+                        if tx_label == freq_label:
+                            tx_desc = tx_label
+                        else:
+                            tx_desc = f"{tx_label} ({freq_label})"
+                    else:
+                        tx_desc = tx_label or freq_label
+                    product = f"{product}\n{tx_desc}"
+
                 pct = f"{e['percentage']:.1f}%"
                 obj_val = e["objective"]
                 reason = e["reason_for_investment"]
