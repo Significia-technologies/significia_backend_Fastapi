@@ -93,6 +93,8 @@ class TargetPortfolioPDFGenerator:
         pdf.set_text_color(*text_muted)
         if export_basis == "product":
             pdf.cell(0, 6, "Product-wise Investment Summary", ln=True, align="C")
+        elif export_basis == "investor":
+            pdf.cell(0, 6, "Investor-wise Investment Summary", ln=True, align="C")
         else:
             pdf.cell(0, 6, "Objective-wise Investment Summary", ln=True, align="C")
 
@@ -133,9 +135,12 @@ class TargetPortfolioPDFGenerator:
             }
             names = [friendly_labels.get(ac, ac.upper()) for ac in asset_classes]
             filter_text = f"PRODUCT FILTER:  {', '.join(names).upper()}"
+        elif export_basis == "investor":
+            filter_text = "CONSOLIDATED FAMILY PORTFOLIO"
         else:
             filter_text = f"OBJECTIVE FILTER:  {objective.upper()}"
         pdf.cell(0, 6, filter_text, ln=True, align="C")
+
 
         # Asset Allocation Date line
         if allocation_date:
@@ -232,38 +237,51 @@ class TargetPortfolioPDFGenerator:
             pdf.set_font("helvetica", "B", 10)
             pdf.set_text_color(*text_dark)
             pdf.cell(60, 6, str(value or "--"))
+        if export_basis == "investor":
+            info_col("Client", f"{client_name} ({client_code})", 13)
+            info_col("Investor", "All Active Members", 85)
+            info_col("Sub-code", "ALL", 148)
 
-        info_col("Client", f"{client_name} ({client_code})", 13)
-        info_col("Investor", member_name, 85)
-        info_col("Sub-code", investor_code, 148)
-
-        # Objective badge on same bar
-        pdf.set_xy(13, info_y + 12)
-        pdf.set_font("helvetica", "B", 7)
-        pdf.set_text_color(*text_muted)
-        
-        if export_basis == "product" and asset_classes:
-            pdf.cell(32, 4, "PRODUCT FILTER")
-            pdf.set_xy(47, info_y + 11)
-            pdf.set_fill_color(*green_bg)
-            pdf.set_font("helvetica", "B", 8)
-            pdf.set_text_color(0, 120, 50)
-            friendly_labels = {
-                "shares": "Shares",
-                "mf": "Mutual Funds",
-                "etf": "ETF",
-                "life_insurance": "Life Ins",
-                "health_insurance": "Health Ins",
-            }
-            names = [friendly_labels.get(ac, ac.upper()) for ac in asset_classes]
-            pdf.cell(100, 6, f"  {', '.join(names)}  ", border=1, fill=True, align="C")
-        else:
-            pdf.cell(32, 4, "OBJECTIVE FILTER")
+            pdf.set_xy(13, info_y + 12)
+            pdf.set_font("helvetica", "B", 7)
+            pdf.set_text_color(*text_muted)
+            pdf.cell(32, 4, "EXPORT BASIS")
             pdf.set_xy(47, info_y + 11)
             pdf.set_fill_color(*green_bg)
             pdf.set_font("helvetica", "B", 9)
             pdf.set_text_color(0, 120, 50)
-            pdf.cell(40, 6, f"  {objective}  ", border=1, fill=True, align="C")
+            pdf.cell(40, 6, "  Investor-wise  ", border=1, fill=True, align="C")
+        else:
+            info_col("Client", f"{client_name} ({client_code})", 13)
+            info_col("Investor", member_name, 85)
+            info_col("Sub-code", investor_code, 148)
+
+            pdf.set_xy(13, info_y + 12)
+            pdf.set_font("helvetica", "B", 7)
+            pdf.set_text_color(*text_muted)
+
+            if export_basis == "product" and asset_classes:
+                pdf.cell(32, 4, "PRODUCT FILTER")
+                pdf.set_xy(47, info_y + 11)
+                pdf.set_fill_color(*green_bg)
+                pdf.set_font("helvetica", "B", 8)
+                pdf.set_text_color(0, 120, 50)
+                friendly_labels = {
+                    "shares": "Shares",
+                    "mf": "Mutual Funds",
+                    "etf": "ETF",
+                    "life_insurance": "Life Ins",
+                    "health_insurance": "Health Ins",
+                }
+                names = [friendly_labels.get(ac, ac.upper()) for ac in asset_classes]
+                pdf.cell(100, 6, f"  {', '.join(names)}  ", border=1, fill=True, align="C")
+            else:
+                pdf.cell(32, 4, "OBJECTIVE FILTER")
+                pdf.set_xy(47, info_y + 11)
+                pdf.set_fill_color(*green_bg)
+                pdf.set_font("helvetica", "B", 9)
+                pdf.set_text_color(0, 120, 50)
+                pdf.cell(40, 6, f"  {objective}  ", border=1, fill=True, align="C")
 
         pdf.set_y(info_y + 26)
         pdf.ln(5)
@@ -394,13 +412,38 @@ class TargetPortfolioPDFGenerator:
 
             pdf.ln(7)
 
-        for ac_key in ASSET_CLASS_ORDER:
-            if ac_key in sections:
-                if pdf.get_y() > 252:
-                    pdf.add_page()
-                draw_section(ac_key, sections[ac_key])
+        if export_basis == "investor":
+            for m_idx, member_item in enumerate(report_data.get("members", [])):
+                member_sections = member_item.get("sections", {})
+                if not member_sections:
+                    continue
 
-        # ── Disclaimer ──
+                if m_idx > 0:
+                    pdf.add_page()
+
+                pdf.ln(2)
+                pdf.set_fill_color(*light_blue_bg)
+                pdf.rect(10, pdf.get_y(), 190, 10, "F")
+                pdf.set_xy(13, pdf.get_y() + 2.5)
+                pdf.set_font("helvetica", "B", 10)
+                pdf.set_text_color(*navy)
+                m_name = member_item.get("member_name", "")
+                m_code = member_item.get("investor_code", "")
+                pdf.cell(0, 5, f"INVESTOR: {m_name.upper()} ({m_code.upper()})")
+                pdf.ln(12)
+
+                for ac_key in ASSET_CLASS_ORDER:
+                    if ac_key in member_sections:
+                        if pdf.get_y() > 252:
+                            pdf.add_page()
+                        draw_section(ac_key, member_sections[ac_key])
+        else:
+            for ac_key in ASSET_CLASS_ORDER:
+                if ac_key in sections:
+                    if pdf.get_y() > 252:
+                        pdf.add_page()
+                    draw_section(ac_key, sections[ac_key])
+
         pdf.ln(4)
         pdf.set_font("helvetica", "I", 8)
         pdf.set_text_color(*text_muted)

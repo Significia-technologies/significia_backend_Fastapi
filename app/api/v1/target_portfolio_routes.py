@@ -144,6 +144,65 @@ async def download_target_portfolio_report(
     )
 
 
+@router.get("/target-portfolio/{client_id}/report/pdf")
+async def download_target_portfolio_client_report(
+    client_id: str,
+    client_name: str = Query(""),
+    client_code: str = Query(""),
+    bridge: BridgeClient = Depends(get_bridge_client),
+    current_user=Depends(get_current_user),
+):
+    report_data = await bridge.get(
+        f"/target-portfolio/{client_id}/report-data/investor-wise"
+    )
+
+    if not report_data.get("members"):
+        from fastapi import HTTPException
+        raise HTTPException(404, "No active target portfolio entries found for any family member.")
+
+    ia_data = await bridge.get("/ia-master")
+
+    # Fetch asset allocation date if available
+    allocation_date_str = None
+    try:
+        from datetime import datetime
+        allocations = await bridge.get("/asset-allocations", params={"client_id": client_id})
+        if allocations and isinstance(allocations, list):
+            allocations.sort(
+                key=lambda x: x.get("created_at") or "",
+                reverse=True
+            )
+            latest_allocation = allocations[0]
+            raw_date = latest_allocation.get("created_at")
+            if raw_date:
+                if "T" in raw_date:
+                    dt_obj = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
+                    allocation_date_str = dt_obj.strftime("%d %b %Y")
+                else:
+                    allocation_date_str = str(raw_date)[:10]
+    except Exception:
+        pass
+
+    pdf_bytes = TargetPortfolioPDFGenerator.generate_report(
+        report_data=report_data,
+        client_name=client_name,
+        client_code=client_code,
+        ia_data=ia_data if isinstance(ia_data, dict) else None,
+        export_basis="investor",
+        allocation_date=allocation_date_str,
+    )
+
+    safe_client = "".join(c if c.isalnum() else "_" for c in client_code)
+    filename = f"TargetPortfolio_{safe_client}_InvestorWise.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+
 @router.get("/target-portfolio/{client_id}/{member_id}/allocation-target/pdf")
 async def download_target_allocation_pdf(
     client_id: str,
