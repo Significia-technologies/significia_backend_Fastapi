@@ -1,6 +1,11 @@
 import os
+import io
+import tempfile
 from datetime import datetime, timedelta
 from typing import Optional
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 from app.utils.pdf_generator import BaseReportPDF
 
 
@@ -36,6 +41,54 @@ def format_indian_number(val):
 
 
 class TargetPortfolioPDFGenerator:
+
+    @staticmethod
+    def _generate_pie_chart(sections: dict) -> Optional[str]:
+        """Create a pie chart for target portfolio sections and return its temp file path."""
+        labels = []
+        sizes = []
+        
+        # Calculate sum of percentages per asset class
+        for ac_key, section in sections.items():
+            total_ac_pct = sum(float(e.get("percentage") or 0) for e in section.get("entries", []))
+            if total_ac_pct > 0:
+                labels.append(section.get("label", ac_key.upper()))
+                sizes.append(total_ac_pct)
+
+        if not sizes:
+            return None
+
+        try:
+            # Sleek, professional color palette matching the report
+            # Navy, medium blue, teal, coral, peach
+            colors_list = ['#001F3F', '#0046A0', '#00A896', '#F08080', '#FFA07A']
+            
+            fig, ax = plt.subplots(figsize=(4, 3))
+            wedges, texts, autotexts = ax.pie(
+                sizes,
+                labels=labels,
+                autopct='%1.1f%%',
+                startangle=90,
+                colors=colors_list[:len(sizes)],
+                textprops=dict(color="black", fontsize=8)
+            )
+            # Make percentage labels bold and white for readability inside pie
+            for autotext in autotexts:
+                autotext.set_fontsize(8)
+                autotext.set_weight('bold')
+                autotext.set_color('white')
+                
+            ax.axis('equal')
+            plt.title("Target Portfolio Asset Allocation", fontsize=10, fontweight='bold', pad=10, color='#001F3F')
+            
+            fd, temp_path = tempfile.mkstemp(suffix=".png")
+            os.close(fd)
+            
+            plt.savefig(temp_path, format='png', dpi=150, bbox_inches='tight')
+            plt.close(fig)
+            return temp_path
+        except Exception:
+            return None
 
     @staticmethod
     def _render_cover_page(
@@ -432,12 +485,36 @@ class TargetPortfolioPDFGenerator:
                 pdf.cell(0, 5, f"INVESTOR: {m_name.upper()} ({m_code.upper()})")
                 pdf.ln(12)
 
+                # Render Member Pie Chart
+                chart_file = TargetPortfolioPDFGenerator._generate_pie_chart(member_sections)
+                if chart_file and os.path.exists(chart_file):
+                    if pdf.get_y() > 200:
+                        pdf.add_page()
+                    pdf.image(chart_file, x=65, y=pdf.get_y(), w=80)
+                    pdf.set_y(pdf.get_y() + 65)
+                    pdf.ln(5)
+                    try:
+                        os.remove(chart_file)
+                    except Exception:
+                        pass
+
                 for ac_key in ASSET_CLASS_ORDER:
                     if ac_key in member_sections:
                         if pdf.get_y() > 252:
                             pdf.add_page()
                         draw_section(ac_key, member_sections[ac_key])
         else:
+            # Render Single Member Pie Chart
+            chart_file = TargetPortfolioPDFGenerator._generate_pie_chart(sections)
+            if chart_file and os.path.exists(chart_file):
+                pdf.image(chart_file, x=65, y=pdf.get_y(), w=80)
+                pdf.set_y(pdf.get_y() + 65)
+                pdf.ln(5)
+                try:
+                    os.remove(chart_file)
+                except Exception:
+                    pass
+
             for ac_key in ASSET_CLASS_ORDER:
                 if ac_key in sections:
                     if pdf.get_y() > 252:
