@@ -7,8 +7,9 @@ Follows the same pattern as target_portfolio_routes.py.
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
 from typing import Optional
+from sqlalchemy.orm import Session
 
-from app.api.deps import get_bridge_client, get_current_user
+from app.api.deps import get_bridge_client, get_current_user, get_db
 from app.services.bridge_client import BridgeClient
 
 router = APIRouter()
@@ -121,6 +122,7 @@ async def get_next_serial(
 async def download_advice_note_pdf(
     note_id: str,
     bridge: BridgeClient = Depends(get_bridge_client),
+    db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
     """Generate and download the Investment Advice Note as a PDF."""
@@ -136,10 +138,24 @@ async def download_advice_note_pdf(
     ia_data = await bridge.get("/ia-master")
     ia_dict = ia_data if isinstance(ia_data, dict) else None
 
+    # Resolve Logo Path
+    logo_path = None
+    ia_logo_key = ia_dict.get("ia_logo_path") if ia_dict else None
+    if ia_logo_key:
+        try:
+            from app.utils.file_utils import resolve_logo_to_local_path
+            url_resp = await bridge.get("/storage/url", params={"key": ia_logo_key})
+            signed_url = url_resp.get("url")
+            if signed_url:
+                logo_path = await resolve_logo_to_local_path(signed_url, db)
+        except Exception:
+            pass
+
     # 3. Generate PDF
     pdf_bytes = InvestmentAdviceNotePDF.generate_pdf(
         note_data=note_data,
         ia_data=ia_dict,
+        logo_path=logo_path,
     )
 
     # 4. Build safe filename
