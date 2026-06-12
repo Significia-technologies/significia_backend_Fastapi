@@ -91,6 +91,56 @@ class TargetPortfolioPDFGenerator:
             return None
 
     @staticmethod
+    def _generate_product_pie_chart(entries: list, label: str) -> Optional[str]:
+        """Create a pie chart for products within an asset class and return its temp file path."""
+        labels = []
+        sizes = []
+        
+        for e in entries:
+            pct = float(e.get("percentage") or 0)
+            if pct > 0:
+                # Truncate product name if too long for the chart label
+                prod_name = e.get("product_name") or "Product"
+                if len(prod_name) > 20:
+                    prod_name = prod_name[:17] + "..."
+                labels.append(prod_name)
+                sizes.append(pct)
+
+        if not sizes:
+            return None
+
+        try:
+            # Sleek, harmonized colors for products (using light/accent tones)
+            colors_list = ['#4A90E2', '#50E3C2', '#F5A623', '#F8E71C', '#BD10E0', '#9013FE', '#7ED321', '#4A90E2']
+            
+            fig, ax = plt.subplots(figsize=(4, 3))
+            wedges, texts, autotexts = ax.pie(
+                sizes,
+                labels=labels,
+                autopct='%1.1f%%',
+                startangle=90,
+                colors=colors_list[:len(sizes)],
+                textprops=dict(color="black", fontsize=8)
+            )
+            # Make percentage labels bold and white for readability inside pie
+            for autotext in autotexts:
+                autotext.set_fontsize(8)
+                autotext.set_weight('bold')
+                autotext.set_color('white')
+                
+            ax.axis('equal')
+            plt.title(f"{label} Distribution", fontsize=10, fontweight='bold', pad=10, color='#001F3F')
+            
+            fd, temp_path = tempfile.mkstemp(suffix=".png")
+            os.close(fd)
+            
+            plt.savefig(temp_path, format='png', dpi=150, bbox_inches='tight')
+            plt.close(fig)
+            return temp_path
+        except Exception:
+            return None
+
+    @staticmethod
     def _render_cover_page(
         pdf: BaseReportPDF,
         client_name: str,
@@ -464,6 +514,19 @@ class TargetPortfolioPDFGenerator:
                 pdf.set_y(row_y + row_h)
 
             pdf.ln(7)
+
+            if len(entries) > 1:
+                chart_file = TargetPortfolioPDFGenerator._generate_product_pie_chart(entries, label)
+                if chart_file and os.path.exists(chart_file):
+                    if pdf.get_y() > 200:
+                        pdf.add_page()
+                    pdf.image(chart_file, x=65, y=pdf.get_y(), w=80)
+                    pdf.set_y(pdf.get_y() + 65)
+                    pdf.ln(7)
+                    try:
+                        os.remove(chart_file)
+                    except Exception:
+                        pass
 
         if export_basis == "investor":
             for m_idx, member_item in enumerate(report_data.get("members", [])):
