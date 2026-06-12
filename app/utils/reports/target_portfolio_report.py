@@ -493,7 +493,7 @@ class TargetPortfolioPDFGenerator:
                     max(len(pdf.multi_cell(w, h_unit, str(t), split_only=True)), 1)
                     for t, w in zip(cell_texts, cols)
                 ]
-                row_h = max(max(lines_per_col) * h_unit, 8)
+                row_h = max(max(lines_per_col) * h_unit + 4.0, 10.0)
 
                 if pdf.get_y() + row_h > 272:
                     pdf.add_page()
@@ -503,11 +503,12 @@ class TargetPortfolioPDFGenerator:
                 pdf.set_text_color(*text_dark)
 
                 row_x, row_y = pdf.get_x(), pdf.get_y()
-                for t, w in zip(cell_texts, cols):
+                for t, w, lines_cnt in zip(cell_texts, cols, lines_per_col):
                     pdf.set_fill_color(*fill_color)
                     pdf.rect(row_x, row_y, w, row_h, "F")
                     pdf.rect(row_x, row_y, w, row_h, "D")
-                    pdf.set_xy(row_x + 1, row_y + 1)
+                    y_offset = (row_h - (lines_cnt * h_unit)) / 2.0
+                    pdf.set_xy(row_x + 1, row_y + y_offset)
                     pdf.multi_cell(w - 2, h_unit, str(t), align="L")
                     row_x += w
 
