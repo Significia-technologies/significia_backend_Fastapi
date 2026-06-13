@@ -73,6 +73,7 @@ class ClientProfile(SiloBase):
     client_date: Mapped[Date] = mapped_column(Date, nullable=False, default=date.today)
     nominee_name: Mapped[Optional[str]] = mapped_column(String(255))
     nominee_relationship: Mapped[Optional[str]] = mapped_column(String(100))
+    nominees: Mapped[Optional[str]] = mapped_column(Text)
     previous_advisor_name: Mapped[Optional[str]] = mapped_column(String(255))
     referral_source: Mapped[Optional[str]] = mapped_column(String(100))
     declaration_signed: Mapped[bool] = mapped_column(Boolean, default=False)

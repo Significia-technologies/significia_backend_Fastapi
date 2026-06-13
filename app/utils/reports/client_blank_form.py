@@ -143,14 +143,19 @@ def generate_client_blank_form(
     elements.append(Spacer(1, 10))
 
     # 2. FAMILY DETAILS
-    add_section_header("2. Family / Spouse Details")
+    add_section_header("2. Family, Spouse & Nominee Details")
     family_data = [
         [Paragraph("Spouse Name:", label_style), "", Paragraph("Spouse DOB:", label_style), ""],
-        [Paragraph("Nominee Name:", label_style), "", Paragraph("Relationship:", label_style), ""]
+        [Paragraph("Nominee 1 Details:", label_style), Paragraph("Name: ____________________ Relationship: ________ DOB: ________ Share %: ____", normal_label_style), "", ""],
+        [Paragraph("Nominee 2 Details:", label_style), Paragraph("Name: ____________________ Relationship: ________ DOB: ________ Share %: ____", normal_label_style), "", ""],
+        [Paragraph("Nominee 3 Details:", label_style), Paragraph("Name: ____________________ Relationship: ________ DOB: ________ Share %: ____", normal_label_style), "", ""],
     ]
     t_family = Table(family_data, colWidths=[110, 185, 90, 150], rowHeights=24)
     t_family.setStyle(TableStyle([
         ('GRID', (0,0), (-1,-1), 0.5, colors.lightgrey),
+        ('SPAN', (1,1), (3,1)),
+        ('SPAN', (1,2), (3,2)),
+        ('SPAN', (1,3), (3,3)),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('PADDING', (0,0), (-1,-1), 5)
     ]))

@@ -553,6 +553,35 @@ class ClientPDFGenerator:
             if not is_last:
                 pdf.ln(3)
 
+        nominees_list = client_data.get("nominees", [])
+        strategy_fields = [
+            ("Horizon", client_data.get("investment_horizon")),
+            ("Experience", client_data.get("investment_experience")),
+            ("Tax Residency", client_data.get("tax_residency")),
+        ]
+        if nominees_list and isinstance(nominees_list, list):
+            for i, nom in enumerate(nominees_list, 1):
+                name = nom.get("name", "N/A")
+                rel = nom.get("relationship", "N/A")
+                dob = nom.get("dob", "")
+                pct = nom.get("percentage", 0)
+                dob_str = ""
+                if dob:
+                    try:
+                        dob_dt = datetime.strptime(str(dob), "%Y-%m-%d")
+                        dob_str = f", DOB: {dob_dt.strftime('%d-%m-%Y')}"
+                    except Exception:
+                        dob_str = f", DOB: {dob}"
+                strategy_fields.append((f"Nominee {i}", f"{name} ({rel}{dob_str}) - {pct}%"))
+        else:
+            nom_name = client_data.get("nominee_name")
+            nom_rel = client_data.get("nominee_relationship")
+            if nom_name:
+                strategy_fields.append(("Nominee Name", f"{nom_name} ({nom_rel or 'N/A'})"))
+            else:
+                strategy_fields.append(("Nominee Name", "N/A"))
+        strategy_fields.append(("Objectives", client_data.get("investment_objectives"), True))
+
         sections = [
             ("Identity Details", [
                 ("Full Name", client_data.get("client_name")),
@@ -594,13 +623,7 @@ class ClientPDFGenerator:
                 ("Demat A/C", client_data.get("demat_account_number")),
                 ("Trading A/C", client_data.get("trading_account_number")),
             ]),
-            ("Strategy & Compliance", [
-                ("Horizon", client_data.get("investment_horizon")),
-                ("Experience", client_data.get("investment_experience")),
-                ("Tax Residency", client_data.get("tax_residency")),
-                ("Nominee Name", client_data.get("nominee_name")),
-                ("Objectives", client_data.get("investment_objectives"), True),
-            ]),
+            ("Strategy & Compliance", strategy_fields),
             ("Document Checklist", [
                 (doc, " [ Yes ]" if doc in (client_data.get("uploaded_documents") or []) else " [ No ]")
                 for doc in REQUIRED_DOCUMENTS

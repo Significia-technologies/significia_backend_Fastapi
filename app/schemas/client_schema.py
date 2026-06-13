@@ -12,6 +12,27 @@ class ClientTokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
 
+class NomineeSchema(BaseModel):
+    name: str
+    relationship: str
+    dob: date
+    percentage: float
+
+    @field_validator("name", "relationship")
+    @classmethod
+    def validate_nominee_text(cls, v: str) -> str:
+        import re
+        if not re.match(r"^[a-zA-Z\s]+$", v):
+            raise ValueError("Nominee name and relationship must contain only alphabetic characters and spaces")
+        return v
+
+    @field_validator("dob")
+    @classmethod
+    def validate_nominee_dob(cls, v: date) -> date:
+        if v > date.today():
+            raise ValueError("Nominee Date of Birth cannot be in the future")
+        return v
+
 class ClientBase(BaseModel):
     email: EmailStr
     client_name: str
@@ -58,6 +79,7 @@ class ClientBase(BaseModel):
     client_date: Optional[date] = None
     nominee_name: Optional[str] = None
     nominee_relationship: Optional[str] = None
+    nominees: list[NomineeSchema] = []
     previous_advisor_name: Optional[str] = None
     referral_source: Optional[str] = None
     declaration_signed: bool = False
@@ -108,6 +130,16 @@ class ClientBase(BaseModel):
         age = today.year - v.year - ((today.month, today.day) < (v.month, v.day))
         if age < 18:
             raise ValueError("Age must be at least 18 years")
+        return v
+
+    @field_validator("nominees")
+    @classmethod
+    def validate_nominees_list(cls, v: list[NomineeSchema]) -> list[NomineeSchema]:
+        if not v or len(v) < 1:
+            raise ValueError("At least 1 nominee is required")
+        total_pct = sum(nom.percentage for nom in v)
+        if total_pct != 100.0:
+            raise ValueError(f"Total nominee percentage must sum up to exactly 100% (currently {total_pct}%)")
         return v
 
     @model_validator(mode='after')
@@ -178,6 +210,7 @@ class ClientUpdate(BaseModel):
     client_date: Optional[date] = None
     nominee_name: Optional[str] = None
     nominee_relationship: Optional[str] = None
+    nominees: Optional[list[NomineeSchema]] = None
     previous_advisor_name: Optional[str] = None
     referral_source: Optional[str] = None
     declaration_signed: Optional[bool] = None
@@ -193,6 +226,17 @@ class ClientUpdate(BaseModel):
     
     # Audit reference
     rectification_serial_no: Optional[str] = None
+
+    @field_validator("nominees")
+    @classmethod
+    def validate_nominees_list(cls, v: Optional[list[NomineeSchema]]) -> Optional[list[NomineeSchema]]:
+        if v is not None:
+            if len(v) < 1:
+                raise ValueError("At least 1 nominee is required")
+            total_pct = sum(nom.percentage for nom in v)
+            if total_pct != 100.0:
+                raise ValueError(f"Total nominee percentage must sum up to exactly 100% (currently {total_pct}%)")
+        return v
 
 class ClientDocumentResponse(BaseModel):
     id: uuid.UUID
