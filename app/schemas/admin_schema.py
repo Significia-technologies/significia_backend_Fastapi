@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 from typing import Optional, List
 from datetime import date as date_type, datetime
 from uuid import UUID
@@ -77,6 +77,14 @@ class ClientProvisionRequest(BaseModel):
         if not re.match(r"^[A-Z]{4}0[A-Z0-9]{6}$", val):
             raise ValueError("Invalid IFSC code format (e.g. HDFC0001234, 5th character must be 0)")
         return val
+
+    @model_validator(mode='after')
+    def validate_cin_for_body_corporate(self) -> 'ClientProvisionRequest':
+        entity = (self.nature_of_entity or "").strip().lower()
+        if "body" in entity or "corporate" in entity:
+            if not self.cin_number or not self.cin_number.strip():
+                raise ValueError("CIN Number is mandatory for Body Corporate")
+        return self
 
 class ClientProvisionResponse(BaseModel):
     id: Optional[str] = None

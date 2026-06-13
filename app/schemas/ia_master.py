@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from typing import List, Optional
-from pydantic import BaseModel, EmailStr, Field, ConfigDict, field_validator
+from pydantic import BaseModel, EmailStr, Field, ConfigDict, field_validator, model_validator
 from uuid import UUID
 
 # Employee Details Schemas
@@ -110,6 +110,13 @@ class IAMasterBase(BaseModel):
         if not re.match(r"^[A-Z]{4}0[A-Z0-9]{6}$", val):
             raise ValueError("Invalid IFSC code format (e.g. HDFC0001234, 5th character must be 0)")
         return val
+
+    @model_validator(mode='after')
+    def validate_cin_for_body_corporate(self) -> 'IAMasterBase':
+        if self.nature_of_entity == "body":
+            if not self.cin_number or not self.cin_number.strip():
+                raise ValueError("CIN Number is mandatory for Body Corporate")
+        return self
 
 class IAMasterCreate(IAMasterBase):
     date_of_birth: date
