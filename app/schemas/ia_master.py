@@ -87,6 +87,30 @@ class IAMasterBase(BaseModel):
             raise ValueError("Age must be at least 18 years")
         return v
 
+    @field_validator("bank_account_number")
+    @classmethod
+    def validate_bank_account(cls, v: str) -> str:
+        if not v.isdigit() or not (9 <= len(v) <= 18):
+            raise ValueError("Bank account number must be between 9 and 18 digits and contain only numbers")
+        return v
+
+    @field_validator("bank_name", "bank_branch")
+    @classmethod
+    def validate_alphabets_and_spaces(cls, v: str) -> str:
+        import re
+        if not re.match(r"^[a-zA-Z\s]+$", v):
+            raise ValueError("Must contain only alphabetic characters and spaces")
+        return v
+
+    @field_validator("ifsc_code")
+    @classmethod
+    def validate_ifsc(cls, v: str) -> str:
+        import re
+        val = v.upper().strip()
+        if not re.match(r"^[A-Z]{4}0[A-Z0-9]{6}$", val):
+            raise ValueError("Invalid IFSC code format (e.g. HDFC0001234, 5th character must be 0)")
+        return val
+
 class IAMasterCreate(IAMasterBase):
     date_of_birth: date
 
