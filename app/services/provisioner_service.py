@@ -170,6 +170,7 @@ class ProvisionerService:
             registered_contact_number VARCHAR(20),
             office_contact_number VARCHAR(20),
             registered_email_id VARCHAR(255),
+            website VARCHAR(255),
             cin_number VARCHAR(100),
             bank_account_number VARCHAR(50),
             bank_name VARCHAR(255),

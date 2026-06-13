@@ -69,6 +69,7 @@ class IAMasterBase(BaseModel):
     registered_contact_number: str
     office_contact_number: Optional[str] = None
     registered_email_id: EmailStr
+    website: Optional[str] = None
     cin_number: Optional[str] = None
     bank_account_number: str
     bank_name: str

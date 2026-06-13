@@ -23,6 +23,7 @@ class IAMaster(SiloBase):
     registered_contact_number: Mapped[str] = mapped_column(String(20))
     office_contact_number: Mapped[Optional[str]] = mapped_column(String(20))
     registered_email_id: Mapped[str] = mapped_column(String(255))
+    website: Mapped[Optional[str]] = mapped_column(String(255))
     cin_number: Mapped[Optional[str]] = mapped_column(String(100))
     bank_account_number: Mapped[str] = mapped_column(String(50))
     bank_name: Mapped[str] = mapped_column(String(255))
