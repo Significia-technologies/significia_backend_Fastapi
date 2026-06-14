@@ -92,6 +92,13 @@ class ClientBase(BaseModel):
     ipv_done_by_id: Optional[uuid.UUID] = None
     ipv_date: Optional[date] = None
 
+    @field_validator("client_date", "agreement_date", "ipv_date")
+    @classmethod
+    def validate_dates_not_in_future(cls, v: Optional[date]) -> Optional[date]:
+        if v and v > date.today():
+            raise ValueError("Date cannot be in the future")
+        return v
+
     @field_validator("phone_number")
     @classmethod
     def validate_phone(cls, v: str) -> str:
@@ -226,6 +233,13 @@ class ClientUpdate(BaseModel):
     
     # Audit reference
     rectification_serial_no: Optional[str] = None
+
+    @field_validator("client_date", "agreement_date", "ipv_date")
+    @classmethod
+    def validate_dates_not_in_future(cls, v: Optional[date]) -> Optional[date]:
+        if v and v > date.today():
+            raise ValueError("Date cannot be in the future")
+        return v
 
     @field_validator("nominees")
     @classmethod
