@@ -952,6 +952,299 @@ class AssetAllocationReportUtils:
         return buffer
 
     @staticmethod
+    def generate_comparison_pdf(
+        existing_data: dict, target_data: dict, ia_master: Optional[any], ia_logo_path: Optional[str] = None
+    ) -> io.BytesIO:
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.4*inch, bottomMargin=0.8*inch)
+        
+        # Attach footer data to doc
+        doc.advisor_name = getattr(ia_master, 'name_of_ia', None) or (ia_master.get('name_of_ia') if isinstance(ia_master, dict) else None)
+        doc.entity_name = getattr(ia_master, 'name_of_entity', None) or (ia_master.get('name_of_entity') if isinstance(ia_master, dict) else None)
+        doc.ia_reg_no = getattr(ia_master, 'ia_registration_number', None) or (ia_master.get('ia_registration_number') if isinstance(ia_master, dict) else (ia_master.get('registration_no') if isinstance(ia_master, dict) else None))
+        
+        story = []
+        styles = getSampleStyleSheet()
+
+        # Custom styles
+        cover_title_style = ParagraphStyle(
+            'CoverTitleCompare',
+            parent=styles['Heading1'],
+            fontSize=24,
+            textColor=colors.HexColor('#1a2980'),
+            alignment=1,
+            spaceAfter=30,
+            fontName="Helvetica-Bold",
+            leading=30
+        )
+        cover_subtitle_style = ParagraphStyle('CoverSubTitleCompare', parent=styles['Normal'], fontSize=15, textColor=colors.HexColor('#45B7D1'), alignment=1, spaceAfter=50, fontName="Helvetica")
+        heading_style = ParagraphStyle('HeadingStyleCompare', parent=styles['Heading2'], fontSize=12, textColor=colors.HexColor('#1a2980'), spaceAfter=8, spaceBefore=15, fontName="Helvetica-Bold")
+        normal_style = ParagraphStyle('NormalStyleCompare', parent=styles['Normal'], fontSize=8.5, spaceAfter=5)
+        
+        # --- COVER PAGE ---
+        story.append(Spacer(1, 1.0*inch))
+        if ia_logo_path and os.path.exists(ia_logo_path):
+            try:
+                story.append(Image(ia_logo_path, width=2.5*inch, height=1.25*inch))
+            except: pass
+        
+        story.append(Spacer(1, 0.4*inch))
+        story.append(Paragraph("PORTFOLIO ALLOCATION COMPARISON REPORT", cover_title_style))
+        story.append(Paragraph("Current Holdings vs. Strategic Target Allocations", cover_subtitle_style))
+        story.append(Spacer(1, 0.4*inch))
+        
+        # Grid metadata block for Client Info
+        created_at_str = existing_data.get("created_at") or target_data.get("created_at")
+        date_str = ""
+        if created_at_str:
+            try:
+                if created_at_str.endswith('Z'):
+                    created_at_str = created_at_str[:-1] + '+00:00'
+                dt = datetime.fromisoformat(created_at_str)
+                date_str = dt.strftime('%d %B, %Y')
+            except:
+                date_str = datetime.now().strftime('%d %B, %Y')
+        else:
+            date_str = datetime.now().strftime('%d %B, %Y')
+
+        label_style = ParagraphStyle('FormLabelCompare', parent=styles['Normal'], fontSize=9, fontName='Helvetica-Bold', leading=10, textColor=colors.HexColor('#1e293b'))
+        val_style = ParagraphStyle('FormValCompare', parent=styles['Normal'], fontSize=9, fontName='Helvetica', leading=10, textColor=colors.black)
+        
+        client_name = existing_data.get("client_name") or target_data.get("client_name") or "____________________________"
+        client_code = ((existing_data.get("client_code") or target_data.get("client_code") or "________________")).upper()
+        risk_tier = existing_data.get("assigned_risk_tier") or target_data.get("assigned_risk_tier") or "________________"
+
+        fields_data = [
+            [Paragraph("<b>Client Name</b>", label_style), Paragraph(client_name, val_style)],
+            [Paragraph("<b>Client Code</b>", label_style), Paragraph(client_code, val_style)],
+            [Paragraph("<b>Assigned Risk Profile</b>", label_style), Paragraph(risk_tier, val_style)],
+            [Paragraph("<b>Date of Analysis</b>", label_style), Paragraph(date_str, val_style)]
+        ]
+        fields_table = Table(fields_data, colWidths=[1.8*inch, 4.2*inch], rowHeights=28)
+        fields_table.setStyle(TableStyle([
+            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
+            ('BACKGROUND', (0,0), (0,-1), colors.HexColor('#f8fafc')),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('PADDING', (0,0), (-1,-1), 6),
+        ]))
+        story.append(fields_table)
+        
+        story.append(Spacer(1, 1.0*inch))
+        
+        advisor_name = doc.advisor_name or "Investment Advisor"
+        ia_reg_no = doc.ia_reg_no or "N/A"
+        
+        sig_block_style = ParagraphStyle('SigBlockCompare', parent=styles['Normal'], fontSize=9, leading=14, textColor=colors.HexColor('#475569'))
+        sig_data_cover = [
+            [
+                Paragraph(f"<b>Investment Advisor:</b><br/>{advisor_name}<br/>SEBI Reg No: {ia_reg_no}", sig_block_style),
+                Paragraph("<b>Client Acknowledgment:</b><br/>I have reviewed the comparison report and targets.", sig_block_style)
+            ]
+        ]
+        sig_table_cover = Table(sig_data_cover, colWidths=[3.2*inch, 2.8*inch])
+        sig_table_cover.setStyle(TableStyle([
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
+            ('PADDING', (0,0), (-1,-1), 0),
+        ]))
+        story.append(sig_table_cover)
+        
+        story.append(PageBreak())
+
+        # --- PAGE 2: COMPARATIVE MATRIX & REBALANCING ---
+        story.append(Paragraph("ASSET ALLOCATION COMPARISON MATRIX", heading_style))
+        
+        col_header_style = ParagraphStyle('ColHeaderCompare', parent=styles['Normal'], fontSize=8.5, fontName='Helvetica-Bold', leading=10, textColor=colors.HexColor('#1e293b'))
+        cell_style = ParagraphStyle('CellCompare', parent=styles['Normal'], fontSize=8, leading=9, textColor=colors.black)
+        cell_style_right = ParagraphStyle('CellCompareRight', parent=styles['Normal'], fontSize=8, leading=9, alignment=2, textColor=colors.black)
+        
+        table_data = [
+            [
+                Paragraph("<b>Asset Category</b>", col_header_style),
+                Paragraph("<b>Sub-Asset Class</b>", col_header_style),
+                Paragraph("<b>Existing Value</b>", col_header_style),
+                Paragraph("<b>Existing %</b>", col_header_style),
+                Paragraph("<b>Target %</b>", col_header_style),
+                Paragraph("<b>Variance %</b>", col_header_style)
+            ]
+        ]
+        
+        existing_total = float(existing_data.get("total_amount") or 0.0)
+        
+        items = [
+            # Equities
+            ("Equities", "Direct Equity (Stocks)", "stocks_amount", "stocks_percentage", "stocks_percentage"),
+            ("Equities", "Mutual Funds (Equity)", "mutual_fund_equity_amount", "mutual_fund_equity_percentage", "mutual_fund_equity_percentage"),
+            ("Equities", "ULIPs (Equity)", "ulip_equity_amount", "ulip_equity_percentage", "ulip_equity_percentage"),
+            ("Equities", "ETFs (Equity)", "etf_equity_amount", "etf_equity_percentage", "etf_equity_percentage"),
+            ("Equities", "EQUITIES TOTAL", "equities_amount", "equities_percentage", "equities_percentage"),
+            
+            # Debt Securities
+            ("Debt Securities", "Fixed Deposits & Bonds", "fixed_deposits_bonds_amount", "fixed_deposits_bonds_percentage", "fixed_deposits_bonds_percentage"),
+            ("Debt Securities", "Mutual Funds (Debt)", "mutual_fund_debt_amount", "mutual_fund_debt_percentage", "mutual_fund_debt_percentage"),
+            ("Debt Securities", "ULIPs (Debt)", "ulip_debt_amount", "ulip_debt_percentage", "ulip_debt_percentage"),
+            ("Debt Securities", "ETFs (Debt)", "etf_debt_amount", "etf_debt_percentage", "etf_debt_percentage"),
+            ("Debt Securities", "DEBT SECURITIES TOTAL", "debt_securities_amount", "debt_securities_percentage", "debt_securities_percentage"),
+            
+            # Commodities
+            ("Commodities", "Gold ETFs", "gold_etf_amount", "gold_etf_percentage", "gold_etf_percentage"),
+            ("Commodities", "Silver ETFs", "silver_etf_amount", "silver_etf_percentage", "silver_etf_percentage"),
+            ("Commodities", "Other ETFs (Commodity)", "etf_commodity_amount", "etf_commodity_percentage", "etf_commodity_percentage"),
+            ("Commodities", "COMMODITIES TOTAL", "commodities_amount", "commodities_percentage", "commodities_percentage"),
+        ]
+
+        for cat, sub_class, ext_amt_key, ext_pct_key, tgt_pct_key in items:
+            ext_amt = float(existing_data.get(ext_amt_key) or 0.0)
+            ext_pct = float(existing_data.get(ext_pct_key) or 0.0)
+            tgt_pct = float(target_data.get(tgt_pct_key) or 0.0)
+            variance = ext_pct - tgt_pct
+            
+            is_total = sub_class.endswith("TOTAL")
+            
+            if is_total:
+                label_text = f"<b>{sub_class}</b>"
+                val_text = f"<b>Rs. {ext_amt:,.2f}</b>"
+                ext_pct_text = f"<b>{ext_pct:.1f}%</b>"
+                tgt_pct_text = f"<b>{tgt_pct:.1f}%</b>"
+                var_sign = "+" if variance > 0 else ""
+                var_text = f"<b>{var_sign}{variance:.1f}%</b>"
+            else:
+                label_text = sub_class
+                val_text = f"Rs. {ext_amt:,.2f}"
+                ext_pct_text = f"{ext_pct:.1f}%"
+                tgt_pct_text = f"{tgt_pct:.1f}%"
+                var_sign = "+" if variance > 0 else ""
+                var_text = f"{var_sign}{variance:.1f}%"
+                
+            table_data.append([
+                Paragraph(cat if not is_total else "", cell_style),
+                Paragraph(label_text, cell_style),
+                Paragraph(val_text, cell_style_right),
+                Paragraph(ext_pct_text, cell_style_right),
+                Paragraph(tgt_pct_text, cell_style_right),
+                Paragraph(var_text, cell_style_right)
+            ])
+
+        # Grand Total
+        table_data.append([
+            Paragraph("", cell_style),
+            Paragraph("<b>GRAND TOTAL</b>", cell_style),
+            Paragraph(f"<b>Rs. {existing_total:,.2f}</b>", cell_style_right),
+            Paragraph("<b>100.0%</b>", cell_style_right),
+            Paragraph("<b>100.0%</b>", cell_style_right),
+            Paragraph("<b>0.0%</b>", cell_style_right)
+        ])
+        
+        matrix_table = Table(table_data, colWidths=[1.5*inch, 1.8*inch, 1.4*inch, 0.9*inch, 0.9*inch, 0.9*inch])
+        matrix_table.setStyle(TableStyle([
+            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f8fafc')),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('ALIGN', (2,1), (-1,-1), 'RIGHT'),
+            ('SPAN', (0,1), (0,5)),
+            ('SPAN', (0,6), (0,10)),
+            ('SPAN', (0,11), (0,14)),
+            ('BACKGROUND', (0,5), (-1,5), colors.HexColor('#f1f5f9')),
+            ('BACKGROUND', (0,10), (-1,10), colors.HexColor('#f1f5f9')),
+            ('BACKGROUND', (0,14), (-1,14), colors.HexColor('#f1f5f9')),
+            ('BACKGROUND', (0,15), (-1,15), colors.HexColor('#e2e8f0')),
+            ('PADDING', (0,0), (-1,-1), 3),
+        ]))
+        story.append(matrix_table)
+        story.append(Spacer(1, 10))
+
+        # --- REBALANCING ADVISORY ---
+        story.append(Paragraph("ACTIONABLE REBALANCING RECOMMENDATIONS", heading_style))
+        
+        eq_ext_amt = float(existing_data.get("equities_amount") or 0.0)
+        eq_tgt_pct = float(target_data.get("equities_percentage") or 0.0)
+        eq_tgt_amt = (eq_tgt_pct / 100.0) * existing_total
+        eq_dev = eq_tgt_amt - eq_ext_amt
+
+        dt_ext_amt = float(existing_data.get("debt_securities_amount") or 0.0)
+        dt_tgt_pct = float(target_data.get("debt_securities_percentage") or 0.0)
+        dt_tgt_amt = (dt_tgt_pct / 100.0) * existing_total
+        dt_dev = dt_tgt_amt - dt_ext_amt
+
+        cm_ext_amt = float(existing_data.get("commodities_amount") or 0.0)
+        cm_tgt_pct = float(target_data.get("commodities_percentage") or 0.0)
+        cm_tgt_amt = (cm_tgt_pct / 100.0) * existing_total
+        cm_dev = cm_tgt_amt - cm_ext_amt
+
+        rebal_data = [
+            [
+                Paragraph("<b>Asset Class</b>", col_header_style),
+                Paragraph("<b>Existing Amount</b>", col_header_style),
+                Paragraph("<b>Target Amount</b>", col_header_style),
+                Paragraph("<b>Recommended Action</b>", col_header_style)
+            ]
+        ]
+        
+        for name, ext, tgt, dev in [
+            ("Equities", eq_ext_amt, eq_tgt_amt, eq_dev),
+            ("Debt Securities", dt_ext_amt, dt_tgt_amt, dt_dev),
+            ("Commodities", cm_ext_amt, cm_tgt_amt, cm_dev)
+        ]:
+            if dev > 1.0:
+                action = f"<font color='green'><b>Buy / Invest Rs. {dev:,.0f}</b></font>"
+            elif dev < -1.0:
+                action = f"<font color='red'><b>Sell / Redeem Rs. {abs(dev):,.0f}</b></font>"
+            else:
+                action = "<font color='grey'><b>Aligned (No Action)</b></font>"
+                
+            rebal_data.append([
+                Paragraph(name, cell_style),
+                Paragraph(f"Rs. {ext:,.2f}", cell_style_right),
+                Paragraph(f"Rs. {tgt:,.2f}", cell_style_right),
+                Paragraph(action, cell_style)
+            ])
+            
+        rebal_table = Table(rebal_data, colWidths=[2.0*inch, 1.8*inch, 1.8*inch, 1.8*inch])
+        rebal_table.setStyle(TableStyle([
+            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f8fafc')),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('PADDING', (0,0), (-1,-1), 4),
+        ]))
+        story.append(rebal_table)
+        story.append(Spacer(1, 12))
+
+        # --- DISCLAIMER ---
+        story.append(Paragraph("REGULATORY DISCLAIMER", ParagraphStyle('Heading3Style', parent=styles['Heading3'], fontSize=9, textColor=colors.HexColor('#1a2980'), spaceAfter=4)))
+        
+        disclaimer_text = DEFAULT_ASSET_ALLOCATION_DISCLAIMER
+        if existing_data.get("disclaimer_text"):
+            disclaimer_text = existing_data["disclaimer_text"]
+        elif target_data.get("disclaimer_text"):
+            disclaimer_text = target_data["disclaimer_text"]
+            
+        story.append(Paragraph(disclaimer_text, ParagraphStyle('DisclaimerStyle', parent=styles['Normal'], fontSize=7.5, leading=10, textColor=colors.HexColor('#64748b'), fontName='Helvetica-Oblique')))
+        story.append(Spacer(1, 10))
+
+        # --- SIGNATURES ---
+        sig_style = ParagraphStyle('SigStyleCompare', parent=normal_style, leading=12)
+        sig_data = [
+            [
+                Paragraph("__________________________<br/><b>Client Signature</b><br/>Date: ________________", sig_style),
+                Paragraph("__________________________<br/><b>Advisor Signature</b><br/>Date: ________________", sig_style)
+            ],
+            [
+                Paragraph(f"{client_name}", sig_style),
+                Paragraph(f"{advisor_name}", sig_style)
+            ]
+        ]
+        sig_table = Table(sig_data, colWidths=[3.7*inch, 3.7*inch])
+        sig_table.setStyle(TableStyle([
+            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+            ('VALIGN', (0,0), (-1,-1), 'BOTTOM'),
+            ('BOTTOMPADDING', (0,0), (-1,0), 15),
+        ]))
+        story.append(sig_table)
+
+        doc.build(story, onFirstPage=AssetAllocationReportUtils.add_page_number, onLaterPages=AssetAllocationReportUtils.add_page_number)
+        buffer.seek(0)
+        return buffer
+
+    @staticmethod
     def generate_docx(allocation: AssetAllocation, ia_master: Optional[IAMaster]) -> io.BytesIO:
         doc = Document()
         
