@@ -279,7 +279,7 @@ class AssetAllocationReportUtils:
         story.append(PageBreak())
 
         # --- BLANK TABLES ---
-        story.append(Paragraph("EXISTING PORTFOLIO HOLDINGS & VALUATION", heading_style))
+        story.append(Paragraph("EXISTING PORTFOLIO ALLOCATION WITH VALUES", heading_style))
         story.append(Paragraph("Please write down the current valuation amounts (in Rs.) for all assets you hold in the columns below. The Investment Advisor will calculate the final percentages.", normal_style))
         story.append(Spacer(1, 0.15*inch))
 
@@ -352,6 +352,267 @@ class AssetAllocationReportUtils:
              Paragraph("__________________________<br/><br/><b>Advisor Signature</b><br/><br/>Date: ________________", normal_style)],
             [Paragraph("__________________________", normal_style),
              Paragraph(f"{ia_master.name_of_ia if ia_master else 'Investment Advisor'}", normal_style)]
+        ]
+        sig_table = Table(sig_data, colWidths=[3.5*inch, 3.5*inch])
+        sig_table.setStyle(TableStyle([('ALIGN', (0,0), (-1,-1), 'CENTER'), ('VALIGN', (0,0), (-1,-1), 'BOTTOM'), ('BOTTOMPADDING', (0,0), (-1,0), 30)]))
+        story.append(sig_table)
+
+        doc.build(story, onFirstPage=AssetAllocationReportUtils.add_page_number, onLaterPages=AssetAllocationReportUtils.add_page_number)
+        buffer.seek(0)
+        return buffer
+
+    @staticmethod
+    def generate_existing_pdf(
+        allocation_data: dict, ia_master: Optional[any], ia_logo_path: Optional[str] = None
+    ) -> io.BytesIO:
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.8*inch)
+        
+        # Attach footer data to doc
+        doc.advisor_name = getattr(ia_master, 'name_of_ia', None) or (ia_master.get('name_of_ia') if isinstance(ia_master, dict) else None)
+        doc.entity_name = getattr(ia_master, 'name_of_entity', None) or (ia_master.get('name_of_entity') if isinstance(ia_master, dict) else None)
+        doc.ia_reg_no = getattr(ia_master, 'ia_registration_number', None) or (ia_master.get('ia_registration_number') if isinstance(ia_master, dict) else (ia_master.get('registration_no') if isinstance(ia_master, dict) else None))
+        
+        story = []
+        styles = getSampleStyleSheet()
+
+        # Custom styles
+        cover_title_style = ParagraphStyle(
+            'CoverTitle',
+            parent=styles['Heading1'],
+            fontSize=26,
+            textColor=colors.HexColor('#1a2980'),
+            alignment=1,
+            spaceAfter=40,
+            fontName="Helvetica-Bold",
+            leading=32
+        )
+        cover_subtitle_style = ParagraphStyle('CoverSubTitle', parent=styles['Normal'], fontSize=16, textColor=colors.HexColor('#45B7D1'), alignment=1, spaceAfter=60, fontName="Helvetica")
+        cover_client_style = ParagraphStyle('CoverClient', parent=styles['Normal'], fontSize=18, textColor=colors.black, alignment=1, spaceAfter=15, fontName="Helvetica-Bold")
+        cover_info_style = ParagraphStyle('CoverInfo', parent=styles['Normal'], fontSize=12, textColor=colors.grey, alignment=1, spaceAfter=10, fontName="Helvetica")
+        heading_style = ParagraphStyle('HeadingStyle', parent=styles['Heading2'], fontSize=14, textColor=colors.HexColor('#1a2980'), spaceAfter=12, spaceBefore=20)
+        subheading_style = ParagraphStyle('SubheadingStyle', parent=styles['Heading3'], fontSize=12, textColor=colors.HexColor('#2a5298'), spaceAfter=8, spaceBefore=15)
+        normal_style = ParagraphStyle('NormalStyle', parent=styles['Normal'], fontSize=10, spaceAfter=6)
+
+        # --- COVER PAGE ---
+        story.append(Spacer(1, 1.0*inch))
+        if ia_logo_path and os.path.exists(ia_logo_path):
+            try:
+                story.append(Image(ia_logo_path, width=2.5*inch, height=1.25*inch))
+            except: pass
+        
+        story.append(Spacer(1, 0.4*inch))
+        story.append(Paragraph("EXISTING ASSET ALLOCATION REPORT", cover_title_style))
+        story.append(Paragraph("Existing Portfolio Allocation with values", cover_subtitle_style))
+        story.append(Spacer(1, 0.4*inch))
+        
+        # Grid metadata block for Client Info
+        created_at_str = allocation_data.get("created_at")
+        date_str = ""
+        if created_at_str:
+            try:
+                if created_at_str.endswith('Z'):
+                    created_at_str = created_at_str[:-1] + '+00:00'
+                dt = datetime.fromisoformat(created_at_str)
+                date_str = dt.strftime('%d %B, %Y')
+            except:
+                date_str = datetime.now().strftime('%d %B, %Y')
+        else:
+            date_str = datetime.now().strftime('%d %B, %Y')
+
+        label_style = ParagraphStyle('FormLabel', parent=styles['Normal'], fontSize=9, fontName='Helvetica-Bold', leading=10, textColor=colors.HexColor('#1e293b'))
+        val_style = ParagraphStyle('FormVal', parent=styles['Normal'], fontSize=9, fontName='Helvetica', leading=10, textColor=colors.black)
+        
+        client_name = allocation_data.get("client_name") or "____________________________"
+        client_code = (allocation_data.get("client_code") or "________________").upper()
+        risk_tier = allocation_data.get("assigned_risk_tier") or "________________"
+
+        fields_data = [
+            [Paragraph("<b>Client Name</b>", label_style), Paragraph(client_name, val_style)],
+            [Paragraph("<b>Client Code</b>", label_style), Paragraph(client_code, val_style)],
+            [Paragraph("<b>Assigned Risk Tier</b>", label_style), Paragraph(risk_tier, val_style)],
+            [Paragraph("<b>Date</b>", label_style), Paragraph(date_str, val_style)]
+        ]
+        # Total width 6.0 inches
+        fields_table = Table(fields_data, colWidths=[1.8*inch, 4.2*inch], rowHeights=28)
+        fields_table.setStyle(TableStyle([
+            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
+            ('BACKGROUND', (0,0), (0,-1), colors.HexColor('#f8fafc')),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('PADDING', (0,0), (-1,-1), 6),
+            ('FONTSIZE', (0,0), (-1,-1), 9),
+        ]))
+        story.append(fields_table)
+        
+        story.append(Spacer(1, 1.0*inch))
+        
+        advisor_name = doc.advisor_name or "Investment Advisor"
+        ia_reg_no = doc.ia_reg_no or "N/A"
+        
+        story.append(Paragraph(f"<b>Investment Advisor:</b>", cover_info_style))
+        story.append(Paragraph(f"{advisor_name}", cover_info_style))
+        if ia_reg_no:
+            story.append(Paragraph(f"Registration No: {ia_reg_no}", cover_info_style))
+        
+        story.append(PageBreak())
+
+        # --- REPORT TABLE ---
+        story.append(Paragraph("EXISTING PORTFOLIO ALLOCATION WITH VALUES", heading_style))
+        story.append(Paragraph("The table below details your current holdings, along with the category breakdown and total portfolio percentages.", normal_style))
+        story.append(Spacer(1, 0.15*inch))
+
+        def get_val(key):
+            val = allocation_data.get(key)
+            return float(val) if val is not None else 0.0
+
+        stocks = get_val("stocks_amount")
+        mf_eq = get_val("mutual_fund_equity_amount")
+        ulip_eq = get_val("ulip_equity_amount")
+        etf_eq = get_val("etf_equity_amount")
+        eq_total = get_val("equities_amount")
+
+        fd_bonds = get_val("fixed_deposits_bonds_amount")
+        mf_debt = get_val("mutual_fund_debt_amount")
+        etf_debt = get_val("etf_debt_amount")
+        ulip_debt = get_val("ulip_debt_amount")
+        debt_total = get_val("debt_securities_amount")
+
+        gold = get_val("gold_etf_amount")
+        silver = get_val("silver_etf_amount")
+        etf_comm = get_val("etf_commodity_amount")
+        comm_total = get_val("commodities_amount")
+
+        total = get_val("total_amount")
+
+        # Recalculate totals and percentages dynamically if total is 0.0 to prevent division by zero, and align perfectly.
+        if total <= 0.0:
+            total = eq_total + debt_total + comm_total
+
+        # Recalculate percentages to match amounts perfectly and prevent any mismatch.
+        if total > 0.0:
+            stocks_port = (stocks / total) * 100
+            mf_eq_port = (mf_eq / total) * 100
+            ulip_eq_port = (ulip_eq / total) * 100
+            etf_eq_port = (etf_eq / total) * 100
+            eq_total_port = (eq_total / total) * 100
+
+            fd_bonds_port = (fd_bonds / total) * 100
+            mf_debt_port = (mf_debt / total) * 100
+            etf_debt_port = (etf_debt / total) * 100
+            ulip_debt_port = (ulip_debt / total) * 100
+            debt_total_port = (debt_total / total) * 100
+
+            gold_port = (gold / total) * 100
+            silver_port = (silver / total) * 100
+            etf_comm_port = (etf_comm / total) * 100
+            comm_total_port = (comm_total / total) * 100
+        else:
+            stocks_port = mf_eq_port = ulip_eq_port = etf_eq_port = eq_total_port = 0.0
+            fd_bonds_port = mf_debt_port = etf_debt_port = ulip_debt_port = debt_total_port = 0.0
+            gold_port = silver_port = etf_comm_port = comm_total_port = 0.0
+
+        if eq_total > 0.0:
+            stocks_cat = (stocks / eq_total) * 100
+            mf_eq_cat = (mf_eq / eq_total) * 100
+            ulip_eq_cat = (ulip_eq / eq_total) * 100
+            etf_eq_cat = (etf_eq / eq_total) * 100
+        else:
+            stocks_cat = mf_eq_cat = ulip_eq_cat = etf_eq_cat = 0.0
+
+        if debt_total > 0.0:
+            fd_bonds_cat = (fd_bonds / debt_total) * 100
+            mf_debt_cat = (mf_debt / debt_total) * 100
+            etf_debt_cat = (etf_debt / debt_total) * 100
+            ulip_debt_cat = (ulip_debt / debt_total) * 100
+        else:
+            fd_bonds_cat = mf_debt_cat = etf_debt_cat = ulip_debt_cat = 0.0
+
+        if comm_total > 0.0:
+            gold_cat = (gold / comm_total) * 100
+            silver_cat = (silver / comm_total) * 100
+            etf_comm_cat = (etf_comm / comm_total) * 100
+        else:
+            gold_cat = silver_cat = etf_comm_cat = 0.0
+
+        table_data = [
+            ["Asset Category", "Sub-Asset Class", "Holding Amount (Rs.)", "Category %", "Portfolio %"],
+            
+            # Equities
+            ["Equities", "Share", f"Rs. {stocks:,.2f}", f"{stocks_cat:.1f}%", f"{stocks_port:.1f}%"],
+            ["", "Mutual Fund", f"Rs. {mf_eq:,.2f}", f"{mf_eq_cat:.1f}%", f"{mf_eq_port:.1f}%"],
+            ["", "ULIP", f"Rs. {ulip_eq:,.2f}", f"{ulip_eq_cat:.1f}%", f"{ulip_eq_port:.1f}%"],
+            ["", "ETF", f"Rs. {etf_eq:,.2f}", f"{etf_eq_cat:.1f}%", f"{etf_eq_port:.1f}%"],
+            ["", "Total Equities", f"Rs. {eq_total:,.2f}", "100.0%", f"{eq_total_port:.1f}%"],
+            
+            # Debt
+            ["Debt Securities", "Fixed Deposits & Bonds", f"Rs. {fd_bonds:,.2f}", f"{fd_bonds_cat:.1f}%", f"{fd_bonds_port:.1f}%"],
+            ["", "Mutual Funds (Debt)", f"Rs. {mf_debt:,.2f}", f"{mf_debt_cat:.1f}%", f"{mf_debt_port:.1f}%"],
+            ["", "ETF (Debt)", f"Rs. {etf_debt:,.2f}", f"{etf_debt_cat:.1f}%", f"{etf_debt_port:.1f}%"],
+            ["", "ULIP (Debt)", f"Rs. {ulip_debt:,.2f}", f"{ulip_debt_cat:.1f}%", f"{ulip_debt_port:.1f}%"],
+            ["", "Total Debt", f"Rs. {debt_total:,.2f}", "100.0%", f"{debt_total_port:.1f}%"],
+            
+            # Commodities
+            ["Commodities", "Gold ETF", f"Rs. {gold:,.2f}", f"{gold_cat:.1f}%", f"{gold_port:.1f}%"],
+            ["", "Silver ETF", f"Rs. {silver:,.2f}", f"{silver_cat:.1f}%", f"{silver_port:.1f}%"],
+            ["", "ETF (Commodity)", f"Rs. {etf_comm:,.2f}", f"{etf_comm_cat:.1f}%", f"{etf_comm_port:.1f}%"],
+            ["", "Total Commodities", f"Rs. {comm_total:,.2f}", "100.0%", f"{comm_total_port:.1f}%"],
+            
+            # Grand Total
+            ["GRAND TOTAL", "PORTFOLIO VALUATION", f"Rs. {total:,.2f}", "-", "100.0%"]
+        ]
+
+        t = Table(table_data, colWidths=[1.8*inch, 2.0*inch, 1.4*inch, 0.9*inch, 0.9*inch])
+        t.setStyle(TableStyle([
+            ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+            ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
+            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+            ('ALIGN', (2,0), (-1,-1), 'RIGHT'),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+            ('FONTNAME', (0,-1), (-1,-1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0,0), (-1,-1), 8),
+            ('PADDING', (0,0), (-1,-1), 6),
+            
+            # Category spans
+            ('SPAN', (0, 1), (0, 5)),
+            ('SPAN', (0, 6), (0, 10)),
+            ('SPAN', (0, 11), (0, 14)),
+            
+            # Grand total span
+            ('SPAN', (0, 15), (1, 15)),
+            
+            # Make the category totals stand out
+            ('BACKGROUND', (1, 5), (4, 5), colors.HexColor('#f8fafc')),
+            ('FONTNAME', (1, 5), (4, 5), 'Helvetica-Bold'),
+            ('BACKGROUND', (1, 10), (4, 10), colors.HexColor('#f8fafc')),
+            ('FONTNAME', (1, 10), (4, 10), 'Helvetica-Bold'),
+            ('BACKGROUND', (1, 14), (4, 14), colors.HexColor('#f8fafc')),
+            ('FONTNAME', (1, 14), (4, 14), 'Helvetica-Bold'),
+            ('BACKGROUND', (0, 15), (-1, 15), colors.lightgrey),
+        ]))
+        
+        story.append(t)
+        story.append(Spacer(1, 0.15*inch))
+
+        # Regulatory Disclaimer
+        story.append(Paragraph("DISCLAIMER", heading_style))
+        story.append(Paragraph(DEFAULT_ASSET_ALLOCATION_DISCLAIMER, styles['Italic']))
+
+        custom_disclaimer = allocation_data.get("disclaimer_text")
+        if custom_disclaimer:
+            story.append(Spacer(1, 5))
+            story.append(Paragraph(custom_disclaimer, styles['Italic']))
+
+        story.append(Paragraph("All inputs provided above have been discussed with and confirmed by the client", normal_style))
+        story.append(Spacer(1, 15))
+        
+        # Signatures
+        story.append(Spacer(1, 0.4*inch))
+        sig_data = [
+            [Paragraph("__________________________<br/><br/><b>Client Signature</b><br/><br/>Date: ________________", normal_style),
+             Paragraph("__________________________<br/><br/><b>Advisor Signature</b><br/><br/>Date: ________________", normal_style)],
+            [Paragraph(f"{client_name}", normal_style),
+             Paragraph(f"{advisor_name}", normal_style)]
         ]
         sig_table = Table(sig_data, colWidths=[3.5*inch, 3.5*inch])
         sig_table.setStyle(TableStyle([('ALIGN', (0,0), (-1,-1), 'CENTER'), ('VALIGN', (0,0), (-1,-1), 'BOTTOM'), ('BOTTOMPADDING', (0,0), (-1,0), 30)]))

@@ -82,3 +82,62 @@ async def download_blank_form_pdf(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate blank form: {str(e)}")
+
+
+@router.get("/bridge/allocation/{allocation_id}/pdf")
+async def download_existing_allocation_pdf(
+    allocation_id: str,
+    bridge: BridgeClient = Depends(get_bridge_client),
+    db: Session = Depends(get_db)
+):
+    """Generate and download a specific existing asset allocation report PDF."""
+    try:
+        # 1. Fetch Existing Allocation details from Bridge
+        allocation_data = await bridge.get(f"/existing-asset-allocations/{allocation_id}")
+        if not allocation_data:
+            raise HTTPException(status_code=404, detail="Existing Asset Allocation not found")
+        
+        # 2. Fetch IA Master info from Bridge for branding
+        ia_data = await bridge.get("/ia-master")
+        
+        # IA branding details
+        ia_name = ia_data.get("name_of_ia") or "____________________________"
+        ia_entity = ia_data.get("entity_name") or "____________________________"
+        ia_reg_no = ia_data.get("registration_no") or "________________"
+        ia_logo_key = ia_data.get("ia_logo_path")
+        
+        # 3. Resolve Logo from Bridge storage
+        logo_path = None
+        if ia_logo_key:
+            try:
+                from app.utils.file_utils import resolve_logo_to_local_path
+                url_resp = await bridge.get("/storage/url", params={"key": ia_logo_key})
+                signed_url = url_resp.get("url")
+                if signed_url:
+                    logo_path = await resolve_logo_to_local_path(signed_url, db)
+            except: pass
+
+        # 4. Create mock IA object (since we don't have direct DB access to IAMaster)
+        class MockIA: pass
+        ia = MockIA()
+        ia.name_of_ia = ia_name
+        ia.name_of_entity = ia_entity
+        ia.ia_registration_number = ia_reg_no
+        ia.ia_reg_no = ia_reg_no # Support multiple attribute names
+
+        # 5. Generate PDF
+        pdf_buffer = AssetAllocationReportUtils.generate_existing_pdf(allocation_data, ia, ia_logo_path=logo_path)
+        
+        client_code = allocation_data.get("client_code") or "Report"
+        filename = f"Existing_Asset_Allocation_{client_code.upper()}.pdf"
+
+        return Response(
+            content=pdf_buffer.getvalue(),
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}"
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate existing asset allocation report: {str(e)}")
+
