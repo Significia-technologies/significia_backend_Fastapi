@@ -284,30 +284,30 @@ class AssetAllocationReportUtils:
         story.append(Spacer(1, 0.15*inch))
 
         table_data = [
-            ["Asset Category", "Sub-Asset Class", "Holding Amount (Rs.)", "Calculated % (For Office Use)"],
+            ["Asset Category", "Sub-Asset Class", "Holding Amount (Rs.)"],
             # Equities
-            ["Equities", "Share", "₹ __________________", "__________%"],
-            ["", "Mutual Fund", "₹ __________________", "__________%"],
-            ["", "ULIP", "₹ __________________", "__________%"],
-            ["", "ETF", "₹ __________________", "__________%"],
-            ["", "Total Equities", "₹ __________________", "__________%"],
+            ["Equities", "Share", "Rs. __________________"],
+            ["", "Mutual Fund", "Rs. __________________"],
+            ["", "ULIP", "Rs. __________________"],
+            ["", "ETF", "Rs. __________________"],
+            ["", "Total Equities", "Rs. __________________"],
             # Debt
-            ["Debt Securities", "Fixed Deposits & Bonds", "₹ __________________", "__________%"],
-            ["", "Mutual Funds (Debt)", "₹ __________________", "__________%"],
-            ["", "ETF (Debt)", "₹ __________________", "__________%"],
-            ["", "ULIP (Debt)", "₹ __________________", "__________%"],
-            ["", "Total Debt", "₹ __________________", "__________%"],
+            ["Debt Securities", "Fixed Deposits & Bonds", "Rs. __________________"],
+            ["", "Mutual Funds (Debt)", "Rs. __________________"],
+            ["", "ETF (Debt)", "Rs. __________________"],
+            ["", "ULIP (Debt)", "Rs. __________________"],
+            ["", "Total Debt", "Rs. __________________"],
             # Commodities
-            ["Commodities", "Gold ETF", "₹ __________________", "__________%"],
-            ["", "Silver ETF", "₹ __________________", "__________%"],
-            ["", "ETF (Commodity)", "₹ __________________", "__________%"],
-            ["", "Total Commodities", "₹ __________________", "__________%"],
+            ["Commodities", "Gold ETF", "Rs. __________________"],
+            ["", "Silver ETF", "Rs. __________________"],
+            ["", "ETF (Commodity)", "Rs. __________________"],
+            ["", "Total Commodities", "Rs. __________________"],
             # Grand Total
-            ["GRAND TOTAL", "PORTFOLIO VALUATION", "₹ __________________", "100.0%"]
+            ["GRAND TOTAL", "PORTFOLIO VALUATION", "Rs. __________________"]
         ]
 
-        # 6.5 inch total width
-        t = Table(table_data, colWidths=[1.8*inch, 2.2*inch, 1.8*inch, 1.2*inch])
+        # 7.0 inch total width
+        t = Table(table_data, colWidths=[2.2*inch, 2.6*inch, 2.2*inch])
         t.setStyle(TableStyle([
             ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
             ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
@@ -327,12 +327,12 @@ class AssetAllocationReportUtils:
             ('SPAN', (0, 15), (1, 15)),
             
             # Make the category totals stand out
-            ('BACKGROUND', (1, 5), (3, 5), colors.HexColor('#f8fafc')),
-            ('FONTNAME', (1, 5), (3, 5), 'Helvetica-Bold'),
-            ('BACKGROUND', (1, 10), (3, 10), colors.HexColor('#f8fafc')),
-            ('FONTNAME', (1, 10), (3, 10), 'Helvetica-Bold'),
-            ('BACKGROUND', (1, 14), (3, 14), colors.HexColor('#f8fafc')),
-            ('FONTNAME', (1, 14), (3, 14), 'Helvetica-Bold'),
+            ('BACKGROUND', (1, 5), (2, 5), colors.HexColor('#f8fafc')),
+            ('FONTNAME', (1, 5), (2, 5), 'Helvetica-Bold'),
+            ('BACKGROUND', (1, 10), (2, 10), colors.HexColor('#f8fafc')),
+            ('FONTNAME', (1, 10), (2, 10), 'Helvetica-Bold'),
+            ('BACKGROUND', (1, 14), (2, 14), colors.HexColor('#f8fafc')),
+            ('FONTNAME', (1, 14), (2, 14), 'Helvetica-Bold'),
             ('BACKGROUND', (0, 15), (-1, 15), colors.lightgrey),
         ]))
         
