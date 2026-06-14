@@ -54,6 +54,36 @@ class BaseReportPDF(FPDF):
                 return truncated
         return "..."
 
+    def draw_multiline_cell(self, x, y, w, h, text, font_name, font_style, font_size, text_color, fill_color, border):
+        # Set font
+        self.set_font(font_name, font_style, font_size)
+        self.set_text_color(*text_color)
+        
+        # Normalize text
+        text = self.normalize_text(str(text))
+        
+        # Draw background fill
+        if fill_color:
+            self.set_fill_color(*fill_color)
+            self.rect(x, y, w, h, style='F')
+            
+        # Draw text inside (with a small padding: 1mm left/right, 1.25mm top/bottom)
+        self.set_xy(x + 1, y + 1.25)
+        self.multi_cell(w - 2, 4.5, text, border=0, fill=False)
+        
+        # Draw borders
+        self.set_draw_color(210, 215, 220) # border_grey
+        self.set_line_width(0.2)
+        if border:
+            if 'L' in border:
+                self.line(x, y, x, y + h)
+            if 'T' in border:
+                self.line(x, y, x + w, y)
+            if 'R' in border:
+                self.line(x + w, y, x + w, y + h)
+            if 'B' in border:
+                self.line(x, y + h, x + w, y + h)
+
     def header(self):
         # Only show header on pages after the cover page (Page 1)
         if self.page_no() > 1:
