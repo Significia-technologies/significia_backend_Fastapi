@@ -7,7 +7,7 @@ from app.api.v1 import (
     bridge_routes, ia_auth_routes, billing_routes, public_routes, tenant_routes,
     team_routes, email_routes, rectification_routes, department_routes,
     product_master_routes, investor_master_routes, investor_ips_routes,
-    target_portfolio_routes, investment_advice_routes,
+    target_portfolio_routes, investment_advice_routes, existing_asset_allocation_routes,
 )
 
 api_router = APIRouter()
@@ -41,6 +41,7 @@ api_router.include_router(ia_master_routes.router, prefix="/ia-master", tags=["M
 api_router.include_router(financial_analysis_routes.router, prefix="/financial-analysis", tags=["Financial Analysis"], dependencies=[Depends(require_profile_completed)])
 api_router.include_router(risk_profile_routes.router, prefix="/risk-profile", tags=["Risk Profile"], dependencies=[Depends(require_profile_completed)])
 api_router.include_router(asset_allocation_routes.router, prefix="/asset-allocation", tags=["Asset Allocation"], dependencies=[Depends(require_profile_completed)])
+api_router.include_router(existing_asset_allocation_routes.router, prefix="/existing-asset-allocation", tags=["Existing Asset Allocation"], dependencies=[Depends(require_profile_completed)])
 api_router.include_router(email_routes.router, prefix="/email", tags=["Email Management"], dependencies=[Depends(require_profile_completed)])
 api_router.include_router(product_master_routes.router, prefix="/product-master", tags=["Product Master"], dependencies=[Depends(require_profile_completed)])
 api_router.include_router(investor_master_routes.router, prefix="/portfolio", tags=["Investor Master"], dependencies=[Depends(require_profile_completed)])
