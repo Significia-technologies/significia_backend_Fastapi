@@ -69,7 +69,8 @@ class BaseReportPDF(FPDF):
             
         # Draw text inside (with a small padding: 1mm left/right, 1.25mm top/bottom)
         self.set_xy(x + 1, y + 1.25)
-        self.multi_cell(w - 2, 4.5, text, border=0, fill=False)
+        line_h = 4.0 if font_size <= 9 else 4.5
+        self.multi_cell(w - 2, line_h, text, border=0, fill=False, align='L')
         
         # Draw borders
         self.set_draw_color(210, 215, 220) # border_grey
@@ -557,25 +558,38 @@ class ClientPDFGenerator:
                         pdf.set_font("helvetica", "", 9)
                         pdf.set_text_color(*text_black)
                         # Slightly closer spacing for multi-line blocks
-                        pdf.multi_cell(0, 5, f" {val1}", border='LBR', fill=True)
+                        pdf.multi_cell(0, 5, f" {val1}", border='LBR', fill=True, align='L')
                     else:
                         pdf.set_font("helvetica", "I", 9)
                         pdf.set_text_color(*text_black)
-                        pdf.multi_cell(0, 5, f" {val1}", border=1, fill=True)
+                        pdf.multi_cell(0, 5, f" {val1}", border=1, fill=True, align='L')
                     
                     i += 1
                 elif field2:
                     val2 = str(field2[1]) if str(field2[1]).strip() != "" else "N/A"
                     
                     # Calculate required row height
+                    # label1 (width 40, text_width 38)
+                    pdf.set_font("helvetica", "B", 9)
+                    lines_l1 = pdf.multi_cell(38, 4.0, f" {field1[0]}", split_only=True)
+                    hl1 = len(lines_l1) * 4.0 + 2.5
+                    
+                    # value1 (width 55, text_width 53)
                     pdf.set_font("helvetica", "", 10)
                     lines1 = pdf.multi_cell(53, 4.5, f" {val1}", split_only=True)
                     h1 = len(lines1) * 4.5 + 2.5
                     
+                    # label2 (width 40, text_width 38)
+                    pdf.set_font("helvetica", "B", 9)
+                    lines_l2 = pdf.multi_cell(38, 4.0, f" {field2[0]}", split_only=True)
+                    hl2 = len(lines_l2) * 4.0 + 2.5
+                    
+                    # value2 (width 55, text_width 53)
+                    pdf.set_font("helvetica", "", 10)
                     lines2 = pdf.multi_cell(53, 4.5, f" {val2}", split_only=True)
                     h2 = len(lines2) * 4.5 + 2.5
                     
-                    row_height = max(7.5, h1, h2)
+                    row_height = max(7.5, h1, h2, hl1, hl2)
                     
                     # Ensure it fits on page, if not, add page
                     if pdf.get_y() + row_height > 275:
@@ -605,9 +619,17 @@ class ClientPDFGenerator:
                     i += 2
                 else:
                     # Calculate required row height for single column
+                    # label1 (width 40, text_width 38)
+                    pdf.set_font("helvetica", "B", 9)
+                    lines_l1 = pdf.multi_cell(38, 4.0, f" {field1[0]}", split_only=True)
+                    hl1 = len(lines_l1) * 4.0 + 2.5
+                    
+                    # value1 (width 150, text_width 148)
                     pdf.set_font("helvetica", "", 10)
                     lines1 = pdf.multi_cell(148, 4.5, f" {val1}", split_only=True)
-                    row_height = max(7.5, len(lines1) * 4.5 + 2.5)
+                    h1 = len(lines1) * 4.5 + 2.5
+                    
+                    row_height = max(7.5, h1, hl1)
                     
                     if pdf.get_y() + row_height > 275:
                         pdf.add_page()
