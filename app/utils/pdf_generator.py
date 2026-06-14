@@ -42,6 +42,18 @@ class BaseReportPDF(FPDF):
                 
         return super().normalize_text(text)
 
+    def truncate_text(self, text, max_width):
+        if not text:
+            return ""
+        text = self.normalize_text(str(text))
+        if self.get_string_width(text) <= max_width:
+            return text
+        for i in range(len(text), 0, -1):
+            truncated = text[:i] + "..."
+            if self.get_string_width(truncated) <= max_width:
+                return truncated
+        return "..."
+
     def header(self):
         # Only show header on pages after the cover page (Page 1)
         if self.page_no() > 1:
@@ -218,7 +230,8 @@ class IAPDFGenerator:
                 pdf.cell(40, 9, f" {f1_label}", border='LTB', fill=False)
                 pdf.set_font("helvetica", "", 10)
                 pdf.set_text_color(0, 0, 0) # Solid black
-                pdf.cell(55, 9, f" {f1_val or 'N/A'}", border='RTB', fill=False)
+                f1_val_str = pdf.truncate_text(f" {f1_val or 'N/A'}", 53)
+                pdf.cell(55, 9, f1_val_str, border='RTB', fill=False)
                 
                 # Right Column
                 if i + 1 < len(fields):
@@ -229,7 +242,8 @@ class IAPDFGenerator:
                     pdf.cell(40, 9, f" {f2_label}", border='LTB', fill=False)
                     pdf.set_font("helvetica", "", 10)
                     pdf.set_text_color(0, 0, 0) # Solid black
-                    pdf.cell(55, 9, f" {f2_val or 'N/A'}", border='RTB', fill=False)
+                    f2_val_str = pdf.truncate_text(f" {f2_val or 'N/A'}", 53)
+                    pdf.cell(55, 9, f2_val_str, border='RTB', fill=False)
                 
                 pdf.ln(12)
 
@@ -501,9 +515,6 @@ class ClientPDFGenerator:
                     if not (len(temp_fields[i+1]) > 2 and temp_fields[i+1][2]):
                         field2 = temp_fields[i+1]
 
-                pdf.set_fill_color(255, 255, 255) if (i // 2) % 2 == 0 else pdf.set_fill_color(254, 254, 254)
-
-                start_y = pdf.get_y()
                 val1 = str(field1[1]) if str(field1[1]).strip() != "" else "N/A"
 
                 if is_full1:
@@ -524,31 +535,66 @@ class ClientPDFGenerator:
                     
                     i += 1
                 elif field2:
-                    pdf.set_font("helvetica", "B", 9)
-                    pdf.set_text_color(*text_muted)
-                    pdf.set_draw_color(*border_grey)
-                    pdf.cell(40, row_h, f" {field1[0]}", border='LBR', fill=True)
-                    
-                    pdf.set_font("helvetica", "", 10)
-                    pdf.set_text_color(*text_black)
-                    pdf.cell(55, row_h, f" {val1}", border='BR', fill=True)
-                    
-                    pdf.set_font("helvetica", "B", 9)
-                    pdf.set_text_color(*text_muted)
-                    pdf.cell(40, row_h, f" {field2[0]}", border='BR', fill=True)
-                    
-                    pdf.set_font("helvetica", "", 10)
-                    pdf.set_text_color(*text_black)
                     val2 = str(field2[1]) if str(field2[1]).strip() != "" else "N/A"
-                    pdf.cell(55, row_h, f" {val2}", border='RBR', fill=True, ln=True)
+                    
+                    # Calculate required row height
+                    pdf.set_font("helvetica", "", 10)
+                    lines1 = pdf.multi_cell(53, 4.5, f" {val1}", split_only=True)
+                    h1 = len(lines1) * 4.5 + 2.5
+                    
+                    lines2 = pdf.multi_cell(53, 4.5, f" {val2}", split_only=True)
+                    h2 = len(lines2) * 4.5 + 2.5
+                    
+                    row_height = max(7.5, h1, h2)
+                    
+                    # Ensure it fits on page, if not, add page
+                    if pdf.get_y() + row_height > 275:
+                        pdf.add_page()
+                    
+                    start_x = pdf.get_x()
+                    start_y = pdf.get_y()
+                    
+                    # Draw Cell 1 (label1)
+                    pdf.draw_multiline_cell(start_x, start_y, 40, row_height, f" {field1[0]}", 
+                                            "helvetica", "B", 9, text_muted, (255, 255, 255) if (i // 2) % 2 == 0 else (254, 254, 254), "LBR")
+                    
+                    # Draw Cell 2 (value1)
+                    pdf.draw_multiline_cell(start_x + 40, start_y, 55, row_height, f" {val1}", 
+                                            "helvetica", "", 10, text_black, (255, 255, 255), "BR")
+                    
+                    # Draw Cell 3 (label2)
+                    pdf.draw_multiline_cell(start_x + 95, start_y, 40, row_height, f" {field2[0]}", 
+                                            "helvetica", "B", 9, text_muted, (255, 255, 255) if (i // 2) % 2 == 0 else (254, 254, 254), "BR")
+                    
+                    # Draw Cell 4 (value2)
+                    pdf.draw_multiline_cell(start_x + 135, start_y, 55, row_height, f" {val2}", 
+                                            "helvetica", "", 10, text_black, (255, 255, 255), "RBR")
+                    
+                    # Move cursor down to next row
+                    pdf.set_xy(start_x, start_y + row_height)
                     i += 2
                 else:
-                    pdf.set_font("helvetica", "B", 9)
-                    pdf.set_text_color(*text_muted)
-                    pdf.cell(40, row_h, f" {field1[0]}", border='LBR', fill=True)
+                    # Calculate required row height for single column
                     pdf.set_font("helvetica", "", 10)
-                    pdf.set_text_color(*text_black)
-                    pdf.cell(0, row_h, f" {val1}", border='RBR', fill=True, ln=True)
+                    lines1 = pdf.multi_cell(148, 4.5, f" {val1}", split_only=True)
+                    row_height = max(7.5, len(lines1) * 4.5 + 2.5)
+                    
+                    if pdf.get_y() + row_height > 275:
+                        pdf.add_page()
+                        
+                    start_x = pdf.get_x()
+                    start_y = pdf.get_y()
+                    
+                    # Draw Cell 1 (label1)
+                    pdf.draw_multiline_cell(start_x, start_y, 40, row_height, f" {field1[0]}", 
+                                            "helvetica", "B", 9, text_muted, (255, 255, 255) if (i // 2) % 2 == 0 else (254, 254, 254), "LBR")
+                    
+                    # Draw Cell 2 (value1)
+                    pdf.draw_multiline_cell(start_x + 40, start_y, 150, row_height, f" {val1}", 
+                                            "helvetica", "", 10, text_black, (255, 255, 255), "RBR")
+                                        
+                    # Move cursor down to next row
+                    pdf.set_xy(start_x, start_y + row_height)
                     i += 1
             if not is_last:
                 pdf.ln(3)
@@ -604,7 +650,7 @@ class ClientPDFGenerator:
                 ("Assigned To", client_data.get("assigned_person_info") or "N/A"),
                 ("CKYC Verified", "Yes" if client_data.get("kyc_verified") else "No"),
                 ("CKYC Number", client_data.get("ckyc_number") or "N/A"),
-                ("IPV Performer", client_data.get("ipv_done_by_name") or "N/A"),
+                ("IPV Verifier", client_data.get("ipv_done_by_name") or "N/A"),
                 ("IPV Date", ClientPDFGenerator._fmt_dt(client_data.get("ipv_date")) if client_data.get("ipv_date") else "N/A"),
             ]),
             ("Financial Profile", [
