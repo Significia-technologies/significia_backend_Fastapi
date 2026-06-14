@@ -994,36 +994,39 @@ class AssetAllocationReportUtils:
         story.append(Spacer(1, 0.4*inch))
         
         # Grid metadata block for Client Info
-        created_at_str = existing_data.get("created_at") or target_data.get("created_at")
-        date_str = ""
-        if created_at_str:
-            try:
-                if created_at_str.endswith('Z'):
-                    created_at_str = created_at_str[:-1] + '+00:00'
-                dt = datetime.fromisoformat(created_at_str)
-                date_str = dt.strftime('%d %B, %Y')
-            except:
-                date_str = datetime.now().strftime('%d %B, %Y')
-        else:
-            date_str = datetime.now().strftime('%d %B, %Y')
-
         label_style = ParagraphStyle('FormLabelCompare', parent=styles['Normal'], fontSize=9, fontName='Helvetica-Bold', leading=10, textColor=colors.HexColor('#1e293b'))
         val_style = ParagraphStyle('FormValCompare', parent=styles['Normal'], fontSize=9, fontName='Helvetica', leading=10, textColor=colors.black)
-        
+
+        def _parse_date(raw: str) -> str:
+            if not raw:
+                return "—"
+            try:
+                if raw.endswith('Z'):
+                    raw = raw[:-1] + '+00:00'
+                return datetime.fromisoformat(raw).strftime('%d %B, %Y')
+            except:
+                return raw
+
+        existing_date_str = _parse_date(existing_data.get("created_at"))
+        target_date_str   = _parse_date(target_data.get("created_at"))
+
         client_name = existing_data.get("client_name") or target_data.get("client_name") or "____________________________"
         client_code = ((existing_data.get("client_code") or target_data.get("client_code") or "________________")).upper()
-        risk_tier = existing_data.get("assigned_risk_tier") or target_data.get("assigned_risk_tier") or "________________"
+        risk_tier   = existing_data.get("assigned_risk_tier") or target_data.get("assigned_risk_tier") or "________________"
 
         fields_data = [
-            [Paragraph("<b>Client Name</b>", label_style), Paragraph(client_name, val_style)],
-            [Paragraph("<b>Client Code</b>", label_style), Paragraph(client_code, val_style)],
-            [Paragraph("<b>Assigned Risk Profile</b>", label_style), Paragraph(risk_tier, val_style)],
-            [Paragraph("<b>Date of Analysis</b>", label_style), Paragraph(date_str, val_style)]
+            [Paragraph("<b>Client Name</b>", label_style),              Paragraph(client_name, val_style)],
+            [Paragraph("<b>Client Code</b>", label_style),              Paragraph(client_code, val_style)],
+            [Paragraph("<b>Assigned Risk Profile</b>", label_style),    Paragraph(risk_tier, val_style)],
+            [Paragraph("<b>Existing Portfolio Date</b>", label_style),  Paragraph(existing_date_str, val_style)],
+            [Paragraph("<b>Target Allocation Date</b>", label_style),   Paragraph(target_date_str, val_style)],
+            [Paragraph("<b>Report Generated On</b>", label_style),      Paragraph(datetime.now().strftime('%d %B, %Y'), val_style)],
         ]
-        fields_table = Table(fields_data, colWidths=[1.8*inch, 4.2*inch], rowHeights=28)
+        fields_table = Table(fields_data, colWidths=[1.8*inch, 4.2*inch], rowHeights=26)
         fields_table.setStyle(TableStyle([
             ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
             ('BACKGROUND', (0,0), (0,-1), colors.HexColor('#f8fafc')),
+            ('BACKGROUND', (0,3), (-1,4), colors.HexColor('#eff6ff')),   # highlight the two date rows
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
             ('PADDING', (0,0), (-1,-1), 6),
         ]))
@@ -1050,91 +1053,77 @@ class AssetAllocationReportUtils:
         
         story.append(PageBreak())
 
-        # --- PAGE 2: COMPARATIVE MATRIX & REBALANCING ---
+        # --- PAGE 2: COMPARATIVE MATRIX & CHARTS ---
         story.append(Paragraph("ASSET ALLOCATION COMPARISON MATRIX", heading_style))
         
         col_header_style = ParagraphStyle('ColHeaderCompare', parent=styles['Normal'], fontSize=8.5, fontName='Helvetica-Bold', leading=10, textColor=colors.HexColor('#1e293b'))
         cell_style = ParagraphStyle('CellCompare', parent=styles['Normal'], fontSize=8, leading=9, textColor=colors.black)
         cell_style_right = ParagraphStyle('CellCompareRight', parent=styles['Normal'], fontSize=8, leading=9, alignment=2, textColor=colors.black)
-        
+
+        # --- Table: Existing % vs Target % vs Variance (NO amounts) ---
         table_data = [
             [
                 Paragraph("<b>Asset Category</b>", col_header_style),
                 Paragraph("<b>Sub-Asset Class</b>", col_header_style),
-                Paragraph("<b>Existing Value</b>", col_header_style),
                 Paragraph("<b>Existing %</b>", col_header_style),
                 Paragraph("<b>Target %</b>", col_header_style),
-                Paragraph("<b>Variance %</b>", col_header_style)
+                Paragraph("<b>Variance %</b>", col_header_style),
             ]
         ]
-        
-        existing_total = float(existing_data.get("total_amount") or 0.0)
-        
+
         items = [
-            # Equities
-            ("Equities", "Direct Equity (Stocks)", "stocks_amount", "stocks_percentage", "stocks_percentage"),
-            ("Equities", "Mutual Funds (Equity)", "mutual_fund_equity_amount", "mutual_fund_equity_percentage", "mutual_fund_equity_percentage"),
-            ("Equities", "ULIPs (Equity)", "ulip_equity_amount", "ulip_equity_percentage", "ulip_equity_percentage"),
-            ("Equities", "ETFs (Equity)", "etf_equity_amount", "etf_equity_percentage", "etf_equity_percentage"),
-            ("Equities", "EQUITIES TOTAL", "equities_amount", "equities_percentage", "equities_percentage"),
-            
-            # Debt Securities
-            ("Debt Securities", "Fixed Deposits & Bonds", "fixed_deposits_bonds_amount", "fixed_deposits_bonds_percentage", "fixed_deposits_bonds_percentage"),
-            ("Debt Securities", "Mutual Funds (Debt)", "mutual_fund_debt_amount", "mutual_fund_debt_percentage", "mutual_fund_debt_percentage"),
-            ("Debt Securities", "ULIPs (Debt)", "ulip_debt_amount", "ulip_debt_percentage", "ulip_debt_percentage"),
-            ("Debt Securities", "ETFs (Debt)", "etf_debt_amount", "etf_debt_percentage", "etf_debt_percentage"),
-            ("Debt Securities", "DEBT SECURITIES TOTAL", "debt_securities_amount", "debt_securities_percentage", "debt_securities_percentage"),
-            
-            # Commodities
-            ("Commodities", "Gold ETFs", "gold_etf_amount", "gold_etf_percentage", "gold_etf_percentage"),
-            ("Commodities", "Silver ETFs", "silver_etf_amount", "silver_etf_percentage", "silver_etf_percentage"),
-            ("Commodities", "Other ETFs (Commodity)", "etf_commodity_amount", "etf_commodity_percentage", "etf_commodity_percentage"),
-            ("Commodities", "COMMODITIES TOTAL", "commodities_amount", "commodities_percentage", "commodities_percentage"),
+            ("Equities", "Direct Equity (Stocks)", "stocks_percentage", "stocks_percentage"),
+            ("Equities", "Mutual Funds (Equity)", "mutual_fund_equity_percentage", "mutual_fund_equity_percentage"),
+            ("Equities", "ULIPs (Equity)", "ulip_equity_percentage", "ulip_equity_percentage"),
+            ("Equities", "ETFs (Equity)", "etf_equity_percentage", "etf_equity_percentage"),
+            ("Equities", "EQUITIES TOTAL", "equities_percentage", "equities_percentage"),
+            ("Debt Securities", "Fixed Deposits & Bonds", "fixed_deposits_bonds_percentage", "fixed_deposits_bonds_percentage"),
+            ("Debt Securities", "Mutual Funds (Debt)", "mutual_fund_debt_percentage", "mutual_fund_debt_percentage"),
+            ("Debt Securities", "ULIPs (Debt)", "ulip_debt_percentage", "ulip_debt_percentage"),
+            ("Debt Securities", "ETFs (Debt)", "etf_debt_percentage", "etf_debt_percentage"),
+            ("Debt Securities", "DEBT SECURITIES TOTAL", "debt_securities_percentage", "debt_securities_percentage"),
+            ("Commodities", "Gold ETFs", "gold_etf_percentage", "gold_etf_percentage"),
+            ("Commodities", "Silver ETFs", "silver_etf_percentage", "silver_etf_percentage"),
+            ("Commodities", "Other ETFs (Commodity)", "etf_commodity_percentage", "etf_commodity_percentage"),
+            ("Commodities", "COMMODITIES TOTAL", "commodities_percentage", "commodities_percentage"),
         ]
 
-        for cat, sub_class, ext_amt_key, ext_pct_key, tgt_pct_key in items:
-            ext_amt = float(existing_data.get(ext_amt_key) or 0.0)
+        for cat, sub_class, ext_pct_key, tgt_pct_key in items:
             ext_pct = float(existing_data.get(ext_pct_key) or 0.0)
             tgt_pct = float(target_data.get(tgt_pct_key) or 0.0)
             variance = ext_pct - tgt_pct
-            
+            var_sign = "+" if variance > 0 else ""
             is_total = sub_class.endswith("TOTAL")
-            
+
             if is_total:
                 label_text = f"<b>{sub_class}</b>"
-                val_text = f"<b>Rs. {ext_amt:,.2f}</b>"
-                ext_pct_text = f"<b>{ext_pct:.1f}%</b>"
-                tgt_pct_text = f"<b>{tgt_pct:.1f}%</b>"
-                var_sign = "+" if variance > 0 else ""
+                ext_text = f"<b>{ext_pct:.1f}%</b>"
+                tgt_text = f"<b>{tgt_pct:.1f}%</b>"
                 var_text = f"<b>{var_sign}{variance:.1f}%</b>"
             else:
                 label_text = sub_class
-                val_text = f"Rs. {ext_amt:,.2f}"
-                ext_pct_text = f"{ext_pct:.1f}%"
-                tgt_pct_text = f"{tgt_pct:.1f}%"
-                var_sign = "+" if variance > 0 else ""
+                ext_text = f"{ext_pct:.1f}%"
+                tgt_text = f"{tgt_pct:.1f}%"
                 var_text = f"{var_sign}{variance:.1f}%"
-                
+
             table_data.append([
                 Paragraph(cat if not is_total else "", cell_style),
                 Paragraph(label_text, cell_style),
-                Paragraph(val_text, cell_style_right),
-                Paragraph(ext_pct_text, cell_style_right),
-                Paragraph(tgt_pct_text, cell_style_right),
-                Paragraph(var_text, cell_style_right)
+                Paragraph(ext_text, cell_style_right),
+                Paragraph(tgt_text, cell_style_right),
+                Paragraph(var_text, cell_style_right),
             ])
 
-        # Grand Total
+        # Grand Total row
         table_data.append([
             Paragraph("", cell_style),
             Paragraph("<b>GRAND TOTAL</b>", cell_style),
-            Paragraph(f"<b>Rs. {existing_total:,.2f}</b>", cell_style_right),
             Paragraph("<b>100.0%</b>", cell_style_right),
             Paragraph("<b>100.0%</b>", cell_style_right),
-            Paragraph("<b>0.0%</b>", cell_style_right)
+            Paragraph("<b>0.0%</b>", cell_style_right),
         ])
-        
-        matrix_table = Table(table_data, colWidths=[1.5*inch, 1.8*inch, 1.4*inch, 0.9*inch, 0.9*inch, 0.9*inch])
+
+        matrix_table = Table(table_data, colWidths=[1.5*inch, 2.2*inch, 1.1*inch, 1.1*inch, 1.1*inch])
         matrix_table.setStyle(TableStyle([
             ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f8fafc')),
@@ -1150,63 +1139,144 @@ class AssetAllocationReportUtils:
             ('PADDING', (0,0), (-1,-1), 3),
         ]))
         story.append(matrix_table)
+        story.append(Spacer(1, 14))
+
+        # --- HELPER: Premium Grouped Bar Chart (Existing vs Target %) ---
+        def make_grouped_bar_chart(title: str, labels: list, existing_vals: list, target_vals: list,
+                                   bar_color: str = '#6366f1', target_color: str = '#a5b4fc') -> bytes:
+            n = len(labels)
+            x = list(range(n))
+            bar_w = 0.35
+            fig, ax = plt.subplots(figsize=(6.5, 3.2))
+            fig.patch.set_facecolor('white')
+            ax.set_facecolor('#fafafa')
+
+            # Draw bars
+            bars_e = ax.bar([i - bar_w/2 for i in x], existing_vals, bar_w,
+                            label='Existing %', color=bar_color, alpha=0.92,
+                            edgecolor='white', linewidth=0.8, zorder=3)
+            bars_t = ax.bar([i + bar_w/2 for i in x], target_vals, bar_w,
+                            label='Target %', color=target_color, alpha=0.75,
+                            edgecolor=bar_color, linewidth=1.2,
+                            linestyle='--', zorder=3)
+
+            # Value labels above bars
+            for bar in bars_e:
+                h = bar.get_height()
+                if h >= 0:
+                    ax.text(bar.get_x() + bar.get_width()/2, h + 0.5,
+                            f'{h:.1f}%', ha='center', va='bottom',
+                            fontsize=7, fontweight='bold', color=bar_color)
+            for bar in bars_t:
+                h = bar.get_height()
+                if h >= 0:
+                    ax.text(bar.get_x() + bar.get_width()/2, h + 0.5,
+                            f'{h:.1f}%', ha='center', va='bottom',
+                            fontsize=7, fontweight='bold', color=bar_color, alpha=0.75)
+
+            # Variance delta label below x-axis per group
+            y_min = ax.get_ylim()[0]
+            for i, (ev, tv) in enumerate(zip(existing_vals, target_vals)):
+                diff = ev - tv
+                sign = '+' if diff > 0 else ''
+                col = '#dc2626' if diff > 1 else '#16a34a' if diff < -1 else '#9ca3af'
+                ax.text(i, -max(existing_vals + target_vals) * 0.09,
+                        f'{sign}{diff:.1f}%', ha='center', va='top',
+                        fontsize=6.5, fontweight='bold', color=col,
+                        transform=ax.transData)
+
+            # Axes styling
+            ax.set_xticks(x)
+            ax.set_xticklabels(labels, fontsize=8.5, fontweight='600')
+            ax.set_ylabel('Allocation (%)', fontsize=8, labelpad=6)
+            ax.set_title(title, fontsize=10.5, fontweight='bold', pad=12, color='#1e293b')
+            ax.tick_params(axis='y', labelsize=7.5)
+
+            # Grid and spines
+            ax.yaxis.grid(True, alpha=0.25, linestyle='--', color='#94a3b8')
+            ax.set_axisbelow(True)
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.spines['left'].set_color('#e2e8f0')
+            ax.spines['bottom'].set_color('#e2e8f0')
+
+            # Extend y-axis slightly for labels
+            cur_max = max(existing_vals + target_vals) if existing_vals + target_vals else 10
+            ax.set_ylim(-cur_max * 0.12, cur_max * 1.22)
+
+            # Legend
+            leg = ax.legend(fontsize=8, loc='upper right', framealpha=0.9,
+                            edgecolor='#e2e8f0', fancybox=True)
+            leg.get_frame().set_linewidth(0.8)
+
+            # Outer border
+            for spine in ax.spines.values():
+                spine.set_linewidth(0.8)
+
+            fig.tight_layout(pad=1.4)
+            buf = io.BytesIO()
+            plt.savefig(buf, format='png', dpi=130, bbox_inches='tight',
+                        facecolor='white', edgecolor='none')
+            buf.seek(0)
+            plt.close(fig)
+            return buf.getvalue()
+
+        def get_e(key): return float(existing_data.get(key) or 0.0)
+        def get_t(key): return float(target_data.get(key) or 0.0)
+
+        # --- Chart 1 flows directly after the matrix table (fills blank space on same page) ---
         story.append(Spacer(1, 10))
+        story.append(Paragraph("MAIN ASSET CLASS COMPARISON", heading_style))
+        chart1_bytes = make_grouped_bar_chart(
+            "Equities vs Debt vs Commodities (Existing vs Target %)",
+            ["Equities", "Debt Securities", "Commodities"],
+            [get_e("equities_percentage"), get_e("debt_securities_percentage"), get_e("commodities_percentage")],
+            [get_t("equities_percentage"), get_t("debt_securities_percentage"), get_t("commodities_percentage")],
+            bar_color='#7c3aed', target_color='#c4b5fd'
+        )
+        story.append(Image(io.BytesIO(chart1_bytes), width=6.5*inch, height=3.0*inch))
 
-        # --- REBALANCING ADVISORY ---
-        story.append(Paragraph("ACTIONABLE REBALANCING RECOMMENDATIONS", heading_style))
-        
-        eq_ext_amt = float(existing_data.get("equities_amount") or 0.0)
-        eq_tgt_pct = float(target_data.get("equities_percentage") or 0.0)
-        eq_tgt_amt = (eq_tgt_pct / 100.0) * existing_total
-        eq_dev = eq_tgt_amt - eq_ext_amt
+        # --- Sub-asset charts start on a new page ---
+        story.append(PageBreak())
+        story.append(Paragraph("SUB-ASSET ALLOCATION COMPARISON CHARTS", heading_style))
+        story.append(Paragraph(
+            "Detailed percentage comparison of existing vs target allocation across each sub-asset class.",
+            ParagraphStyle('ChartSubtitle', parent=styles['Normal'], fontSize=8.5, leading=12,
+                           textColor=colors.HexColor('#64748b'), spaceAfter=14)
+        ))
 
-        dt_ext_amt = float(existing_data.get("debt_securities_amount") or 0.0)
-        dt_tgt_pct = float(target_data.get("debt_securities_percentage") or 0.0)
-        dt_tgt_amt = (dt_tgt_pct / 100.0) * existing_total
-        dt_dev = dt_tgt_amt - dt_ext_amt
+        # Chart 2: Equities sub-assets
+        chart2_bytes = make_grouped_bar_chart(
+            "Equities Sub-Asset Breakdown (%)",
+            ["Stocks", "MF Equity", "ULIP Eq.", "ETF Eq."],
+            [get_e("stocks_percentage"), get_e("mutual_fund_equity_percentage"), get_e("ulip_equity_percentage"), get_e("etf_equity_percentage")],
+            [get_t("stocks_percentage"), get_t("mutual_fund_equity_percentage"), get_t("ulip_equity_percentage"), get_t("etf_equity_percentage")],
+            bar_color='#ec4899', target_color='#fbcfe8'
+        )
+        story.append(Image(io.BytesIO(chart2_bytes), width=6.5*inch, height=3.0*inch))
+        story.append(Spacer(1, 16))
 
-        cm_ext_amt = float(existing_data.get("commodities_amount") or 0.0)
-        cm_tgt_pct = float(target_data.get("commodities_percentage") or 0.0)
-        cm_tgt_amt = (cm_tgt_pct / 100.0) * existing_total
-        cm_dev = cm_tgt_amt - cm_ext_amt
+        # Chart 3: Debt sub-assets
+        chart3_bytes = make_grouped_bar_chart(
+            "Debt Securities Sub-Asset Breakdown (%)",
+            ["FD & Bonds", "MF Debt", "ULIP Debt", "ETF Debt"],
+            [get_e("fixed_deposits_bonds_percentage"), get_e("mutual_fund_debt_percentage"), get_e("ulip_debt_percentage"), get_e("etf_debt_percentage")],
+            [get_t("fixed_deposits_bonds_percentage"), get_t("mutual_fund_debt_percentage"), get_t("ulip_debt_percentage"), get_t("etf_debt_percentage")],
+            bar_color='#0ea5e9', target_color='#bae6fd'
+        )
+        story.append(Image(io.BytesIO(chart3_bytes), width=6.5*inch, height=3.0*inch))
+        story.append(Spacer(1, 16))
 
-        rebal_data = [
-            [
-                Paragraph("<b>Asset Class</b>", col_header_style),
-                Paragraph("<b>Existing Amount</b>", col_header_style),
-                Paragraph("<b>Target Amount</b>", col_header_style),
-                Paragraph("<b>Recommended Action</b>", col_header_style)
-            ]
-        ]
-        
-        for name, ext, tgt, dev in [
-            ("Equities", eq_ext_amt, eq_tgt_amt, eq_dev),
-            ("Debt Securities", dt_ext_amt, dt_tgt_amt, dt_dev),
-            ("Commodities", cm_ext_amt, cm_tgt_amt, cm_dev)
-        ]:
-            if dev > 1.0:
-                action = f"<font color='green'><b>Buy / Invest Rs. {dev:,.0f}</b></font>"
-            elif dev < -1.0:
-                action = f"<font color='red'><b>Sell / Redeem Rs. {abs(dev):,.0f}</b></font>"
-            else:
-                action = "<font color='grey'><b>Aligned (No Action)</b></font>"
-                
-            rebal_data.append([
-                Paragraph(name, cell_style),
-                Paragraph(f"Rs. {ext:,.2f}", cell_style_right),
-                Paragraph(f"Rs. {tgt:,.2f}", cell_style_right),
-                Paragraph(action, cell_style)
-            ])
-            
-        rebal_table = Table(rebal_data, colWidths=[2.0*inch, 1.8*inch, 1.8*inch, 1.8*inch])
-        rebal_table.setStyle(TableStyle([
-            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
-            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f8fafc')),
-            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-            ('PADDING', (0,0), (-1,-1), 4),
-        ]))
-        story.append(rebal_table)
-        story.append(Spacer(1, 12))
+        # Chart 4: Commodities sub-assets
+        chart4_bytes = make_grouped_bar_chart(
+            "Commodities Sub-Asset Breakdown (%)",
+            ["Gold ETF", "Silver ETF", "Other ETF"],
+            [get_e("gold_etf_percentage"), get_e("silver_etf_percentage"), get_e("etf_commodity_percentage")],
+            [get_t("gold_etf_percentage"), get_t("silver_etf_percentage"), get_t("etf_commodity_percentage")],
+            bar_color='#f59e0b', target_color='#fde68a'
+        )
+        story.append(Image(io.BytesIO(chart4_bytes), width=6.5*inch, height=3.0*inch))
+        story.append(Spacer(1, 18))
 
         # --- DISCLAIMER ---
         story.append(Paragraph("REGULATORY DISCLAIMER", ParagraphStyle('Heading3Style', parent=styles['Heading3'], fontSize=9, textColor=colors.HexColor('#1a2980'), spaceAfter=4)))
@@ -1243,198 +1313,3 @@ class AssetAllocationReportUtils:
         doc.build(story, onFirstPage=AssetAllocationReportUtils.add_page_number, onLaterPages=AssetAllocationReportUtils.add_page_number)
         buffer.seek(0)
         return buffer
-
-    @staticmethod
-    def generate_docx(allocation: AssetAllocation, ia_master: Optional[IAMaster]) -> io.BytesIO:
-        doc = Document()
-        
-        # Word Header (Simplified)
-        section = doc.sections[0]
-        header = section.header
-        htable = header.add_table(1, 2, doc.sections[0].page_width)
-        
-        if ia_master:
-            htable.cell(0, 1).text = f"{ia_master.name_of_ia}\nReg: {ia_master.ia_registration_number}\n{ia_master.registered_email_id}"
-            htable.cell(0, 1).paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
-
-        doc.add_heading('ASSET ALLOCATION REPORT', 0)
-        
-        # 1. Client Table
-        doc.add_heading('Client Details', level=1)
-        table = doc.add_table(rows=4, cols=2)
-        table.style = 'Light Grid Accent 1'
-        table.cell(0, 0).text = "Client Name"
-        table.cell(0, 1).text = allocation.client.client_name
-        table.cell(1, 0).text = "Client Code"
-        table.cell(1, 1).text = allocation.client.client_code.upper()
-        table.cell(2, 0).text = "Risk Tier"
-        table.cell(2, 1).text = allocation.assigned_risk_tier
-        table.cell(3, 0).text = "Date"
-        table.cell(3, 1).text = allocation.created_at.strftime('%d %B, %Y')
-        
-        doc.add_paragraph()
-        
-        # 2. Main Allocation Table & Chart
-        doc.add_heading('MAIN ASSET CLASS ALLOCATION', level=1)
-        atable = doc.add_table(rows=4, cols=2)
-        atable.style = 'Medium List 1 Accent 1'
-        atable.cell(0, 0).text = "Asset Class"
-        atable.cell(0, 1).text = "Percentage"
-        
-        data = [
-            ("Equities", f"{allocation.equities_percentage:.1f}%"),
-            ("Debt", f"{allocation.debt_securities_percentage:.1f}%"),
-            ("Commodities", f"{allocation.commodities_percentage:.1f}%")
-        ]
-        for i, (label, val) in enumerate(data, 1):
-            atable.cell(i, 0).text = label
-            atable.cell(i, 1).text = val
-
-        # Chart for Main Allocation
-        if allocation.total_allocation > 0:
-            labels, sizes, colors_list = [], [], []
-            if allocation.equities_percentage > 0: 
-                labels.append('Equities'); sizes.append(allocation.equities_percentage); colors_list.append('#FF6B6B')
-            if allocation.debt_securities_percentage > 0: 
-                labels.append('Debt'); sizes.append(allocation.debt_securities_percentage); colors_list.append('#4ECDC4')
-            if allocation.commodities_percentage > 0: 
-                labels.append('Commodities'); sizes.append(allocation.commodities_percentage); colors_list.append('#45B7D1')
-            
-            if sizes:
-                chart_bytes = AssetAllocationReportUtils.create_pie_chart(labels, sizes, "Main Asset Class Allocation", colors_list)
-                doc.add_picture(io.BytesIO(chart_bytes), width=Inches(4.5))
-                doc.add_paragraph().alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-        # 3. Equities Breakdown
-        if allocation.equities_percentage > 0:
-            doc.add_heading('EQUITIES SUB-ASSET ALLOCATION', level=2)
-            eq_table = doc.add_table(rows=6, cols=4)
-            eq_table.style = 'Table Grid'
-            hdr = eq_table.rows[0].cells
-            hdr[0].text, hdr[1].text, hdr[2].text, hdr[3].text = "Sub-asset", "Allocation %", "Within Equities", "Within Total Portfolio"
-            
-            eq_data = [
-                ("Stocks", f"{allocation.stocks_percentage:.1f}%", f"{allocation.stocks_percentage:.1f}%", f"{(allocation.stocks_percentage * allocation.equities_percentage / 100):.1f}%"),
-                ("Mutual Funds", f"{allocation.mutual_fund_equity_percentage:.1f}%", f"{allocation.mutual_fund_equity_percentage:.1f}%", f"{(allocation.mutual_fund_equity_percentage * allocation.equities_percentage / 100):.1f}%"),
-                ("ETF", f"{allocation.etf_equity_percentage:.1f}%", f"{allocation.etf_equity_percentage:.1f}%", f"{(allocation.etf_equity_percentage * allocation.equities_percentage / 100):.1f}%"),
-                ("ULIP", f"{allocation.ulip_equity_percentage:.1f}%", f"{allocation.ulip_equity_percentage:.1f}%", f"{(allocation.ulip_equity_percentage * allocation.equities_percentage / 100):.1f}%"),
-                ("TOTAL", "100.0%", "100.0%", f"{allocation.equities_percentage:.1f}%")
-            ]
-            for i, (s, a, we, wp) in enumerate(eq_data, 1):
-                row = eq_table.rows[i].cells
-                row[0].text, row[1].text, row[2].text, row[3].text = s, a, we, wp
-
-            # Chart for Equities
-            eq_l, eq_s = [], []
-            if allocation.stocks_percentage > 0: eq_l.append('Stocks'); eq_s.append(allocation.stocks_percentage)
-            if allocation.mutual_fund_equity_percentage > 0: eq_l.append('Mutual Funds'); eq_s.append(allocation.mutual_fund_equity_percentage)
-            if allocation.etf_equity_percentage > 0: eq_l.append('ETF'); eq_s.append(allocation.etf_equity_percentage)
-            if allocation.ulip_equity_percentage > 0: eq_l.append('ULIP'); eq_s.append(allocation.ulip_equity_percentage)
-            if eq_s:
-                chart_bytes = AssetAllocationReportUtils.create_pie_chart(eq_l, eq_s, "Equities Breakdown", ['#ef4444', '#f06565', '#f38787', '#f87171'])
-                doc.add_picture(io.BytesIO(chart_bytes), width=Inches(3.5))
-
-        # 4. Debt Breakdown
-        if allocation.debt_securities_percentage > 0:
-            doc.add_heading('DEBT SECURITIES SUB-ASSET ALLOCATION', level=2)
-            db_table = doc.add_table(rows=6, cols=4)
-            db_table.style = 'Table Grid'
-            hdr = db_table.rows[0].cells
-            hdr[0].text, hdr[1].text, hdr[2].text, hdr[3].text = "Sub-asset", "Allocation %", "Within Debt", "Within Total Portfolio"
-            
-            db_data = [
-                ("FD/Bonds", f"{allocation.fixed_deposits_bonds_percentage:.1f}%", f"{allocation.fixed_deposits_bonds_percentage:.1f}%", f"{(allocation.fixed_deposits_bonds_percentage * allocation.debt_securities_percentage / 100):.1f}%"),
-                ("Mutual Funds", f"{allocation.mutual_fund_debt_percentage:.1f}%", f"{allocation.mutual_fund_debt_percentage:.1f}%", f"{(allocation.mutual_fund_debt_percentage * allocation.debt_securities_percentage / 100):.1f}%"),
-                ("ETF", f"{allocation.etf_debt_percentage:.1f}%", f"{allocation.etf_debt_percentage:.1f}%", f"{(allocation.etf_debt_percentage * allocation.debt_securities_percentage / 100):.1f}%"),
-                ("ULIP", f"{allocation.ulip_debt_percentage:.1f}%", f"{allocation.ulip_debt_percentage:.1f}%", f"{(allocation.ulip_debt_percentage * allocation.debt_securities_percentage / 100):.1f}%"),
-                ("TOTAL", "100.0%", "100.0%", f"{allocation.debt_securities_percentage:.1f}%")
-            ]
-            for i, (s, a, wd, wp) in enumerate(db_data, 1):
-                row = db_table.rows[i].cells
-                row[0].text, row[1].text, row[2].text, row[3].text = s, a, wd, wp
-
-            # Chart for Debt
-            db_l, db_s = [], []
-            if allocation.fixed_deposits_bonds_percentage > 0: db_l.append('FD/Bonds'); db_s.append(allocation.fixed_deposits_bonds_percentage)
-            if allocation.mutual_fund_debt_percentage > 0: db_l.append('Mutual Funds'); db_s.append(allocation.mutual_fund_debt_percentage)
-            if allocation.etf_debt_percentage > 0: db_l.append('ETF'); db_s.append(allocation.etf_debt_percentage)
-            if allocation.ulip_debt_percentage > 0: db_l.append('ULIP'); db_s.append(allocation.ulip_debt_percentage)
-            if db_s:
-                chart_bytes = AssetAllocationReportUtils.create_pie_chart(db_l, db_s, "Debt Breakdown", ['#3b82f6', '#619bf8', '#88b4fa', '#93c5fd'])
-                doc.add_picture(io.BytesIO(chart_bytes), width=Inches(3.5))
-
-        # 5. Commodities Breakdown
-        if allocation.commodities_percentage > 0:
-            doc.add_heading('COMMODITIES SUB-ASSET ALLOCATION', level=2)
-            cm_table = doc.add_table(rows=5, cols=4)
-            cm_table.style = 'Table Grid'
-            hdr = cm_table.rows[0].cells
-            hdr[0].text, hdr[1].text, hdr[2].text, hdr[3].text = "Sub-asset", "Allocation %", "Within Commodities", "Within Total Portfolio"
-            
-            cm_data = [
-                ("Gold ETF", f"{allocation.gold_etf_percentage:.1f}%", f"{allocation.gold_etf_percentage:.1f}%", f"{(allocation.gold_etf_percentage * allocation.commodities_percentage / 100):.1f}%"),
-                ("Silver ETF", f"{allocation.silver_etf_percentage:.1f}%", f"{allocation.silver_etf_percentage:.1f}%", f"{(allocation.silver_etf_percentage * allocation.commodities_percentage / 100):.1f}%"),
-                ("ETF", f"{allocation.etf_commodity_percentage:.1f}%", f"{allocation.etf_commodity_percentage:.1f}%", f"{(allocation.etf_commodity_percentage * allocation.commodities_percentage / 100):.1f}%"),
-                ("TOTAL", "100.0%", "100.0%", f"{allocation.commodities_percentage:.1f}%")
-            ]
-            for i, (s, a, wc, wp) in enumerate(cm_data, 1):
-                row = cm_table.rows[i].cells
-                row[0].text, row[1].text, row[2].text, row[3].text = s, a, wc, wp
-
-            # Chart for Commodities
-            cm_l, cm_s = [], []
-            if allocation.gold_etf_percentage > 0: cm_l.append('Gold'); cm_s.append(allocation.gold_etf_percentage)
-            if allocation.silver_etf_percentage > 0: cm_l.append('Silver'); cm_s.append(allocation.silver_etf_percentage)
-            if allocation.etf_commodity_percentage > 0: cm_l.append('ETF'); cm_s.append(allocation.etf_commodity_percentage)
-            if cm_s:
-                chart_bytes = AssetAllocationReportUtils.create_pie_chart(cm_l, cm_s, "Commodities Breakdown", ['#f59e0b', '#f7b13c', '#fac56d', '#fcd34d'])
-                doc.add_picture(io.BytesIO(chart_bytes), width=Inches(3.5))
-
-        # 6. Advisor Recommendation & Conclusion
-        if allocation.tier_recommendation:
-            doc.add_heading('ADVISOR RECOMMENDATION', level=1)
-            doc.add_paragraph(allocation.tier_recommendation)
-
-        if allocation.system_conclusion:
-            doc.add_heading('CONCLUSION', level=1)
-            doc.add_paragraph(allocation.system_conclusion)
-
-        if allocation.discussion_notes:
-            doc.add_heading('DISCUSSION NOTES', level=1)
-            doc.add_paragraph(allocation.discussion_notes)
-
-        doc.add_heading('DISCLAIMER', level=2)
-        doc.add_paragraph(DEFAULT_ASSET_ALLOCATION_DISCLAIMER).italic = True
-        
-        if allocation.disclaimer_text:
-            doc.add_paragraph(allocation.disclaimer_text).italic = True
-
-        # 7. Signatures for Word
-        doc.add_paragraph('\n\n')
-        stable = doc.add_table(rows=2, cols=2)
-        stable.cell(0, 0).text = "__________________________\n\nClient Signature\n\nDate: ________________"
-        stable.cell(0, 1).text = "__________________________\n\nAdvisor Signature\n\nDate: ________________"
-        stable.cell(1, 0).text = allocation.client.client_name
-        stable.cell(1, 1).text = ia_master.name_of_ia if ia_master else "Investment Advisor"
-
-        # Add Page Footer
-        section = doc.sections[0]
-        footer = section.footer
-        f_p = footer.paragraphs[0] if footer.paragraphs else footer.add_paragraph()
-        f_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        
-        prepared_by = getattr(ia_master, 'name_of_ia', 'INVESTMENT ADVISOR') if ia_master else 'INVESTMENT ADVISOR'
-        ia_entity = getattr(ia_master, 'name_of_entity', 'N/A') if ia_master else 'N/A'
-        ia_reg = getattr(ia_master, 'ia_registration_number', 'N/A') if ia_master else 'N/A'
-        
-        footer_text = f"Prepared by: {prepared_by} , Entity: {ia_entity} , Reg No: {ia_reg}"
-        f_run = f_p.add_run(footer_text)
-        f_run.font.size = Pt(8)
-        f_run.font.color.rgb = RGBColor(0x80, 0x80, 0x80)
-        f_run.italic = True
-
-        buffer = io.BytesIO()
-        doc.save(buffer)
-        buffer.seek(0)
-        return buffer
-
