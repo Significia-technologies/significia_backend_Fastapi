@@ -1,7 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from typing import Optional
-from app.api.deps import get_bridge_client
+from sqlalchemy.orm import Session
+from app.api.deps import get_db, get_bridge_client
 from app.services.bridge_client import BridgeClient
+from app.utils.reports.asset_allocation_report import AssetAllocationReportUtils
 
 router = APIRouter()
 
@@ -31,3 +33,52 @@ async def get_existing_allocation_bridge(
 ):
     """Get a specific existing allocation via the Bridge."""
     return await bridge.get(f"/existing-asset-allocations/{allocation_id}")
+
+
+@router.get("/bridge/blank-form/pdf")
+async def download_blank_form_pdf(
+    bridge: BridgeClient = Depends(get_bridge_client),
+    db: Session = Depends(get_db)
+):
+    """Generate and download a blank existing asset allocation form."""
+    try:
+        # 1. Fetch IA Master info from Bridge for branding
+        ia_data = await bridge.get("/ia-master")
+        
+        # IA branding details
+        ia_name = ia_data.get("name_of_ia") or "____________________________"
+        ia_entity = ia_data.get("entity_name") or "____________________________"
+        ia_reg_no = ia_data.get("registration_no") or "________________"
+        ia_logo_key = ia_data.get("ia_logo_path")
+        
+        # 2. Resolve Logo from Bridge storage
+        logo_path = None
+        if ia_logo_key:
+            try:
+                from app.utils.file_utils import resolve_logo_to_local_path
+                url_resp = await bridge.get("/storage/url", params={"key": ia_logo_key})
+                signed_url = url_resp.get("url")
+                if signed_url:
+                    logo_path = await resolve_logo_to_local_path(signed_url, db)
+            except: pass
+
+        # 3. Create mock IA object (since we don't have direct DB access to IAMaster)
+        class MockIA: pass
+        ia = MockIA()
+        ia.name_of_ia = ia_name
+        ia.name_of_entity = ia_entity
+        ia.ia_registration_number = ia_reg_no
+        ia.ia_reg_no = ia_reg_no # Support multiple attribute names
+
+        # 4. Generate PDF
+        pdf_buffer = AssetAllocationReportUtils.generate_existing_blank_pdf(ia, ia_logo_path=logo_path)
+        
+        return Response(
+            content=pdf_buffer.getvalue(),
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": "attachment; filename=Existing_Asset_Allocation_Blank_Form.pdf"
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate blank form: {str(e)}")
