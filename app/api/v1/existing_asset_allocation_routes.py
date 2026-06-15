@@ -54,6 +54,16 @@ async def get_existing_allocation_bridge(
     return await bridge.get(f"/existing-asset-allocations/{allocation_id}")
 
 
+@router.patch("/bridge/allocation/{allocation_id}", response_model=dict)
+async def update_existing_allocation_bridge(
+    allocation_id: str,
+    payload: dict,
+    bridge: BridgeClient = Depends(get_bridge_client),
+):
+    """Update a specific existing asset allocation (useful for drafts) via the Bridge."""
+    return await bridge.patch(f"/existing-asset-allocations/{allocation_id}", payload)
+
+
 @router.get("/bridge/blank-form/pdf")
 async def download_blank_form_pdf(
     bridge: BridgeClient = Depends(get_bridge_client),
