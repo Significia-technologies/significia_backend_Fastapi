@@ -93,6 +93,12 @@ class ReportService:
 
     @staticmethod
     def generate_risk_profile_pdf(db: Session, assessment_id: uuid.UUID, ia_logo_override: str = None) -> BytesIO:
+        # Resolve assets path
+        file_dir = os.path.dirname(os.path.abspath(__file__))
+        backend_root = os.path.abspath(os.path.join(file_dir, '..', '..'))
+        q4_img_path = os.path.join(backend_root, 'app', 'assets', 'q4_portfolio_comparison.png')
+        q7_img_path = os.path.join(backend_root, 'app', 'assets', 'q7_fund_choice.png')
+
         # 1. Fetch Assessment and related data
         assessment = db.execute(
             select(RiskAssessment).where(RiskAssessment.id == assessment_id)
@@ -331,6 +337,24 @@ class ReportService:
                 field_name = field_map.get(q_id, q_id)
                 selected_val = getattr(assessment, field_name, "N/A")
                 
+                # Check for charts in Q4 and Q7
+                if q_id == 'q4' and os.path.exists(q4_img_path):
+                    try:
+                        img = Image(q4_img_path, width=4.5*inch, height=2.25*inch, kind='proportional')
+                        img.hAlign = 'LEFT'
+                        story.append(img)
+                        story.append(Spacer(1, 10))
+                    except Exception as e:
+                        print(f"Error rendering q4 chart in PDF: {e}")
+                elif q_id == 'q7' and os.path.exists(q7_img_path):
+                    try:
+                        img = Image(q7_img_path, width=4.5*inch, height=2.25*inch, kind='proportional')
+                        img.hAlign = 'LEFT'
+                        story.append(img)
+                        story.append(Spacer(1, 10))
+                    except Exception as e:
+                        print(f"Error rendering q7 chart in PDF: {e}")
+
                 options_str = ""
                 for opt_code, opt_text in q_data['options'].items():
                     is_selected = opt_code.lower() == str(selected_val).lower()
@@ -443,6 +467,12 @@ class ReportService:
 
     @staticmethod
     def generate_risk_profile_docx(db: Session, assessment_id: uuid.UUID, ia_logo_override: str = None) -> BytesIO:
+        # Resolve assets path
+        file_dir = os.path.dirname(os.path.abspath(__file__))
+        backend_root = os.path.abspath(os.path.join(file_dir, '..', '..'))
+        q4_img_path = os.path.join(backend_root, 'app', 'assets', 'q4_portfolio_comparison.png')
+        q7_img_path = os.path.join(backend_root, 'app', 'assets', 'q7_fund_choice.png')
+
         # 1. Fetch Data
         assessment = db.execute(
             select(RiskAssessment).where(RiskAssessment.id == assessment_id)
@@ -590,6 +620,22 @@ class ReportService:
                 }
                 field_name = field_map.get(q_id, q_id)
                 selected_val = getattr(assessment, field_name, "N/A")
+
+                # Check for charts in Q4 and Q7
+                if q_id == 'q4' and os.path.exists(q4_img_path):
+                    try:
+                        doc.add_picture(q4_img_path, width=Inches(4.5))
+                        # Add a small spacer paragraph
+                        doc.add_paragraph()
+                    except Exception as e:
+                        print(f"Error rendering q4 chart in DOCX: {e}")
+                elif q_id == 'q7' and os.path.exists(q7_img_path):
+                    try:
+                        doc.add_picture(q7_img_path, width=Inches(4.5))
+                        # Add a small spacer paragraph
+                        doc.add_paragraph()
+                    except Exception as e:
+                        print(f"Error rendering q7 chart in DOCX: {e}")
 
                 for opt_code, opt_text in q_data['options'].items():
                     is_selected = opt_code.lower() == str(selected_val).lower()
@@ -1156,6 +1202,12 @@ class ReportService:
         ia_data: dict = None,
         questionnaire_data: dict = None
     ) -> BytesIO:
+        # Resolve assets path
+        file_dir = os.path.dirname(os.path.abspath(__file__))
+        backend_root = os.path.abspath(os.path.join(file_dir, '..', '..'))
+        q4_img_path = os.path.join(backend_root, 'app', 'assets', 'q4_portfolio_comparison.png')
+        q7_img_path = os.path.join(backend_root, 'app', 'assets', 'q7_fund_choice.png')
+
         # Fetch IA details 
         if ia_data:
             ia = type('MockIA', (), ia_data)() # Convert dict to object-like access if needed, or adapt code
@@ -1188,6 +1240,7 @@ class ReportService:
                 else:
                     options = [{'text': v} for v in q_val.get('options', {}).values()]
                     mock_questions.append({
+                        'id': q_key,
                         'text': q_val.get('question', ''),
                         'options': options,
                         'is_main': True
@@ -1380,6 +1433,25 @@ class ReportService:
             
             story.append(Paragraph(f"<b>{label}. {q_data.get('text', '')}</b>", normal_style))
             
+            # Check for charts in Q4 and Q7
+            q_id = q_data.get('id')
+            if q_id == 'q4' and os.path.exists(q4_img_path):
+                try:
+                    img = Image(q4_img_path, width=4.5*inch, height=2.25*inch, kind='proportional')
+                    img.hAlign = 'LEFT'
+                    story.append(img)
+                    story.append(Spacer(1, 10))
+                except Exception as e:
+                    print(f"Error rendering q4 chart in blank PDF: {e}")
+            elif q_id == 'q7' and os.path.exists(q7_img_path):
+                try:
+                    img = Image(q7_img_path, width=4.5*inch, height=2.25*inch, kind='proportional')
+                    img.hAlign = 'LEFT'
+                    story.append(img)
+                    story.append(Spacer(1, 10))
+                except Exception as e:
+                    print(f"Error rendering q7 chart in blank PDF: {e}")
+
             options_p = ""
             for i, opt in enumerate(q_data.get('options', [])):
                 prefix = f"[ {chr(65 + i)} ] "
@@ -1431,6 +1503,12 @@ class ReportService:
         ia_logo_override: str = None, 
         questionnaire_data: dict = None
     ) -> BytesIO:
+        # Resolve assets path
+        file_dir = os.path.dirname(os.path.abspath(__file__))
+        backend_root = os.path.abspath(os.path.join(file_dir, '..', '..'))
+        q4_img_path = os.path.join(backend_root, 'app', 'assets', 'q4_portfolio_comparison.png')
+        q7_img_path = os.path.join(backend_root, 'app', 'assets', 'q7_fund_choice.png')
+
         """
         Bridge-compatible version of generate_risk_profile_pdf.
         Accepts dictionaries instead of DB model instances.
@@ -1629,6 +1707,25 @@ class ReportService:
                         'q14': 'q14_dependents', 'q15': 'q15_active_loan', 'q16': 'q16_investment_objective'
                     }
                     selected_val = assessment_data.get(field_map.get(q_id, q_id), "N/A")
+
+                    # Check for charts in Q4 and Q7
+                    if q_id == 'q4' and os.path.exists(q4_img_path):
+                        try:
+                            img = Image(q4_img_path, width=4.5*inch, height=2.25*inch, kind='proportional')
+                            img.hAlign = 'LEFT'
+                            story.append(img)
+                            story.append(Spacer(1, 10))
+                        except Exception as e:
+                            print(f"Error rendering q4 chart in bridge PDF Case 1: {e}")
+                    elif q_id == 'q7' and os.path.exists(q7_img_path):
+                        try:
+                            img = Image(q7_img_path, width=4.5*inch, height=2.25*inch, kind='proportional')
+                            img.hAlign = 'LEFT'
+                            story.append(img)
+                            story.append(Spacer(1, 10))
+                        except Exception as e:
+                            print(f"Error rendering q7 chart in bridge PDF Case 1: {e}")
+
                     options_str = ""
                     options = q_data.get('options', {})
                     for opt_code, opt_text in (options.items() if isinstance(options, dict) else []):
@@ -1659,6 +1756,24 @@ class ReportService:
                 if q_data.get('question'):
                     story.append(safe_p(q_data['question'], normal_style))
                 
+                # Check for charts in Q4 and Q7
+                if q_id_str == 'q4' and os.path.exists(q4_img_path):
+                    try:
+                        img = Image(q4_img_path, width=4.5*inch, height=2.25*inch, kind='proportional')
+                        img.hAlign = 'LEFT'
+                        story.append(img)
+                        story.append(Spacer(1, 10))
+                    except Exception as e:
+                        print(f"Error rendering q4 chart in bridge PDF Case 2: {e}")
+                elif q_id_str == 'q7' and os.path.exists(q7_img_path):
+                    try:
+                        img = Image(q7_img_path, width=4.5*inch, height=2.25*inch, kind='proportional')
+                        img.hAlign = 'LEFT'
+                        story.append(img)
+                        story.append(Spacer(1, 10))
+                    except Exception as e:
+                        print(f"Error rendering q7 chart in bridge PDF Case 2: {e}")
+
                 # Options are usually a list of dicts: [ {"id": ..., "text": ..., "score": ...} ]
                 options_list = q_data.get('options') or []
                 options_str = ""
@@ -1809,6 +1924,12 @@ class ReportService:
         ia_logo_override: str = None,
         questionnaire_data: dict = None
     ) -> BytesIO:
+        # Resolve assets path
+        file_dir = os.path.dirname(os.path.abspath(__file__))
+        backend_root = os.path.abspath(os.path.join(file_dir, '..', '..'))
+        q4_img_path = os.path.join(backend_root, 'app', 'assets', 'q4_portfolio_comparison.png')
+        q7_img_path = os.path.join(backend_root, 'app', 'assets', 'q7_fund_choice.png')
+
         """DOCX version for Bridge assessments, matching PDF layout/content."""
         doc = Document()
         style = doc.styles['Normal']
@@ -1963,6 +2084,21 @@ class ReportService:
                         'q14': 'q14_dependents', 'q15': 'q15_active_loan', 'q16': 'q16_investment_objective'
                     }
                     selected_val = assessment_data.get(field_map.get(q_id, q_id), "N/A")
+
+                    # Check for charts in Q4 and Q7
+                    if q_id == 'q4' and os.path.exists(q4_img_path):
+                        try:
+                            doc.add_picture(q4_img_path, width=Inches(4.5))
+                            doc.add_paragraph()
+                        except Exception as e:
+                            print(f"Error rendering q4 chart in DOCX bridge: {e}")
+                    elif q_id == 'q7' and os.path.exists(q7_img_path):
+                        try:
+                            doc.add_picture(q7_img_path, width=Inches(4.5))
+                            doc.add_paragraph()
+                        except Exception as e:
+                            print(f"Error rendering q7 chart in DOCX bridge: {e}")
+
                     options = q_data.get('options', {})
                     for opt_code, opt_text in (options.items() if isinstance(options, dict) else []):
                         is_selected = str(opt_code).lower() == str(selected_val).lower()
@@ -1989,6 +2125,20 @@ class ReportService:
                 if q_data.get('question'):
                     doc.add_paragraph(q_data['question'])
                 
+                # Check for charts in Q4 and Q7
+                if q_id_str == 'q4' and os.path.exists(q4_img_path):
+                    try:
+                        doc.add_picture(q4_img_path, width=Inches(4.5))
+                        doc.add_paragraph()
+                    except Exception as e:
+                        print(f"Error rendering q4 chart in DOCX bridge Case 2: {e}")
+                elif q_id_str == 'q7' and os.path.exists(q7_img_path):
+                    try:
+                        doc.add_picture(q7_img_path, width=Inches(4.5))
+                        doc.add_paragraph()
+                    except Exception as e:
+                        print(f"Error rendering q7 chart in DOCX bridge Case 2: {e}")
+
                 options_list = q_data.get('options') or []
                 for opt in options_list:
                     opt_id = str(opt.get('id', ''))
