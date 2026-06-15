@@ -906,15 +906,14 @@ class ReportService:
 
         # 5a. Scoring Reference Chart
         story.append(Paragraph("SCORING REFERENCE", heading_style))
-        cat_data = [["Category", "Score Range", "Description"]]
+        cat_data = [["Category", "Score Range"]]
         for cat in (questionnaire.categories or []):
             cat_data.append([
                 cat.get('name', 'N/A'),
-                f"{fmt_score(cat.get('min_score'))} - {fmt_score(cat.get('max_score'))}",
-                Paragraph(cat.get('description', ''), normal_style)
+                f"{fmt_score(cat.get('min_score'))} - {fmt_score(cat.get('max_score'))}"
             ])
         
-        cat_table = Table(cat_data, colWidths=[1.5*inch, 1.5*inch, 3*inch])
+        cat_table = Table(cat_data, colWidths=[3*inch, 3*inch])
         cat_table.setStyle(TableStyle([
             ('GRID', (0,0), (-1,-1), 0.2, colors.lightgrey),
             ('FONTSIZE', (0,0), (-1,-1), 8),
@@ -1093,19 +1092,17 @@ class ReportService:
 
         # Score Reference Table
         doc.add_heading('SCORING REFERENCE', level=1)
-        cat_table = doc.add_table(rows=1, cols=3)
+        cat_table = doc.add_table(rows=1, cols=2)
         cat_table.style = 'Table Grid'
         hdr_cells = cat_table.rows[0].cells
         hdr_cells[0].text = 'Category'
         hdr_cells[1].text = 'Score Range'
-        hdr_cells[2].text = 'Description'
         for cell in hdr_cells: cell.paragraphs[0].runs[0].bold = True
 
         for cat in (questionnaire.categories or []):
             row_cells = cat_table.add_row().cells
             row_cells[0].text = cat.get('name', 'N/A')
             row_cells[1].text = f"{fmt_score(cat.get('min_score'))} - {fmt_score(cat.get('max_score'))}"
-            row_cells[2].text = cat.get('description', '')
 
         doc.add_paragraph().add_run("Question Scoring Rules").bold = True
         q_ref_table = doc.add_table(rows=1, cols=2)
@@ -1692,16 +1689,15 @@ class ReportService:
             story.append(Paragraph("SCORING REFERENCE", heading_style))
             
             # Categories Tiers
-            cat_data = [["Category", "Score Range", "Description"]]
+            cat_data = [["Category", "Score Range"]]
             categories_list = questionnaire_data.get('categories') or []
             for cat in categories_list:
                 cat_data.append([
                     cat.get('name', 'N/A'),
-                    f"{fmt_score(cat.get('min_score'))} - {fmt_score(cat.get('max_score'))}",
-                    Paragraph(cat.get('description', ''), normal_style)
+                    f"{fmt_score(cat.get('min_score'))} - {fmt_score(cat.get('max_score'))}"
                 ])
             
-            cat_table = Table(cat_data, colWidths=[1.5*inch, 1.5*inch, 3*inch])
+            cat_table = Table(cat_data, colWidths=[3*inch, 3*inch])
             cat_table.setStyle(TableStyle([
                 ('GRID', (0,0), (-1,-1), 0.2, colors.lightgrey),
                 ('FONTSIZE', (0,0), (-1,-1), 8),
@@ -1763,7 +1759,7 @@ class ReportService:
 
         # Recommendations
         story.append(Paragraph("ADVISOR RECOMMENDATION", heading_style))
-        story.append(Paragraph(f"<b>Classification:</b> {assessment_data.get('assigned_risk_tier', 'N/A')}", normal_style))
+        story.append(Paragraph(f"<b>Classification:</b> {category_str}", normal_style))
         story.append(Paragraph(assessment_data.get('tier_recommendation') or "No recommendation provided.", normal_style))
         story.append(Spacer(1, 12))
         story.append(Paragraph("Additional Advisor Guidance:", bold_style))
@@ -2026,12 +2022,11 @@ class ReportService:
             doc.add_heading('SCORING REFERENCE', level=1)
             doc.add_paragraph().add_run("Risk Category Tiers / Score Ranges").bold = True
             
-            cat_table = doc.add_table(rows=1, cols=3)
+            cat_table = doc.add_table(rows=1, cols=2)
             cat_table.style = 'Table Grid'
             hdr_cells = cat_table.rows[0].cells
             hdr_cells[0].text = 'Category'
             hdr_cells[1].text = 'Score Range'
-            hdr_cells[2].text = 'Description'
             for cell in hdr_cells: cell.paragraphs[0].runs[0].bold = True
             
             categories_list = questionnaire_data.get('categories') or []
@@ -2039,7 +2034,6 @@ class ReportService:
                 row_cells = cat_table.add_row().cells
                 row_cells[0].text = cat.get('name', 'N/A')
                 row_cells[1].text = f"{fmt_score(cat.get('min_score'))} - {fmt_score(cat.get('max_score'))}"
-                row_cells[2].text = cat.get('description', '')
                 for cell in row_cells: cell.paragraphs[0].runs[0].font.size = Pt(9)
                 
             doc.add_paragraph()
@@ -2105,7 +2099,7 @@ class ReportService:
         doc.add_heading('ADVISOR RECOMMENDATION', level=1)
         p = doc.add_paragraph()
         p.add_run("Classification: ").bold = True
-        p.add_run(str(assessment_data.get('assigned_risk_tier', 'N/A')))
+        p.add_run(category_str)
         
         doc.add_paragraph(assessment_data.get('tier_recommendation') or "No recommendation provided.")
         
