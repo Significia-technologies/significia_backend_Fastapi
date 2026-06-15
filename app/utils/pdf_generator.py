@@ -279,9 +279,19 @@ class IAPDFGenerator:
                 pdf.ln(12)
 
         # Identity Grid
+        entity_mapping = {
+            "individual": "Individual",
+            "proprietorship": "Sole Proprietorship",
+            "partnership": "Partnership Firm",
+            "llp": "LLP",
+            "body": "Body Corporate"
+        }
+        nature_raw = str(ia_data.get('nature_of_entity', '')).strip().lower()
+        nature_display = entity_mapping.get(nature_raw, nature_raw.capitalize())
+
         profile_fields = [
             ("Name of IA", ia_data.get('name_of_ia')),
-            ("Nature of Entity", str(ia_data.get('nature_of_entity', '')).capitalize()),
+            ("Nature of Entity", nature_display),
             ("Entity Name", ia_data.get('name_of_entity')),
             ("Reg Number", ia_data.get('ia_registration_number')),
             ("Reg Date", str(ia_data.get('date_of_registration', 'N/A'))),
