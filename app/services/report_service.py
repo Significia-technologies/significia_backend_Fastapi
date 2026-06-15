@@ -219,13 +219,45 @@ class ReportService:
             story.append(Spacer(1, 100))
         
         story.append(Paragraph("RISK PROFILE ASSESSMENT REPORT", cover_title_style))
-        story.append(Spacer(1, 50))
+        story.append(Spacer(1, 40))
         
-        story.append(Paragraph(f"<b>CLIENT NAME:</b> {client.client_name}", cover_subtitle_style))
-        story.append(Paragraph(f"<b>CLIENT CODE:</b> {client.client_code}", cover_subtitle_style))
-        story.append(Paragraph(f"<b>ENTITY:</b> {entity_name}", cover_subtitle_style))
-        story.append(Paragraph(f"<b>FORM NAME:</b> {assessment.form_name}", cover_subtitle_style))
-        story.append(Paragraph(f"<b>DATE:</b> {assessment.assessment_timestamp.strftime('%B %d, %Y')}", cover_subtitle_style))
+        metadata_label_style = ParagraphStyle(
+            'MetadataLabel',
+            parent=normal_style,
+            fontSize=11,
+            alignment=2,  # Right alignment
+            textColor=colors.HexColor('#2a5298'),
+            fontName='Helvetica-Bold'
+        )
+        metadata_value_style = ParagraphStyle(
+            'MetadataValue',
+            parent=normal_style,
+            fontSize=11,
+            alignment=0,  # Left alignment
+            textColor=colors.HexColor('#333333'),
+            fontName='Helvetica'
+        )
+
+        metadata_data = [
+            [Paragraph("CLIENT NAME:", metadata_label_style), Paragraph(client.client_name, metadata_value_style)],
+            [Paragraph("CLIENT CODE:", metadata_label_style), Paragraph(client.client_code, metadata_value_style)],
+        ]
+        if entity_name:
+            metadata_data.append([Paragraph("ENTITY:", metadata_label_style), Paragraph(entity_name, metadata_value_style)])
+        
+        metadata_data.append([Paragraph("FORM NAME:", metadata_label_style), Paragraph(assessment.form_name, metadata_value_style)])
+        
+        date_str = assessment.assessment_timestamp.strftime('%B %d, %Y')
+        metadata_data.append([Paragraph("DATE:", metadata_label_style), Paragraph(date_str, metadata_value_style)])
+
+        metadata_table = Table(metadata_data, colWidths=[2.2*inch, 3.8*inch])
+        metadata_table.setStyle(TableStyle([
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+            ('TOPPADDING', (0,0), (-1,-1), 8),
+        ]))
+        metadata_table.hAlign = 'CENTER'
+        story.append(metadata_table)
         
         story.append(PageBreak())
 
@@ -793,13 +825,41 @@ class ReportService:
         
         story.append(Spacer(1, 30))
         story.append(Paragraph("RISK PROFILE ASSESSMENT REPORT", cover_title_style))
-        story.append(Spacer(1, 50))
+        story.append(Spacer(1, 40))
         
-        story.append(Paragraph(f"<b>CLIENT NAME:</b> {client.client_name}", cover_subtitle_style))
-        story.append(Paragraph(f"<b>CLIENT CODE:</b> {client.client_code}", cover_subtitle_style))
-        story.append(Paragraph(f"<b>ENTITY:</b> {entity_name}", cover_subtitle_style))
-        story.append(Paragraph(f"<b>FORM NAME:</b> {questionnaire.portfolio_name}", cover_subtitle_style))
-        story.append(Paragraph(f"<b>DATE:</b> {assessment.submitted_at.strftime('%B %d, %Y')}", cover_subtitle_style))
+        metadata_label_style = ParagraphStyle(
+            'MetadataLabel',
+            parent=normal_style,
+            fontSize=11,
+            alignment=2,  # Right alignment
+            textColor=colors.HexColor('#2a5298'),
+            fontName='Helvetica-Bold'
+        )
+        metadata_value_style = ParagraphStyle(
+            'MetadataValue',
+            parent=normal_style,
+            fontSize=11,
+            alignment=0,  # Left alignment
+            textColor=colors.HexColor('#333333'),
+            fontName='Helvetica'
+        )
+
+        metadata_data = [
+            [Paragraph("CLIENT NAME:", metadata_label_style), Paragraph(client.client_name, metadata_value_style)],
+            [Paragraph("CLIENT CODE:", metadata_label_style), Paragraph(client.client_code, metadata_value_style)],
+            [Paragraph("ENTITY:", metadata_label_style), Paragraph(entity_name, metadata_value_style)],
+            [Paragraph("FORM NAME:", metadata_label_style), Paragraph(questionnaire.portfolio_name, metadata_value_style)],
+            [Paragraph("DATE:", metadata_label_style), Paragraph(assessment.submitted_at.strftime('%B %d, %Y'), metadata_value_style)],
+        ]
+
+        metadata_table = Table(metadata_data, colWidths=[2.2*inch, 3.8*inch])
+        metadata_table.setStyle(TableStyle([
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+            ('TOPPADDING', (0,0), (-1,-1), 8),
+        ]))
+        metadata_table.hAlign = 'CENTER'
+        story.append(metadata_table)
         
         story.append(PageBreak())
 
@@ -1254,10 +1314,7 @@ class ReportService:
         story.append(Spacer(1, 30))
         story.append(Paragraph("RISK ASSESSMENT FORM", cover_title_style))
         story.append(Paragraph(f"(FORM ID: {str(questionnaire.id)[:8].upper()})", cover_subtitle_style))
-        story.append(Spacer(1, 50))
-        
-        story.append(Paragraph("<b>CLIENT NAME:</b> __________________________", cover_subtitle_style))
-        story.append(Paragraph("<b>CLIENT CODE:</b> __________________________", cover_subtitle_style))
+        story.append(Spacer(1, 40))
         
         # Get IA Identifiers
         if ia_data:
@@ -1270,17 +1327,46 @@ class ReportService:
             entity_name = None
             reg_no = None
 
+        metadata_label_style = ParagraphStyle(
+            'MetadataLabel',
+            parent=normal_style,
+            fontSize=11,
+            alignment=2,  # Right alignment
+            textColor=colors.HexColor('#2a5298'),
+            fontName='Helvetica-Bold'
+        )
+        metadata_value_style = ParagraphStyle(
+            'MetadataValue',
+            parent=normal_style,
+            fontSize=11,
+            alignment=0,  # Left alignment
+            textColor=colors.HexColor('#333333'),
+            fontName='Helvetica'
+        )
+
+        metadata_data = [
+            [Paragraph("CLIENT NAME:", metadata_label_style), Paragraph("____________________________________", metadata_value_style)],
+            [Paragraph("CLIENT CODE:", metadata_label_style), Paragraph("____________________________________", metadata_value_style)],
+        ]
         if entity_name:
-            story.append(Paragraph(f"<b>ENTITY:</b> {entity_name}", cover_subtitle_style))
+            metadata_data.append([Paragraph("ENTITY:", metadata_label_style), Paragraph(entity_name, metadata_value_style)])
         
         form_name = getattr(questionnaire, 'portfolio_name', 'Risk Profile')
-        story.append(Paragraph(f"<b>FORM NAME:</b> {form_name}", cover_subtitle_style))
+        metadata_data.append([Paragraph("FORM NAME:", metadata_label_style), Paragraph(form_name, metadata_value_style)])
 
         if reg_no:
-            story.append(Paragraph(f"<b>REGISTRATION NO:</b> {reg_no}", cover_subtitle_style))
+            metadata_data.append([Paragraph("REGISTRATION NO:", metadata_label_style), Paragraph(reg_no, metadata_value_style)])
             
-        story.append(Paragraph(f"<b>DATE:</b> __________________________", cover_subtitle_style))
-        
+        metadata_data.append([Paragraph("DATE:", metadata_label_style), Paragraph("____________________________________", metadata_value_style)])
+
+        metadata_table = Table(metadata_data, colWidths=[2.2*inch, 3.8*inch])
+        metadata_table.setStyle(TableStyle([
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+            ('TOPPADDING', (0,0), (-1,-1), 8),
+        ]))
+        metadata_table.hAlign = 'CENTER'
+        story.append(metadata_table)
         story.append(PageBreak())
 
         # 5. Questionnaire Items
@@ -1399,11 +1485,7 @@ class ReportService:
             except: pass
         
         story.append(Paragraph("RISK PROFILE ASSESSMENT REPORT", cover_title_style))
-        story.append(Spacer(1, 50))
-        
-        story.append(Paragraph(f"<b>CLIENT NAME:</b> {client_data.get('client_name', 'N/A')}", cover_subtitle_style))
-        story.append(Paragraph(f"<b>CLIENT CODE:</b> {client_data.get('client_code', 'N/A')}", cover_subtitle_style))
-        story.append(Paragraph(f"<b>ENTITY:</b> {ia_data.get('name_of_entity') or ia_data.get('name_of_ia', 'N/A')}", cover_subtitle_style))
+        story.append(Spacer(1, 40))
         
         # Handle timestamp from bridge (string or datetime)
         ts = assessment_data.get('assessment_timestamp')
@@ -1419,8 +1501,43 @@ class ReportService:
                     date_str = str(ts)
             elif hasattr(ts, 'strftime'):
                 date_str = ts.strftime('%B %d, %Y')
+
+        metadata_label_style = ParagraphStyle(
+            'MetadataLabel',
+            parent=normal_style,
+            fontSize=11,
+            alignment=2,  # Right alignment
+            textColor=colors.HexColor('#2a5298'),
+            fontName='Helvetica-Bold'
+        )
+        metadata_value_style = ParagraphStyle(
+            'MetadataValue',
+            parent=normal_style,
+            fontSize=11,
+            alignment=0,  # Left alignment
+            textColor=colors.HexColor('#333333'),
+            fontName='Helvetica'
+        )
+
+        form_name = assessment_data.get('form_name') or (questionnaire_data.get('portfolio_name') if questionnaire_data else None) or 'Risk Profile'
+
+        metadata_data = [
+            [Paragraph("CLIENT NAME:", metadata_label_style), Paragraph(client_data.get('client_name', 'N/A'), metadata_value_style)],
+            [Paragraph("CLIENT CODE:", metadata_label_style), Paragraph(client_data.get('client_code', 'N/A'), metadata_value_style)],
+            [Paragraph("ENTITY:", metadata_label_style), Paragraph(ia_data.get('name_of_entity') or ia_data.get('name_of_ia', 'N/A'), metadata_value_style)],
+            [Paragraph("FORM NAME:", metadata_label_style), Paragraph(form_name, metadata_value_style)],
+            [Paragraph("DATE:", metadata_label_style), Paragraph(date_str, metadata_value_style)],
+        ]
+
+        metadata_table = Table(metadata_data, colWidths=[2.2*inch, 3.8*inch])
+        metadata_table.setStyle(TableStyle([
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+            ('TOPPADDING', (0,0), (-1,-1), 8),
+        ]))
+        metadata_table.hAlign = 'CENTER'
+        story.append(metadata_table)
         
-        story.append(Paragraph(f"<b>DATE:</b> {date_str}", cover_subtitle_style))
         story.append(PageBreak())
 
         # Summary
