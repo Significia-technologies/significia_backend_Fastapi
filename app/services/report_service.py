@@ -1681,8 +1681,52 @@ class ReportService:
         story.append(Paragraph(f"<b>TOTAL ASSESSMENT SCORE: {score_str}</b>", bold_style))
         story.append(Spacer(1, 15))
 
-        # References (Only for Standard Form)
-        if not is_custom:
+        def fmt_score(val):
+            try:
+                f_val = float(val)
+                return int(f_val) if f_val % 1 == 0 else f_val
+            except: return val
+
+        # References (Both Standard and Custom)
+        if is_custom:
+            story.append(Paragraph("SCORING REFERENCE", heading_style))
+            
+            # Categories Tiers
+            cat_data = [["Category", "Score Range", "Description"]]
+            categories_list = questionnaire_data.get('categories') or []
+            for cat in categories_list:
+                cat_data.append([
+                    cat.get('name', 'N/A'),
+                    f"{fmt_score(cat.get('min_score'))} - {fmt_score(cat.get('max_score'))}",
+                    Paragraph(cat.get('description', ''), normal_style)
+                ])
+            
+            cat_table = Table(cat_data, colWidths=[1.5*inch, 1.5*inch, 3*inch])
+            cat_table.setStyle(TableStyle([
+                ('GRID', (0,0), (-1,-1), 0.2, colors.lightgrey),
+                ('FONTSIZE', (0,0), (-1,-1), 8),
+                ('BACKGROUND', (0,0), (-1,0), colors.whitesmoke),
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ]))
+            story.append(cat_table)
+            
+            story.append(Spacer(1, 10))
+            story.append(Paragraph("Question Scoring Rules", normal_style))
+            q_ref_data = [["Question", "Options & Points"]]
+            for q_idx, q in enumerate(effective_q_data):
+                rule_str = ", ".join([f"{chr(65 + i)}: {fmt_score(o.get('score'))}" for i, o in enumerate(q.get('options', []))])
+                q_ref_data.append([f"Q{q_idx+1}", Paragraph(rule_str, normal_style)])
+            
+            q_ref_table = Table(q_ref_data, colWidths=[1*inch, 5*inch])
+            q_ref_table.setStyle(TableStyle([
+                ('GRID', (0,0), (-1,-1), 0.2, colors.lightgrey),
+                ('FONTSIZE', (0,0), (-1,-1), 7),
+                ('BACKGROUND', (0,0), (-1,0), colors.whitesmoke),
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ]))
+            story.append(q_ref_table)
+            story.append(Spacer(1, 15))
+        else:
             story.append(Paragraph("SCORING REFERENCE", heading_style))
             compact_ref = [["Question", "Scoring Rule (Option: Points)"]]
             for q_id, rules in SCORING_RULES.items():
@@ -1971,8 +2015,50 @@ class ReportService:
         total_run.font.size = Pt(11)
         doc.add_paragraph()
 
-        # 5a. Scoring Reference Chart (Only for Standard Form)
-        if not is_custom:
+        def fmt_score(val):
+            try:
+                f_val = float(val)
+                return int(f_val) if f_val % 1 == 0 else f_val
+            except: return val
+
+        # 5a. Scoring Reference Chart (Both Standard and Custom)
+        if is_custom:
+            doc.add_heading('SCORING REFERENCE', level=1)
+            doc.add_paragraph().add_run("Risk Category Tiers / Score Ranges").bold = True
+            
+            cat_table = doc.add_table(rows=1, cols=3)
+            cat_table.style = 'Table Grid'
+            hdr_cells = cat_table.rows[0].cells
+            hdr_cells[0].text = 'Category'
+            hdr_cells[1].text = 'Score Range'
+            hdr_cells[2].text = 'Description'
+            for cell in hdr_cells: cell.paragraphs[0].runs[0].bold = True
+            
+            categories_list = questionnaire_data.get('categories') or []
+            for cat in categories_list:
+                row_cells = cat_table.add_row().cells
+                row_cells[0].text = cat.get('name', 'N/A')
+                row_cells[1].text = f"{fmt_score(cat.get('min_score'))} - {fmt_score(cat.get('max_score'))}"
+                row_cells[2].text = cat.get('description', '')
+                for cell in row_cells: cell.paragraphs[0].runs[0].font.size = Pt(9)
+                
+            doc.add_paragraph()
+            doc.add_paragraph().add_run("Question Scoring Rules").bold = True
+            
+            q_ref_table = doc.add_table(rows=1, cols=2)
+            q_ref_table.style = 'Table Grid'
+            hdr_cells = q_ref_table.rows[0].cells
+            hdr_cells[0].text = 'Question'
+            hdr_cells[1].text = 'Options & Points'
+            for cell in hdr_cells: cell.paragraphs[0].runs[0].bold = True
+            
+            for q_idx, q in enumerate(effective_q_data):
+                row_cells = q_ref_table.add_row().cells
+                row_cells[0].text = f"Q{q_idx+1}"
+                row_cells[1].text = ", ".join([f"{chr(65 + i)}: {fmt_score(o.get('score'))}" for i, o in enumerate(q.get('options', []))])
+                for cell in row_cells: cell.paragraphs[0].runs[0].font.size = Pt(8)
+            doc.add_paragraph()
+        else:
             doc.add_heading('SCORING REFERENCE', level=1)
             ref_table = doc.add_table(rows=1, cols=2)
             ref_table.style = 'Table Grid'
