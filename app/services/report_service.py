@@ -224,6 +224,7 @@ class ReportService:
         story.append(Paragraph(f"<b>CLIENT NAME:</b> {client.client_name}", cover_subtitle_style))
         story.append(Paragraph(f"<b>CLIENT CODE:</b> {client.client_code}", cover_subtitle_style))
         story.append(Paragraph(f"<b>ENTITY:</b> {entity_name}", cover_subtitle_style))
+        story.append(Paragraph(f"<b>FORM NAME:</b> {assessment.form_name}", cover_subtitle_style))
         story.append(Paragraph(f"<b>DATE:</b> {assessment.assessment_timestamp.strftime('%B %d, %Y')}", cover_subtitle_style))
         
         story.append(PageBreak())
@@ -477,6 +478,7 @@ class ReportService:
         run = subtitle.add_run(f"CLIENT CODE: {client.client_code}\n")
         run.bold = True
         run = subtitle.add_run(f"ENTITY: {entity_name}\n")
+        run = subtitle.add_run(f"FORM NAME: {assessment.form_name}\n")
         run = subtitle.add_run(f"DATE: {assessment.assessment_timestamp.strftime('%B %d, %Y')}")
         
         doc.add_page_break()
@@ -796,6 +798,7 @@ class ReportService:
         story.append(Paragraph(f"<b>CLIENT NAME:</b> {client.client_name}", cover_subtitle_style))
         story.append(Paragraph(f"<b>CLIENT CODE:</b> {client.client_code}", cover_subtitle_style))
         story.append(Paragraph(f"<b>ENTITY:</b> {entity_name}", cover_subtitle_style))
+        story.append(Paragraph(f"<b>FORM NAME:</b> {questionnaire.portfolio_name}", cover_subtitle_style))
         story.append(Paragraph(f"<b>DATE:</b> {assessment.submitted_at.strftime('%B %d, %Y')}", cover_subtitle_style))
         
         story.append(PageBreak())
@@ -979,6 +982,7 @@ class ReportService:
         run = subtitle.add_run(f"CLIENT CODE: {client.client_code}\n")
         if ia:
             run = subtitle.add_run(f"ENTITY: {ia.name_of_entity or ia.name_of_ia}\n")
+        run = subtitle.add_run(f"FORM NAME: {questionnaire.portfolio_name}\n")
         run = subtitle.add_run(f"DATE: {assessment.submitted_at.strftime('%B %d, %Y')}")
         
         doc.add_page_break()
@@ -1137,6 +1141,7 @@ class ReportService:
                     self.id = "SYSTEM-DEFAULT"
                     self.questions = questions
                     self.disclaimer = None # Remove disclaimer for system default
+                    self.portfolio_name = "Risk Profile (Sample)"
             
             questionnaire = MockQuestionnaire(mock_questions)
         elif questionnaire_data:
@@ -1150,6 +1155,7 @@ class ReportService:
                         import json
                         self.questions = json.loads(self.questions)
                     self.disclaimer = data.get('disclaimer')
+                    self.portfolio_name = data.get('portfolio_name', 'Risk Profile')
             
             questionnaire = BridgeQuestionnaire(questionnaire_data)
         else:
@@ -1266,6 +1272,10 @@ class ReportService:
 
         if entity_name:
             story.append(Paragraph(f"<b>ENTITY:</b> {entity_name}", cover_subtitle_style))
+        
+        form_name = getattr(questionnaire, 'portfolio_name', 'Risk Profile')
+        story.append(Paragraph(f"<b>FORM NAME:</b> {form_name}", cover_subtitle_style))
+
         if reg_no:
             story.append(Paragraph(f"<b>REGISTRATION NO:</b> {reg_no}", cover_subtitle_style))
             
