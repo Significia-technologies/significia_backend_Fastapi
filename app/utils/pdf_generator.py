@@ -195,6 +195,18 @@ class IAPDFGenerator:
 
     @staticmethod
     def generate_ia_report(ia_data: dict, employees: List[dict], logo_path: Optional[str] = None) -> bytes:
+        def format_date_dmy(d) -> str:
+            if not d or str(d).strip().lower() in ('none', 'n/a', ''):
+                return "N/A"
+            if hasattr(d, 'strftime'):
+                return d.strftime('%d-%m-%Y')
+            try:
+                clean_str = str(d).strip().split('T')[0]
+                dt = datetime.strptime(clean_str, '%Y-%m-%d')
+                return dt.strftime('%d-%m-%Y')
+            except Exception:
+                return str(d)
+
         # Extract version and formatted update time
         version = ia_data.get('version_number', 1)
         updated_at = ia_data.get('updated_at')
@@ -294,8 +306,8 @@ class IAPDFGenerator:
             ("Nature of Entity", nature_display),
             ("Entity Name", ia_data.get('name_of_entity')),
             ("Reg Number", ia_data.get('ia_registration_number')),
-            ("Reg Date", str(ia_data.get('date_of_registration', 'N/A'))),
-            ("Expiry Date", str(ia_data.get('date_of_registration_expiry', 'N/A'))),
+            ("Reg Date", format_date_dmy(ia_data.get('date_of_registration'))),
+            ("Expiry Date", format_date_dmy(ia_data.get('date_of_registration_expiry'))),
             ("Email ID", ia_data.get('registered_email_id')),
             ("Phone No.", ia_data.get('registered_contact_number')),
             ("CIN Number", ia_data.get('cin_number') or "N/A"),
@@ -382,10 +394,10 @@ class IAPDFGenerator:
                     if reg_no.strip().lower() in ('none', 'n/a', ''): reg_no = '-'
                     
                     raw_expiry = emp.get('date_of_registration_expiry')
-                    expiry = str(raw_expiry).split('T')[0] if raw_expiry and str(raw_expiry).strip().lower() not in ('none', 'n/a', '') else '-'
+                    expiry = format_date_dmy(raw_expiry) if raw_expiry and str(raw_expiry).strip().lower() not in ('none', 'n/a', '') else '-'
                     
                     raw_joined = emp.get('date_of_joining')
-                    joined = str(raw_joined).split('T')[0] if raw_joined and str(raw_joined).strip().lower() not in ('none', 'n/a', '') else '-'
+                    joined = format_date_dmy(raw_joined) if raw_joined and str(raw_joined).strip().lower() not in ('none', 'n/a', '') else '-'
                     
                     pdf.cell(40, 9, f" {name}", 1, 0, 'L')
                     pdf.cell(60, 9, f" {desig}", 1, 0, 'L')
