@@ -1488,7 +1488,7 @@ class ReportService:
         story.append(Spacer(1, 40))
         
         # Handle timestamp from bridge (string or datetime)
-        ts = assessment_data.get('assessment_timestamp')
+        ts = assessment_data.get('assessment_timestamp') or assessment_data.get('submitted_at') or assessment_data.get('created_at')
         date_str = "N/A"
         if ts:
             if isinstance(ts, str):
@@ -1501,6 +1501,32 @@ class ReportService:
                     date_str = str(ts)
             elif hasattr(ts, 'strftime'):
                 date_str = ts.strftime('%B %d, %Y')
+
+        # Extract score and category names supporting both standard and custom assessments
+        score_val = assessment_data.get('calculated_score')
+        if score_val is None:
+            score_val = assessment_data.get('total_score')
+        if score_val is None:
+            score_val = assessment_data.get('score', 0)
+            
+        try:
+            f_score = float(score_val)
+            score_val = int(f_score) if f_score % 1 == 0 else f_score
+        except:
+            pass
+
+        max_score = questionnaire_data.get('max_possible_score') if questionnaire_data else None
+        if max_score is not None:
+            try:
+                f_max = float(max_score)
+                max_score = int(f_max) if f_max % 1 == 0 else f_max
+                score_str = f"{score_val} / {max_score}"
+            except:
+                score_str = f"{score_val} / {max_score}"
+        else:
+            score_str = str(score_val)
+
+        category_str = assessment_data.get('assigned_risk_tier') or assessment_data.get('category_name') or 'N/A'
 
         metadata_label_style = ParagraphStyle(
             'MetadataLabel',
@@ -1546,8 +1572,8 @@ class ReportService:
             ["Client Name:", client_data.get('client_name')],
             ["Client Code:", client_data.get('client_code')],
             ["Date of Assessment:", date_str],
-            ["Total Score:", str(assessment_data.get('calculated_score', 0))],
-            ["Risk Category:", str(assessment_data.get('assigned_risk_tier', 'N/A'))]
+            ["Total Score:", score_str],
+            ["Risk Category:", category_str]
         ]
         summary_table = Table(summary_data, colWidths=[2*inch, 4*inch])
         summary_table.setStyle(TableStyle([
@@ -1652,7 +1678,7 @@ class ReportService:
                     story.append(Paragraph(options_str, ParagraphStyle('Options', parent=normal_style, leftIndent=20, leading=12)))
                 story.append(Spacer(1, 12))
 
-        story.append(Paragraph(f"<b>TOTAL ASSESSMENT SCORE: {assessment_data.get('calculated_score', 0)}</b>", bold_style))
+        story.append(Paragraph(f"<b>TOTAL ASSESSMENT SCORE: {score_str}</b>", bold_style))
         story.append(Spacer(1, 15))
 
         # References (Only for Standard Form)
@@ -1788,7 +1814,7 @@ class ReportService:
         run = subtitle.add_run(f"ENTITY: {ia_data.get('name_of_entity') or ia_data.get('name_of_ia')}\n")
         
         # Handle timestamp from bridge
-        ts = assessment_data.get('assessment_timestamp')
+        ts = assessment_data.get('assessment_timestamp') or assessment_data.get('submitted_at') or assessment_data.get('created_at')
         date_str = "N/A"
         if ts:
             if isinstance(ts, str):
@@ -1799,6 +1825,32 @@ class ReportService:
                 except: date_str = str(ts)
             elif hasattr(ts, 'strftime'):
                 date_str = ts.strftime('%B %d, %Y')
+
+        # Extract score and category names supporting both standard and custom assessments
+        score_val = assessment_data.get('calculated_score')
+        if score_val is None:
+            score_val = assessment_data.get('total_score')
+        if score_val is None:
+            score_val = assessment_data.get('score', 0)
+            
+        try:
+            f_score = float(score_val)
+            score_val = int(f_score) if f_score % 1 == 0 else f_score
+        except:
+            pass
+
+        max_score = questionnaire_data.get('max_possible_score') if questionnaire_data else None
+        if max_score is not None:
+            try:
+                f_max = float(max_score)
+                max_score = int(f_max) if f_max % 1 == 0 else f_max
+                score_str = f"{score_val} / {max_score}"
+            except:
+                score_str = f"{score_val} / {max_score}"
+        else:
+            score_str = str(score_val)
+
+        category_str = assessment_data.get('assigned_risk_tier') or assessment_data.get('category_name') or 'N/A'
         
         run = subtitle.add_run(f"DATE: {date_str}")
         
@@ -1813,8 +1865,8 @@ class ReportService:
             ("Client Name:", client_data.get('client_name')),
             ("Client Code:", client_data.get('client_code')),
             ("Date of Assessment:", date_str),
-            ("Total Score:", str(assessment_data.get('calculated_score', 0))),
-            ("Risk Category:", str(assessment_data.get('assigned_risk_tier', 'N/A')))
+            ("Total Score:", score_str),
+            ("Risk Category:", category_str)
         ]
         
         for i, (label, value) in enumerate(summary_rows):
@@ -1914,7 +1966,7 @@ class ReportService:
 
         # Total Score Summary
         total_p = doc.add_paragraph()
-        total_run = total_p.add_run(f"TOTAL ASSESSMENT SCORE: {assessment_data.get('calculated_score', 0)}")
+        total_run = total_p.add_run(f"TOTAL ASSESSMENT SCORE: {score_str}")
         total_run.bold = True
         total_run.font.size = Pt(11)
         doc.add_paragraph()
