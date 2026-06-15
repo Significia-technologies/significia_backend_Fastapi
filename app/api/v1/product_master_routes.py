@@ -16,7 +16,7 @@ from app.services.bridge_client import BridgeClient
 router = APIRouter()
 
 PRODUCT_TYPES = ("shares", "mutual-funds", "etfs", "life-insurance", "health-insurance")
-PRICE_TYPES   = ("share-prices", "nav-uploads", "etf-prices")
+PRICE_TYPES   = ("share-prices", "nav-uploads", "etf-prices", "ulip-nav-uploads")
 
 EXCEL_COLUMNS = {
     "shares":           ["ISIN Code", "Symbol", "Share Name"],
@@ -39,12 +39,14 @@ PRICE_EXCEL_COLUMNS = {
     "share-prices": ["ISIN Code", "Symbol", "Date (DD-MM-YYYY)", "Share Price"],
     "nav-uploads":  ["Scheme Code", "Scheme Name", "Date (DD-MM-YYYY)", "NAV"],
     "etf-prices":   ["ISIN Code", "Symbol", "Date (DD-MM-YYYY)", "ETF Price"],
+    "ulip-nav-uploads": ["UIN", "Policy Name", "Policy Type", "Date (DD-MM-YYYY)", "NAV", "Status (Active/Deactive)"],
 }
 
 PRICE_EXCEL_SAMPLES = {
     "share-prices": [("INE002A01018", "RELIANCE", "01-01-2025", "2850.50")],
     "nav-uploads":  [("120503", "Hdfc Mid-Cap Opportunities Fund", "01-01-2025", "145.23")],
     "etf-prices":   [("INF204KB13I2", "NIFTYBEES", "01-01-2025", "248.75")],
+    "ulip-nav-uploads": [("101L048V03", "JEEVAN ANAND", "ULIP-Equity", "01-01-2025", "145.23", "Active")],
 }
 
 
