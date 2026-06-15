@@ -259,6 +259,8 @@ async def list_price_records(
     skip: int = Query(0),
     limit: int = Query(200),
     search: str = Query(None),
+    from_date: str = Query(None),
+    to_date: str = Query(None),
     bridge: BridgeClient = Depends(get_bridge_client),
     current_user=Depends(get_current_user),
 ):
@@ -266,6 +268,10 @@ async def list_price_records(
     params = {"skip": skip, "limit": limit}
     if search:
         params["search"] = search
+    if from_date:
+        params["from_date"] = from_date
+    if to_date:
+        params["to_date"] = to_date
     return await bridge.get(f"/price-uploads/{price_type}", params=params)
 
 
