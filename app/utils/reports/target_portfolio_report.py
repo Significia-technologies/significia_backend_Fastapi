@@ -421,8 +421,8 @@ class TargetPortfolioPDFGenerator:
                 cols = [60, 20, 27, 33, 50]
                 headers = ["Product", "% Health", "Suggested Amt", "Objective", "Suitability"]
             else:
-                cols = [48, 16, 24, 16, 26, 26, 34]
-                headers = ["Product", "% Invest", "Suggested Amt", "Inst.", "Anticipated Val", "Objective", "Suitability"]
+                cols = [40, 14, 22, 22, 12, 22, 24, 34]
+                headers = ["Product", "% Invest", "Current Accum.", "Suggested Amt", "Inst.", "Anticipated Val", "Objective", "Suitability"]
 
             # Table header row
             pdf.set_fill_color(*table_header_bg)
@@ -487,9 +487,15 @@ class TargetPortfolioPDFGenerator:
                 elif is_health:
                     cell_texts = [product, pct, suggested_str, obj_val, suitability]
                 else:
-                    # Include Installments and Anticipated Future Value for non-insurance
-                    noi = e.get("no_of_installments")
+                    # Include Current Accum., Installments and Anticipated Future Value for non-insurance
                     tx = e.get("transaction_type")
+                    cur_acc = e.get("current_accumulation")
+                    if tx == "SIP" and cur_acc is not None:
+                        cur_acc_str = f"Rs. {format_indian_number(cur_acc)}"
+                    else:
+                        cur_acc_str = "--"
+
+                    noi = e.get("no_of_installments")
                     if tx == "SIP" and noi:
                         installments_str = str(noi)
                         anticipated_val = float(suggested_val or 0) * int(noi)
@@ -497,7 +503,7 @@ class TargetPortfolioPDFGenerator:
                     else:
                         installments_str = "--"
                         anticipated_str = "--"
-                    cell_texts = [product, pct, suggested_str, installments_str, anticipated_str, obj_val, suitability]
+                    cell_texts = [product, pct, cur_acc_str, suggested_str, installments_str, anticipated_str, obj_val, suitability]
 
                 lines_per_col = [
                     max(len(pdf.multi_cell(w, h_unit, str(t), split_only=True)), 1)
