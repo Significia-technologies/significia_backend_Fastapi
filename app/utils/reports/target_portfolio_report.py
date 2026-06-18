@@ -14,6 +14,8 @@ def format_indian_number(val):
         return ""
     try:
         val_float = float(val)
+        is_neg = val_float < 0
+        val_float = abs(val_float)
         if val_float.is_integer():
             int_part = str(int(val_float))
             dec_part = ""
@@ -35,7 +37,10 @@ def format_indian_number(val):
                 rest_groups.insert(0, rest)
             grouped = ",".join(rest_groups) + "," + last_three
             
-        return grouped + dec_part
+        formatted = grouped + dec_part
+        if is_neg:
+            return f"({formatted})"
+        return formatted
     except Exception:
         return str(val)
 
@@ -465,7 +470,13 @@ class TargetPortfolioPDFGenerator:
                     }
                     tx_label = tx_type_map.get(tx_type, str(tx_type)) if tx_type else ""
                     freq_label = freq_map.get(freq, str(freq)) if freq else ""
-                    if tx_label and freq_label:
+                    if tx_type == "LUMP_SUM":
+                        action = e.get("action")
+                        if action in ("Buy", "Sell"):
+                            tx_desc = f"Lumpsum ({action})"
+                        else:
+                            tx_desc = "Lumpsum"
+                    elif tx_label and freq_label:
                         if tx_label == freq_label:
                             tx_desc = tx_label
                         else:
@@ -480,7 +491,14 @@ class TargetPortfolioPDFGenerator:
                 suitability = e["remarks"] or "--"
 
                 suggested_val = e.get("suggested_investment_amount")
-                suggested_str = f"Rs. {format_indian_number(suggested_val)}" if suggested_val is not None else "--"
+                action = e.get("action")
+                if suggested_val is not None:
+                    if action == "Sell":
+                        suggested_str = f"(Rs. {format_indian_number(suggested_val)})"
+                    else:
+                        suggested_str = f"Rs. {format_indian_number(suggested_val)}"
+                else:
+                    suggested_str = "--"
 
                 if is_life:
                     cell_texts = [product, pct, suggested_str, obj_val, reason, suitability]
@@ -490,7 +508,7 @@ class TargetPortfolioPDFGenerator:
                     # Include Current Accum., Installments and Anticipated Future Value for non-insurance
                     tx = e.get("transaction_type")
                     cur_acc = e.get("current_accumulation")
-                    if tx == "SIP" and cur_acc is not None:
+                    if tx in ("SIP", "LUMP_SUM") and cur_acc is not None:
                         cur_acc_str = f"Rs. {format_indian_number(cur_acc)}"
                     else:
                         cur_acc_str = "--"

@@ -9,6 +9,8 @@ def format_indian_number(val):
         return ""
     try:
         val_float = float(val)
+        is_neg = val_float < 0
+        val_float = abs(val_float)
         if val_float.is_integer():
             int_part = str(int(val_float))
             dec_part = ""
@@ -30,7 +32,10 @@ def format_indian_number(val):
                 rest_groups.insert(0, rest)
             grouped = ",".join(rest_groups) + "," + last_three
             
-        return grouped + dec_part
+        formatted = grouped + dec_part
+        if is_neg:
+            return f"({formatted})"
+        return formatted
     except Exception:
         return str(val)
 
