@@ -421,8 +421,8 @@ class TargetPortfolioPDFGenerator:
                 cols = [60, 20, 27, 33, 50]
                 headers = ["Product", "% Health", "Suggested Amt", "Objective", "Suitability"]
             else:
-                cols = [65, 20, 27, 33, 45]
-                headers = ["Product", "% Invest", "Suggested Amt", "Objective", "Suitability"]
+                cols = [48, 16, 24, 16, 26, 26, 34]
+                headers = ["Product", "% Invest", "Suggested Amt", "Inst.", "Anticipated Val", "Objective", "Suitability"]
 
             # Table header row
             pdf.set_fill_color(*table_header_bg)
@@ -487,7 +487,17 @@ class TargetPortfolioPDFGenerator:
                 elif is_health:
                     cell_texts = [product, pct, suggested_str, obj_val, suitability]
                 else:
-                    cell_texts = [product, pct, suggested_str, obj_val, suitability]
+                    # Include Installments and Anticipated Future Value for non-insurance
+                    noi = e.get("no_of_installments")
+                    tx = e.get("transaction_type")
+                    if tx == "SIP" and noi:
+                        installments_str = str(noi)
+                        anticipated_val = float(suggested_val or 0) * int(noi)
+                        anticipated_str = f"Rs. {format_indian_number(anticipated_val)}"
+                    else:
+                        installments_str = "--"
+                        anticipated_str = "--"
+                    cell_texts = [product, pct, suggested_str, installments_str, anticipated_str, obj_val, suitability]
 
                 lines_per_col = [
                     max(len(pdf.multi_cell(w, h_unit, str(t), split_only=True)), 1)
