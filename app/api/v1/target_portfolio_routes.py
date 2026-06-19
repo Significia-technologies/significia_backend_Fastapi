@@ -162,6 +162,8 @@ async def download_target_portfolio_report(
         export_basis=export_basis,
         asset_classes=asset_classes_list,
         allocation_date=allocation_date_str,
+        version_number=report_data.get("version_number"),
+        is_draft=report_data.get("is_draft", False),
     )
 
     safe_client = "".join(c if c.isalnum() else "_" for c in client_code)
