@@ -92,6 +92,7 @@ async def download_target_portfolio_report(
     asset_classes: Optional[str] = Query(None),
     client_name: str = Query(""),
     client_code: str = Query(""),
+    portfolio_id: Optional[str] = Query(None),
     bridge: BridgeClient = Depends(get_bridge_client),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
@@ -101,6 +102,8 @@ async def download_target_portfolio_report(
         params["asset_classes"] = asset_classes.split(",")
     else:
         params["objective"] = objective
+    if portfolio_id:
+        params["portfolio_id"] = portfolio_id
 
     report_data = await bridge.get(
         f"/target-portfolio/{client_id}/{member_id}/report-data",
