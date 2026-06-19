@@ -15,17 +15,33 @@ from app.utils.reports.target_portfolio_report import TargetPortfolioPDFGenerato
 router = APIRouter()
 
 
+@router.get("/target-portfolio/aua-summary")
+async def get_aua_summary(
+    client_ids: Optional[str] = Query(None),
+    bridge: BridgeClient = Depends(get_bridge_client),
+    current_user=Depends(get_current_user),
+):
+    params = {}
+    if client_ids:
+        params["client_ids"] = client_ids
+    return await bridge.get("/target-portfolio/aua-summary", params=params)
+
+
 @router.get("/target-portfolio/{client_id}/{member_id}")
 async def list_target_portfolio(
     client_id: str,
     member_id: str,
     asset_class: str = Query("shares"),
+    portfolio_id: Optional[str] = Query(None),
     bridge: BridgeClient = Depends(get_bridge_client),
     current_user=Depends(get_current_user),
 ):
+    params: dict = {"asset_class": asset_class}
+    if portfolio_id:
+        params["portfolio_id"] = portfolio_id
     return await bridge.get(
         f"/target-portfolio/{client_id}/{member_id}",
-        params={"asset_class": asset_class},
+        params=params,
     )
 
 
@@ -233,6 +249,102 @@ async def download_target_portfolio_client_report(
     )
 
 
+
+# ── Portfolio version management ──────────────────────────────────────
+
+@router.get("/target-portfolio/{client_id}/{member_id}/portfolios")
+async def list_target_portfolios(
+    client_id: str,
+    member_id: str,
+    bridge: BridgeClient = Depends(get_bridge_client),
+    current_user=Depends(get_current_user),
+):
+    return await bridge.get(f"/target-portfolio/{client_id}/{member_id}/portfolios")
+
+
+@router.post("/target-portfolio/{client_id}/{member_id}/portfolios")
+async def create_target_portfolio(
+    client_id: str,
+    member_id: str,
+    data: dict,
+    bridge: BridgeClient = Depends(get_bridge_client),
+    current_user=Depends(get_current_user),
+):
+    return await bridge.post(f"/target-portfolio/{client_id}/{member_id}/portfolios", data)
+
+
+@router.get("/target-portfolio/portfolio/{portfolio_id}")
+async def get_target_portfolio(
+    portfolio_id: str,
+    bridge: BridgeClient = Depends(get_bridge_client),
+    current_user=Depends(get_current_user),
+):
+    return await bridge.get(f"/target-portfolio/portfolio/{portfolio_id}")
+
+
+@router.patch("/target-portfolio/portfolio/{portfolio_id}/fund-amount")
+async def update_portfolio_fund_amount(
+    portfolio_id: str,
+    data: dict,
+    bridge: BridgeClient = Depends(get_bridge_client),
+    current_user=Depends(get_current_user),
+):
+    return await bridge.patch(f"/target-portfolio/portfolio/{portfolio_id}/fund-amount", data)
+
+
+@router.post("/target-portfolio/portfolio/{portfolio_id}/save")
+async def save_target_portfolio(
+    portfolio_id: str,
+    bridge: BridgeClient = Depends(get_bridge_client),
+    current_user=Depends(get_current_user),
+):
+    return await bridge.post(f"/target-portfolio/portfolio/{portfolio_id}/save", {})
+
+
+@router.post("/target-portfolio/portfolio/{portfolio_id}/fork")
+async def fork_target_portfolio(
+    portfolio_id: str,
+    data: dict,
+    bridge: BridgeClient = Depends(get_bridge_client),
+    current_user=Depends(get_current_user),
+):
+    return await bridge.post(f"/target-portfolio/portfolio/{portfolio_id}/fork", data)
+
+
+# ── Portfolio-scoped product endpoints ────────────────────────────────
+
+@router.post("/target-portfolio/portfolio/{portfolio_id}/products")
+async def add_portfolio_product(
+    portfolio_id: str,
+    data: dict,
+    bridge: BridgeClient = Depends(get_bridge_client),
+    current_user=Depends(get_current_user),
+):
+    return await bridge.post(f"/target-portfolio/portfolio/{portfolio_id}/products", data)
+
+
+@router.put("/target-portfolio/portfolio/{portfolio_id}/products/{entry_id}")
+async def update_portfolio_product(
+    portfolio_id: str,
+    entry_id: str,
+    data: dict,
+    bridge: BridgeClient = Depends(get_bridge_client),
+    current_user=Depends(get_current_user),
+):
+    return await bridge.put(f"/target-portfolio/portfolio/{portfolio_id}/products/{entry_id}", data)
+
+
+@router.delete("/target-portfolio/portfolio/{portfolio_id}/products/{entry_id}")
+async def remove_portfolio_product(
+    portfolio_id: str,
+    entry_id: str,
+    bridge: BridgeClient = Depends(get_bridge_client),
+    current_user=Depends(get_current_user),
+):
+    return await bridge.delete(f"/target-portfolio/portfolio/{portfolio_id}/products/{entry_id}")
+
+
+# ── PDF / Allocation target ────────────────────────────────────────────
 
 @router.get("/target-portfolio/{client_id}/{member_id}/allocation-target/pdf")
 async def download_target_allocation_pdf(
