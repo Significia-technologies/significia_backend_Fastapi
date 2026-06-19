@@ -237,16 +237,19 @@ class TargetPortfolioPDFGenerator:
         pdf.set_text_color(*text_muted)
         pdf.cell(0, 6, f"CLIENT CODE: {client_code}", ln=True, align="C")
 
-        pdf.ln(4)
-        pdf.set_font("helvetica", "B", 13)
-        pdf.set_text_color(*text_dark)
-        pdf.cell(0, 8, member_name.upper() if member_name else "--", ln=True, align="C")
-        pdf.set_font("helvetica", "", 10)
-        pdf.set_text_color(*text_muted)
-        pdf.cell(0, 6, f"INVESTOR SUB-CODE: {investor_code}", ln=True, align="C")
+        # Show investor sub-block only when the member is not the client themselves
+        is_self = member_name and client_name and member_name.strip().upper() == client_name.strip().upper()
+        if not is_self and member_name:
+            pdf.ln(4)
+            pdf.set_font("helvetica", "B", 13)
+            pdf.set_text_color(*text_dark)
+            pdf.cell(0, 8, member_name.upper(), ln=True, align="C")
+            pdf.set_font("helvetica", "", 10)
+            pdf.set_text_color(*text_muted)
+            pdf.cell(0, 6, f"INVESTOR SUB-CODE: {investor_code}", ln=True, align="C")
 
         # Objective / filter badge
-        pdf.ln(6)
+        pdf.ln(4)
         pdf.set_font("helvetica", "B", 10)
         pdf.set_text_color(0, 100, 40)
         if export_basis == "product" and asset_classes:
@@ -268,8 +271,8 @@ class TargetPortfolioPDFGenerator:
             pdf.set_text_color(*text_muted)
             pdf.cell(0, 6, f"Based on Asset Allocation dated {allocation_date}", ln=True, align="C")
 
-        # Cover footer (landscape page height ~210mm, footer near bottom)
-        pdf.set_y(168)
+        # Cover footer — sit below content but anchored near bottom (landscape ~210mm)
+        pdf.set_y(max(pdf.get_y() + 8, 178))
         pdf.set_font("helvetica", "I", 9)
         pdf.set_text_color(*text_muted)
         pdf.cell(0, 6, f"Report Generated on: {generated_on}", ln=True, align="C")
