@@ -299,12 +299,17 @@ class TargetPortfolioPDFGenerator:
         entity_name  = ia_data.get("name_of_entity", "") if ia_data else ""
         ia_reg_no    = ia_data.get("ia_registration_number", "") if ia_data else ""
 
+        ver_label = ""
+        if version_number is not None:
+            ver_label = f"DRAFT  v{version_number}" if is_draft else f"Version {version_number}"
+
         pdf = BaseReportPDF(
             orientation='L',
             advisor_name=advisor_name,
             entity_name=entity_name,
             ia_reg_no=ia_reg_no,
             header_text="Target Portfolio Report -- Confidential",
+            version=ver_label,
         )
 
         member_name:   str  = report_data.get("member_name", "")
@@ -632,54 +637,7 @@ class TargetPortfolioPDFGenerator:
                         pdf.add_page()
                     draw_section(ac_key, sections[ac_key])
 
-        # ── Disclaimer & signature ───────────────────────────────────────────
-        pdf.ln(4)
-        pdf.set_font("helvetica", "I", 8)
-        pdf.set_text_color(*text_muted)
-        pdf.multi_cell(
-            0, 5,
-            "This report is generated for internal record and analytical purposes only. "
-            "The information is based on data recorded in the system and does not constitute investment advice. "
-            "Only active portfolio entries matching the selected filter are included.",
-            align="C",
-        )
-        pdf.ln(6)
-
-        sig_y = pdf.get_y()
-        if sig_y > PAGE_BREAK_Y:
-            pdf.add_page()
-            sig_y = pdf.get_y()
-
-        pdf.set_font("helvetica", "B", 9)
-        pdf.set_text_color(*navy)
-
-        pdf.set_xy(10, sig_y)
-        pdf.cell(130, 5, "Client Signature:")
-        pdf.line(10, sig_y + 18, 110, sig_y + 18)
-        pdf.set_xy(10, sig_y + 19)
-        pdf.set_font("helvetica", "", 8)
-        pdf.set_text_color(*text_dark)
-        pdf.cell(130, 4, f"Name: {client_name}", ln=True)
-        pdf.set_x(10)
-        pdf.cell(130, 4, "Date: ____/____/________")
-
-        pdf.set_xy(160, sig_y)
-        pdf.set_font("helvetica", "B", 9)
-        pdf.set_text_color(*navy)
-        pdf.cell(120, 5, "Investment Advisor Signature:")
-        pdf.line(160, sig_y + 18, 280, sig_y + 18)
-        pdf.set_xy(160, sig_y + 19)
-        pdf.set_font("helvetica", "", 8)
-        pdf.set_text_color(*text_dark)
-        pdf.cell(120, 4, f"Name: {advisor_name}", ln=True)
-        if entity_name:
-            pdf.set_x(160)
-            pdf.cell(120, 4, f"For: {entity_name}", ln=True)
-        pdf.set_x(160)
-        pdf.cell(120, 4, "Date: ____/____/________")
-
-        # ── Charts — last page ───────────────────────────────────────────────
-        # Overall allocation chart
+        # ── Charts — second-to-last page(s) ─────────────────────────────────
         all_sections = {}
         if export_basis == "investor":
             for member_item in report_data.get("members", []):
@@ -707,7 +665,6 @@ class TargetPortfolioPDFGenerator:
                 except Exception:
                     pass
 
-            # Per-asset-class charts, two per row
             for i, (label, chart_file) in enumerate(chart_paths):
                 x_pos = LEFT if i % 2 == 0 else LEFT + 140
                 if i % 2 == 0 and i > 0:
@@ -723,5 +680,48 @@ class TargetPortfolioPDFGenerator:
                     os.remove(chart_file)
                 except Exception:
                     pass
+
+        # ── Disclaimer & signature — always last page ─────────────────────
+        pdf.add_page()
+        pdf.ln(4)
+        pdf.set_font("helvetica", "I", 8)
+        pdf.set_text_color(*text_muted)
+        pdf.multi_cell(
+            0, 5,
+            "This report is generated for internal record and analytical purposes only. "
+            "The information is based on data recorded in the system and does not constitute investment advice. "
+            "Only active portfolio entries matching the selected filter are included.",
+            align="C",
+        )
+        pdf.ln(10)
+
+        sig_y = pdf.get_y()
+        pdf.set_font("helvetica", "B", 9)
+        pdf.set_text_color(*navy)
+
+        pdf.set_xy(10, sig_y)
+        pdf.cell(130, 5, "Client Signature:")
+        pdf.line(10, sig_y + 18, 110, sig_y + 18)
+        pdf.set_xy(10, sig_y + 19)
+        pdf.set_font("helvetica", "", 8)
+        pdf.set_text_color(*text_dark)
+        pdf.cell(130, 4, f"Name: {client_name}", ln=True)
+        pdf.set_x(10)
+        pdf.cell(130, 4, "Date: ____/____/________")
+
+        pdf.set_xy(160, sig_y)
+        pdf.set_font("helvetica", "B", 9)
+        pdf.set_text_color(*navy)
+        pdf.cell(120, 5, "Investment Advisor Signature:")
+        pdf.line(160, sig_y + 18, 280, sig_y + 18)
+        pdf.set_xy(160, sig_y + 19)
+        pdf.set_font("helvetica", "", 8)
+        pdf.set_text_color(*text_dark)
+        pdf.cell(120, 4, f"Name: {advisor_name}", ln=True)
+        if entity_name:
+            pdf.set_x(160)
+            pdf.cell(120, 4, f"For: {entity_name}", ln=True)
+        pdf.set_x(160)
+        pdf.cell(120, 4, "Date: ____/____/________")
 
         return bytes(pdf.output())
