@@ -445,7 +445,7 @@ class TargetPortfolioPDFGenerator:
         # Non-insurance: 11 columns
         cols_std = [44, 13, 22, 22, 22, 11, 25, 13, 23, 34, 48]
         hdrs_std = [
-            "Product", "% Invest", "Tx Type", "Curr Accum.",
+            "Product", "% Invest", "Tx Type", "Existing Invest.",
             "Suggested Amt", "Inst.", "Anticipated Val",
             "Action", "Objective", "Reason for Inv.", "Remarks",
         ]
@@ -522,7 +522,7 @@ class TargetPortfolioPDFGenerator:
                 suggested_val = e.get("suggested_investment_amount")
                 action = e.get("action") or ""
                 if suggested_val is not None:
-                    suggested_str = f"(Rs. {format_indian_number(suggested_val)})" if action == "Sell" \
+                    suggested_str = f"(-Rs. {format_indian_number(suggested_val)})" if action == "Sell" \
                                     else f"Rs. {format_indian_number(suggested_val)}"
                 else:
                     suggested_str = "--"
@@ -567,10 +567,10 @@ class TargetPortfolioPDFGenerator:
                         action_str, obj_val, reason, remarks,
                     ]
 
-                # Measure row height (remarks wraps, others truncate gracefully)
+                # Measure row height — use w-2 to match the rendered inner width
                 pdf.set_font("helvetica", "", 8)
                 lines_per_col = [
-                    max(len(pdf.multi_cell(w, h_unit, str(t), split_only=True)), 1)
+                    max(len(pdf.multi_cell(w - 2, h_unit, str(t), split_only=True)), 1)
                     for t, w in zip(cell_texts, cols)
                 ]
                 row_h = max(max(lines_per_col) * h_unit + 4.0, 10.0)
