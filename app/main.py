@@ -13,25 +13,36 @@ from app.core.domain_guard import DomainGuardMiddleware
 def _run_schema_patches():
     from sqlalchemy import text
     from app.database.session import engine
-    patches = [
-        # ia_master columns added after initial table creation
-        """
-        DO $$ BEGIN
+    # Use pg_attribute to find the table regardless of schema, then ALTER using its schema
+    patch = """
+    DO $$ DECLARE
+        v_schema TEXT;
+    BEGIN
+        SELECT n.nspname INTO v_schema
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relname = 'ia_master' AND c.relkind = 'r'
+        LIMIT 1;
+
+        IF v_schema IS NOT NULL THEN
             IF NOT EXISTS (
                 SELECT 1 FROM information_schema.columns
-                WHERE table_schema = 'significia_core'
+                WHERE table_schema = v_schema
                   AND table_name   = 'ia_master'
                   AND column_name  = 'website'
             ) THEN
-                ALTER TABLE significia_core.ia_master ADD COLUMN website VARCHAR(255);
+                EXECUTE format('ALTER TABLE %I.ia_master ADD COLUMN website VARCHAR(255)', v_schema);
             END IF;
-        END $$;
-        """,
-    ]
-    with engine.connect() as conn:
-        for sql in patches:
-            conn.execute(text(sql))
-        conn.commit()
+        END IF;
+    END $$;
+    """
+    try:
+        with engine.connect() as conn:
+            conn.execute(text(patch))
+            conn.commit()
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Schema patch failed: {e}")
 
 
 @asynccontextmanager
