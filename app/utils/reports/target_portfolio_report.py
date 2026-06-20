@@ -206,10 +206,15 @@ class TargetPortfolioPDFGenerator:
         pdf.cell(0, 14, "TARGET PORTFOLIO REPORT", ln=True, align="C")
 
         # Version badge
-        if version_number is not None:
+        if version_number is not None or is_draft:
             pdf.set_font("helvetica", "B", 11)
             pdf.set_text_color(*draft_red if is_draft else (0, 100, 40))
-            status_label = f"DRAFT  —  Version {version_number}" if is_draft else f"Version {version_number}"
+            if is_draft and version_number is not None:
+                status_label = f"DRAFT  —  Version {version_number}"
+            elif is_draft:
+                status_label = "DRAFT"
+            else:
+                status_label = f"Version {version_number}"
             pdf.cell(0, 7, status_label, ln=True, align="C")
 
         # Subtitle
@@ -299,9 +304,12 @@ class TargetPortfolioPDFGenerator:
         entity_name  = ia_data.get("name_of_entity", "") if ia_data else ""
         ia_reg_no    = ia_data.get("ia_registration_number", "") if ia_data else ""
 
-        ver_label = ""
         if version_number is not None:
             ver_label = f"DRAFT  v{version_number}" if is_draft else f"Version {version_number}"
+        elif is_draft:
+            ver_label = "DRAFT"
+        else:
+            ver_label = ""
 
         pdf = BaseReportPDF(
             orientation='L',
