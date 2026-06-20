@@ -425,6 +425,7 @@ class TargetPortfolioPDFGenerator:
         TX_TYPE_MAP = {
             "LUMP_SUM": "Lumpsum", "SIP": "SIP", "STP": "STP",
             "SWITCH_IN": "Switch In", "SINGLE_PAY": "Single Pay", "RECURRING": "Recurring",
+            "HOLD": "Hold",
         }
         FREQ_MAP = {
             "WEEKLY": "Weekly", "MONTHLY": "Monthly", "QUARTERLY": "Quarterly",
@@ -565,7 +566,7 @@ class TargetPortfolioPDFGenerator:
                         inst_str        = "--"
                         anticipated_str = "--"
 
-                    action_str = action if action in ("Buy", "Sell") else "--"
+                    action_str = "Hold" if tx == "HOLD" else (action if action in ("Buy", "Sell") else "--")
                     cell_texts = [
                         product, pct, tx_str, cur_acc_str,
                         suggested_str, inst_str, anticipated_str,
