@@ -412,9 +412,9 @@ class TargetPortfolioPDFGenerator:
         if version_number is not None:
             ver_label = f"{'DRAFT · ' if is_draft else ''}v{version_number}"
             pdf.set_xy(230, info_y + 11)
-            pdf.set_fill_color(*(220, 100, 100) if is_draft else (220, 232, 246))
+            pdf.set_fill_color(*(220, 220, 220) if is_draft else (220, 232, 246))
             pdf.set_font("helvetica", "B", 9)
-            pdf.set_text_color(*(180, 30, 30) if is_draft else navy)
+            pdf.set_text_color(*(20, 20, 20) if is_draft else navy)
             pdf.cell(40, 6, f"  {ver_label}  ", border=1, fill=True, align="C")
 
         pdf.set_y(info_y + 26)
