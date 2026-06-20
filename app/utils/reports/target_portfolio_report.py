@@ -172,15 +172,6 @@ class TargetPortfolioPDFGenerator:
         pdf.rect(5, 5, 287, 200)
         pdf.set_line_width(0.2)
 
-        # DRAFT watermark diagonal across page
-        if is_draft:
-            pdf.set_font("helvetica", "B", 60)
-            pdf.set_text_color(220, 50, 50)
-            pdf.set_xy(60, 70)
-            pdf.rotate(30)
-            pdf.cell(0, 0, "DRAFT", align="C")
-            pdf.rotate(0)
-            pdf.set_text_color(*text_dark)
 
         # Logo (centered on 297mm wide landscape page → centre x ≈ 148mm)
         pdf.set_y(25)
