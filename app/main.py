@@ -1,4 +1,3 @@
-from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -9,52 +8,9 @@ from app.core.config import settings
 from app.api.router import api_router
 from app.core.domain_guard import DomainGuardMiddleware
 
-
-def _run_schema_patches():
-    from sqlalchemy import text
-    from app.database.session import engine
-    # Use pg_attribute to find the table regardless of schema, then ALTER using its schema
-    patch = """
-    DO $$ DECLARE
-        v_schema TEXT;
-    BEGIN
-        SELECT n.nspname INTO v_schema
-        FROM pg_class c
-        JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE c.relname = 'ia_master' AND c.relkind = 'r'
-        LIMIT 1;
-
-        IF v_schema IS NOT NULL THEN
-            IF NOT EXISTS (
-                SELECT 1 FROM information_schema.columns
-                WHERE table_schema = v_schema
-                  AND table_name   = 'ia_master'
-                  AND column_name  = 'website'
-            ) THEN
-                EXECUTE format('ALTER TABLE %I.ia_master ADD COLUMN website VARCHAR(255)', v_schema);
-            END IF;
-        END IF;
-    END $$;
-    """
-    try:
-        with engine.connect() as conn:
-            conn.execute(text(patch))
-            conn.commit()
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"Schema patch failed: {e}")
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    _run_schema_patches()
-    yield
-
-
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    openapi_url=f"{settings.API_V1_STR}/openapi.json",
-    lifespan=lifespan,
+    openapi_url=f"{settings.API_V1_STR}/openapi.json"
 )
 
 # Trust proxy headers (X-Forwarded-Proto, etc.) to correctly handle HTTPS redirects
