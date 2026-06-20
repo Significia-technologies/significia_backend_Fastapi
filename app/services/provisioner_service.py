@@ -52,6 +52,22 @@ class ProvisionerService:
         """
         engine.execute_query(patch_fa_profiles)
 
+        # Add website to ia_master if missing
+        patch_ia_master_website = """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'significia_core'
+                  AND table_name   = 'ia_master'
+                  AND column_name  = 'website'
+            ) THEN
+                ALTER TABLE significia_core.ia_master ADD COLUMN website VARCHAR(255);
+            END IF;
+        END $$;
+        """
+        engine.execute_query(patch_ia_master_website)
+
     @staticmethod
     def _create_master_tables(engine: PostgreSQLConnector):
         # 0. Ensure UUID extension exists

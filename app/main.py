@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -8,9 +9,41 @@ from app.core.config import settings
 from app.api.router import api_router
 from app.core.domain_guard import DomainGuardMiddleware
 
+
+def _run_schema_patches():
+    from sqlalchemy import text
+    from app.database.session import engine
+    patches = [
+        # ia_master columns added after initial table creation
+        """
+        DO $$ BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'significia_core'
+                  AND table_name   = 'ia_master'
+                  AND column_name  = 'website'
+            ) THEN
+                ALTER TABLE significia_core.ia_master ADD COLUMN website VARCHAR(255);
+            END IF;
+        END $$;
+        """,
+    ]
+    with engine.connect() as conn:
+        for sql in patches:
+            conn.execute(text(sql))
+        conn.commit()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    _run_schema_patches()
+    yield
+
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    openapi_url=f"{settings.API_V1_STR}/openapi.json"
+    openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    lifespan=lifespan,
 )
 
 # Trust proxy headers (X-Forwarded-Proto, etc.) to correctly handle HTTPS redirects
