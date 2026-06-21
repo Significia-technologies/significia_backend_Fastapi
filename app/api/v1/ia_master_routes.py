@@ -273,8 +273,7 @@ async def create_department(
     bridge: BridgeClient = Depends(get_bridge_client)
 ):
     """Proxy Department creation request to the Bridge silo."""
-    # Using post_multipart because the Bridge expects Form data
-    return await bridge.post_multipart("/departments", data={"name": name})
+    return await bridge.post("/departments", data={"name": name})
 
 @router.delete("/departments/{dept_id}", response_model=dict)
 async def delete_department(

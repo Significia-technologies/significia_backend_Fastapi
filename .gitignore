@@ -118,3 +118,5 @@ node_modules/
 
 postgres_data/
 redis_data/
+
+test_reports/

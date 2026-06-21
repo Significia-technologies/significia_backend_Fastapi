@@ -25,10 +25,11 @@ class AuthService:
 
         # Create Tenant
         tenant = self.tenant_repo.create(
-            db=db, 
-            name=request.company_name, 
+            db=db,
+            name=request.company_name,
             subdomain=request.subdomain
         )
+        db.flush()  # populate tenant.id before referencing it
 
         # Create User
         user = User(
