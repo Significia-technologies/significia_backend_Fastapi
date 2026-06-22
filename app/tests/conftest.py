@@ -13,7 +13,7 @@ import httpx
 import pytest
 
 # ── Constants ──────────────────────────────────────────────────────────────
-BASE_URL = "http://localhost:8000/api/v1"
+BASE_URL = "http://localhost:8001/api/v1"
 BRIDGE_BASE_URL = "http://localhost:9000"
 REPORT_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "test_reports")
 
