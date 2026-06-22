@@ -170,40 +170,4 @@ async def download_advice_note_pdf(
     )
 
 
-# ── Download advice note as DOCX ─────────────────────────────────
-@router.get("/investment-advice-note/{note_id}/export/docx")
-async def download_advice_note_docx(
-    note_id: str,
-    bridge: BridgeClient = Depends(get_bridge_client),
-    current_user=Depends(get_current_user),
-):
-    """Generate and download the Investment Advice Note as a Word document."""
-    from fastapi import HTTPException
-    from app.utils.reports.investment_advice_report import InvestmentAdviceNoteDOCX
-
-    # 1. Fetch the full note data
-    note_data = await bridge.get(f"/investment-advice-note/{note_id}")
-    if not note_data or not isinstance(note_data, dict):
-        raise HTTPException(404, "Advice note not found.")
-
-    # 2. Fetch IA master data
-    ia_data = await bridge.get("/ia-master")
-    ia_dict = ia_data if isinstance(ia_data, dict) else None
-
-    # 3. Generate DOCX
-    docx_buffer = InvestmentAdviceNoteDOCX.generate_docx(
-        note_data=note_data,
-        ia_data=ia_dict,
-    )
-
-    # 4. Build safe filename
-    advice_no = note_data.get("advice_note_no", note_id)
-    safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in advice_no)
-    filename = f"InvestmentAdviceNote_{safe_name}.docx"
-
-    return Response(
-        content=docx_buffer.read(),
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
 
