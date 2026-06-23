@@ -435,116 +435,168 @@ class InvestmentAdviceNotePDF:
         
         pdf.ln(8)
 
-        # Recommendations Title
-        pdf.set_font("helvetica", "B", 10)
-        pdf.set_text_color(*_NAVY)
-        pdf.cell(0, 6, "LOGGED ACTIONS & STATUSES", ln=True)
-        pdf.ln(2)
+        # Resolve members list for subcodes
+        members_list = note_data.get("investor_members", [])
+        member_code_map = {}
+        for m in members_list:
+            name = m.get("full_name")
+            code = m.get("investor_code")
+            if name and code:
+                member_code_map[name.strip().lower()] = code
 
-        # Recommendations Table
-        if recommendations:
-            # Table header
-            cols = [8, 56, 18, 32, 28, 28, 20]
-            headers = ["#", "Product / Scheme Name", "Action", "Amount / Units", "Validity", "Validity Status", "Action Taken"]
+        # Group recommendations by member name
+        # If member_name is not provided or empty, group under the client's name
+        client_name = client.get("client_name", "Client")
+        grouped = {}
+        for rec in recommendations:
+            m_name = rec.get("member_name")
+            if not m_name or not m_name.strip():
+                m_name = client_name
+            m_name_clean = m_name.strip()
+            if m_name_clean not in grouped:
+                grouped[m_name_clean] = []
+            grouped[m_name_clean].append(rec)
 
-            pdf.set_fill_color(*_NAVY)
-            pdf.set_font("helvetica", "B", 7)
-            pdf.set_text_color(255, 255, 255)
-            pdf.set_x(10)
-            for h, w in zip(headers, cols):
-                pdf.cell(w, 8, f" {h}", border=1, fill=True)
-            pdf.ln()
+        # Determine render order based on investor_members list
+        ordered_members = []
+        seen_members = set()
+        for m in members_list:
+            m_name = m.get("full_name")
+            if m_name and m_name.strip() in grouped:
+                ordered_members.append(m_name.strip())
+                seen_members.add(m_name.strip().lower())
+        
+        # Fallback for any group not in members_list
+        for m_name in grouped:
+            if m_name.lower() not in seen_members:
+                ordered_members.append(m_name)
 
-            # Data rows
-            h_unit = 5.0
-            default_days = note_data.get("advice_validity_days", 60)
-            issue_date_str = note_data.get("date_of_issue")
-            
-            for idx, rec in enumerate(recommendations):
-                # Calculate validity status
-                is_valid = True
-                try:
-                    issue_date_str_split = issue_date_str.split('T')[0]
-                    issue_date = datetime.strptime(issue_date_str_split, "%Y-%m-%d").date()
-                    
-                    val_text = rec.get("advice_validity_text")
-                    days = default_days or 60
-                    if val_text:
-                        match = re.search(r'(\d+)\s*Day', val_text, re.IGNORECASE)
-                        if match:
-                            days = int(match.group(1))
-                        elif "immediate" in val_text.lower():
-                            days = 1
-                            
-                    expiry_date = issue_date + timedelta(days=days)
-                    today = datetime.now().date()
-                    is_valid = expiry_date >= today
-                except Exception:
-                    is_valid = True
-                
-                val_status = "Valid" if is_valid else "Expired"
-                
-                prod_name = rec.get("product_name", "N/A")
-                member_name = rec.get("member_name")
-                if member_name:
-                    prod_name = f"{prod_name}\n[Allotted to: {member_name}]"
-                
-                cell_texts = [
-                    str(idx + 1),
-                    f"{prod_name}\n{rec.get('isin_code_scheme_code_uin', '')}",
-                    rec.get("action", "BUY"),
-                    format_amount_units_python(rec),
-                    rec.get("advice_validity_text") or f"{default_days} Days",
-                    val_status,
-                    rec.get("action_taken") or "No"
-                ]
-
-                lines_per_col = [
-                    max(len(pdf.multi_cell(w, h_unit - 1, str(t), split_only=True)), 1)
-                    for t, w in zip(cell_texts, cols)
-                ]
-                row_h = max(max(lines_per_col) * (h_unit - 1), 8)
-
-                if pdf.get_y() + row_h > 240:
-                    pdf.add_page()
-
-                fill_color = _ROW_ALT if idx % 2 == 1 else (255, 255, 255)
-                pdf.set_font("helvetica", "", 7.5)
-                pdf.set_text_color(*_TEXT_DARK)
-
-                row_x, row_y = 10, pdf.get_y()
-                for col_idx, (t, w) in enumerate(zip(cell_texts, cols)):
-                    pdf.set_fill_color(*fill_color)
-                    pdf.rect(row_x, row_y, w, row_h, "F")
-                    pdf.rect(row_x, row_y, w, row_h, "D")
-                    pdf.set_xy(row_x + 1, row_y + 1)
-                    
-                    # Highlight colors for status
-                    if col_idx == 5:  # Validity Status
-                        pdf.set_font("helvetica", "B", 7.5)
-                        if t == "Valid":
-                            pdf.set_text_color(*_GREEN)
-                        else:
-                            pdf.set_text_color(*_RED_MUTED)
-                    elif col_idx == 6:  # Action Taken
-                        pdf.set_font("helvetica", "B", 7.5)
-                        if t == "Yes":
-                            pdf.set_text_color(*_GREEN)
-                        elif t == "Partial":
-                            pdf.set_text_color(180, 110, 0)
-                        else:
-                            pdf.set_text_color(*_TEXT_MUTED)
-                    else:
-                        pdf.set_font("helvetica", "", 7.5)
-                        pdf.set_text_color(*_TEXT_DARK)
-                        
-                    pdf.multi_cell(w - 2, h_unit - 1.5, str(t), align="L")
-                    row_x += w
-                pdf.set_y(row_y + row_h)
-        else:
+        if not recommendations:
+            # Recommendations Title
+            pdf.set_font("helvetica", "B", 10)
+            pdf.set_text_color(*_NAVY)
+            pdf.cell(0, 6, "LOGGED ACTIONS & STATUSES", ln=True)
+            pdf.ln(2)
             pdf.set_font("helvetica", "I", 9)
             pdf.set_text_color(*_TEXT_MUTED)
             pdf.cell(0, 10, "No recommendations found.", ln=True, align="C")
+        else:
+            import re
+            
+            # Print a separate table for each member
+            for m_idx, m_name in enumerate(ordered_members):
+                m_recs = grouped[m_name]
+                subcode = member_code_map.get(m_name.lower()) or client.get("client_code", "N/A")
+                
+                # Check height to avoid page break immediately after sub-header
+                if pdf.get_y() > 240:
+                    pdf.add_page()
+                
+                # Render Sub-header for Member
+                pdf.set_font("helvetica", "B", 9)
+                pdf.set_text_color(*_NAVY)
+                pdf.cell(0, 6, f"INVESTOR: {m_name.upper()} (SUBCODE: {subcode})", ln=True)
+                pdf.ln(1.5)
+                
+                # Table header
+                cols = [8, 56, 18, 32, 28, 28, 20]
+                headers = ["#", "Product / Scheme Name", "Action", "Amount / Units", "Validity", "Validity Status", "Action Taken"]
+
+                pdf.set_fill_color(*_NAVY)
+                pdf.set_font("helvetica", "B", 7)
+                pdf.set_text_color(255, 255, 255)
+                pdf.set_x(10)
+                for h, w in zip(headers, cols):
+                    pdf.cell(w, 8, f" {h}", border=1, fill=True)
+                pdf.ln()
+
+                # Data rows
+                h_unit = 5.0
+                default_days = note_data.get("advice_validity_days", 60)
+                issue_date_str = note_data.get("date_of_issue")
+                
+                for idx, rec in enumerate(m_recs):
+                    # Calculate validity status
+                    is_valid = True
+                    try:
+                        issue_date_str_split = issue_date_str.split('T')[0]
+                        issue_date = datetime.strptime(issue_date_str_split, "%Y-%m-%d").date()
+                        
+                        val_text = rec.get("advice_validity_text")
+                        days = default_days or 60
+                        if val_text:
+                            match = re.search(r'(\d+)\s*Day', val_text, re.IGNORECASE)
+                            if match:
+                                days = int(match.group(1))
+                            elif "immediate" in val_text.lower():
+                                days = 1
+                                
+                        expiry_date = issue_date + timedelta(days=days)
+                        today = datetime.now().date()
+                        is_valid = expiry_date >= today
+                    except Exception:
+                        is_valid = True
+                    
+                    val_status = "Valid" if is_valid else "Expired"
+                    
+                    prod_name = rec.get("product_name", "N/A")
+                    
+                    cell_texts = [
+                        str(idx + 1),
+                        f"{prod_name}\n{rec.get('isin_code_scheme_code_uin', '')}",
+                        rec.get("action", "BUY"),
+                        format_amount_units_python(rec),
+                        rec.get("advice_validity_text") or f"{default_days} Days",
+                        val_status,
+                        rec.get("action_taken") or "No"
+                    ]
+
+                    lines_per_col = [
+                        max(len(pdf.multi_cell(w, h_unit - 1, str(t), split_only=True)), 1)
+                        for t, w in zip(cell_texts, cols)
+                    ]
+                    row_h = max(max(lines_per_col) * (h_unit - 1), 8)
+
+                    if pdf.get_y() + row_h > 240:
+                        pdf.add_page()
+
+                    fill_color = _ROW_ALT if idx % 2 == 1 else (255, 255, 255)
+                    pdf.set_font("helvetica", "", 7.5)
+                    pdf.set_text_color(*_TEXT_DARK)
+
+                    row_x, row_y = 10, pdf.get_y()
+                    for col_idx, (t, w) in enumerate(zip(cell_texts, cols)):
+                        pdf.set_fill_color(*fill_color)
+                        pdf.rect(row_x, row_y, w, row_h, "F")
+                        pdf.rect(row_x, row_y, w, row_h, "D")
+                        pdf.set_xy(row_x + 1, row_y + 1)
+                        
+                        # Highlight colors for status
+                        if col_idx == 5:  # Validity Status
+                            pdf.set_font("helvetica", "B", 7.5)
+                            if t == "Valid":
+                                pdf.set_text_color(*_GREEN)
+                            else:
+                                pdf.set_text_color(*_RED_MUTED)
+                        elif col_idx == 6:  # Action Taken
+                            pdf.set_font("helvetica", "B", 7.5)
+                            if t == "Yes":
+                                pdf.set_text_color(*_GREEN)
+                            elif t == "Partial":
+                                pdf.set_text_color(180, 110, 0)
+                            else:
+                                pdf.set_text_color(*_TEXT_MUTED)
+                        else:
+                            pdf.set_font("helvetica", "", 7.5)
+                            pdf.set_text_color(*_TEXT_DARK)
+                            
+                        pdf.multi_cell(w - 2, h_unit - 1.5, str(t), align="L")
+                        row_x += w
+                    pdf.set_y(row_y + row_h)
+                
+                # Add spacing after the member's table (unless it's the last one)
+                if m_idx < len(ordered_members) - 1:
+                    pdf.ln(6)
         
         pdf.ln(10)
 

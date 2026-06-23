@@ -151,21 +151,24 @@ async def download_advice_note_pdf(
     if not note_data or not isinstance(note_data, dict):
         raise HTTPException(404, "Advice note not found.")
 
-    # Fetch investor members from bridge to resolve filtered member details
+    # Fetch investor members from bridge to resolve filtered member details and attach all active members
     client_id = note_data.get("client_id")
     filtered_member = None
-    if client_id and member_filter and member_filter != "all":
+    members_list = []
+    if client_id:
         try:
             members_data = await bridge.get(f"/investor-members/{client_id}", params={"report_type": "active"})
             members_list = members_data.get("members", []) if isinstance(members_data, dict) else []
-            for m in members_list:
-                if m.get("full_name") == member_filter:
-                    filtered_member = m
-                    break
+            if member_filter and member_filter != "all":
+                for m in members_list:
+                    if m.get("full_name") == member_filter:
+                        filtered_member = m
+                        break
         except Exception:
             pass
     if filtered_member:
         note_data["filtered_member"] = filtered_member
+    note_data["investor_members"] = members_list
 
     # Filter recommendations by validity
     recommendations = note_data.get("recommendations", [])
