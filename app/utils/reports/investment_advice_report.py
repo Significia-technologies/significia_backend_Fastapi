@@ -346,19 +346,261 @@ class InvestmentAdviceNotePDF:
         pdf.multi_cell(148, 7, f" {value or 'N/A'}", border="RTB")
 
     @staticmethod
-    def generate_pdf(
+    def generate_execution_log_pdf(
         note_data: dict,
         ia_data: Optional[dict] = None,
         logo_path: Optional[str] = None,
     ) -> bytes:
         """
-        Generate a complete SEBI Investment Advice Note PDF.
-        
-        Args:
-            note_data: Full advice note dict from Bridge (includes client_snapshot, recommendations)
-            ia_data: IA Master data dict
-            logo_path: Absolute path to the IA logo file
+        Generate a compact 1-page Execution Actions / Action Taken log sheet.
         """
+        advisor_name = ia_data.get("name_of_ia", "") if ia_data else ""
+        entity_name = ia_data.get("name_of_entity", "") if ia_data else ""
+        ia_reg_no = ia_data.get("ia_registration_number", "") if ia_data else ""
+
+        pdf = BaseReportPDF(
+            advisor_name=advisor_name,
+            entity_name=entity_name,
+            ia_reg_no=ia_reg_no,
+            header_text="Investment Advice Logs",
+        )
+
+        client = note_data.get("client_snapshot", {})
+        recommendations = note_data.get("recommendations", [])
+
+        # Start PDF
+        pdf.add_page()
+
+        # Border
+        pdf.set_draw_color(*_ACCENT_BLUE)
+        pdf.set_line_width(0.5)
+        pdf.rect(5, 5, 200, 287)
+        pdf.set_line_width(0.2)
+
+        # Header Logo & Title
+        pdf.set_y(15)
+        logo_height = 0
+        if logo_path and os.path.exists(logo_path):
+            pdf.image(logo_path, 10, pdf.get_y(), 25)
+            logo_height = 25
+            pdf.set_xy(40, pdf.get_y() + 5)
+        else:
+            pdf.set_x(10)
+        
+        pdf.set_font("helvetica", "B", 14)
+        pdf.set_text_color(*_NAVY)
+        pdf.cell(0, 8, "INVESTMENT ADVICE LOGS", ln=True)
+        
+        # Calculate Y position to ensure metadata grid starts below the logo image
+        grid_start_y = max(pdf.get_y(), 15 + logo_height) + 5
+        pdf.set_y(grid_start_y)
+
+        # Compact Metadata Grid
+        pdf.set_x(10)
+        metadata = [
+            ("Advice Note No.", note_data.get("advice_note_no", "N/A")),
+            ("Client Name", client.get("client_name", "N/A")),
+            ("Client ID", client.get("client_code", "N/A")),
+            ("Date of Issue", note_data.get("date_of_issue", "N/A")),
+        ]
+        
+        # Draw metadata fields inline
+        pdf.set_font("helvetica", "B", 8)
+        pdf.set_text_color(*_TEXT_MUTED)
+        pdf.set_draw_color(*_BORDER)
+        
+        for idx, (label, val) in enumerate(metadata):
+            pdf.cell(30, 6, f" {label}", border="1")
+            pdf.set_font("helvetica", "", 8.5)
+            pdf.set_text_color(*_TEXT_DARK)
+            pdf.cell(65, 6, f" {val}", border="1")
+            if idx % 2 == 1:
+                pdf.ln()
+            pdf.set_font("helvetica", "B", 8)
+            pdf.set_text_color(*_TEXT_MUTED)
+        
+        pdf.ln(8)
+
+        # Recommendations Title
+        pdf.set_font("helvetica", "B", 10)
+        pdf.set_text_color(*_NAVY)
+        pdf.cell(0, 6, "LOGGED ACTIONS & STATUSES", ln=True)
+        pdf.ln(2)
+
+        # Recommendations Table
+        if recommendations:
+            # Table header
+            cols = [8, 56, 18, 32, 28, 28, 20]
+            headers = ["#", "Product / Scheme Name", "Action", "Amount / Units", "Validity", "Validity Status", "Action Taken"]
+
+            pdf.set_fill_color(*_NAVY)
+            pdf.set_font("helvetica", "B", 7)
+            pdf.set_text_color(255, 255, 255)
+            pdf.set_x(10)
+            for h, w in zip(headers, cols):
+                pdf.cell(w, 8, f" {h}", border=1, fill=True)
+            pdf.ln()
+
+            # Data rows
+            h_unit = 5.0
+            default_days = note_data.get("advice_validity_days", 60)
+            issue_date_str = note_data.get("date_of_issue")
+            
+            for idx, rec in enumerate(recommendations):
+                # Calculate validity status
+                is_valid = True
+                try:
+                    issue_date_str_split = issue_date_str.split('T')[0]
+                    issue_date = datetime.strptime(issue_date_str_split, "%Y-%m-%d").date()
+                    
+                    val_text = rec.get("advice_validity_text")
+                    days = default_days or 60
+                    if val_text:
+                        match = re.search(r'(\d+)\s*Day', val_text, re.IGNORECASE)
+                        if match:
+                            days = int(match.group(1))
+                        elif "immediate" in val_text.lower():
+                            days = 1
+                            
+                    expiry_date = issue_date + timedelta(days=days)
+                    today = datetime.now().date()
+                    is_valid = expiry_date >= today
+                except Exception:
+                    is_valid = True
+                
+                val_status = "Valid" if is_valid else "Expired"
+                
+                cell_texts = [
+                    str(idx + 1),
+                    f"{rec.get('product_name', 'N/A')}\n{rec.get('isin_code_scheme_code_uin', '')}",
+                    rec.get("action", "BUY"),
+                    format_amount_units_python(rec),
+                    rec.get("advice_validity_text") or f"{default_days} Days",
+                    val_status,
+                    rec.get("action_taken") or "No"
+                ]
+
+                lines_per_col = [
+                    max(len(pdf.multi_cell(w, h_unit - 1, str(t), split_only=True)), 1)
+                    for t, w in zip(cell_texts, cols)
+                ]
+                row_h = max(max(lines_per_col) * (h_unit - 1), 8)
+
+                if pdf.get_y() + row_h > 240:
+                    pdf.add_page()
+
+                fill_color = _ROW_ALT if idx % 2 == 1 else (255, 255, 255)
+                pdf.set_font("helvetica", "", 7.5)
+                pdf.set_text_color(*_TEXT_DARK)
+
+                row_x, row_y = 10, pdf.get_y()
+                for col_idx, (t, w) in enumerate(zip(cell_texts, cols)):
+                    pdf.set_fill_color(*fill_color)
+                    pdf.rect(row_x, row_y, w, row_h, "F")
+                    pdf.rect(row_x, row_y, w, row_h, "D")
+                    pdf.set_xy(row_x + 1, row_y + 1)
+                    
+                    # Highlight colors for status
+                    if col_idx == 5:  # Validity Status
+                        pdf.set_font("helvetica", "B", 7.5)
+                        if t == "Valid":
+                            pdf.set_text_color(*_GREEN)
+                        else:
+                            pdf.set_text_color(*_RED_MUTED)
+                    elif col_idx == 6:  # Action Taken
+                        pdf.set_font("helvetica", "B", 7.5)
+                        if t == "Yes":
+                            pdf.set_text_color(*_GREEN)
+                        elif t == "Partial":
+                            pdf.set_text_color(180, 110, 0)
+                        else:
+                            pdf.set_text_color(*_TEXT_MUTED)
+                    else:
+                        pdf.set_font("helvetica", "", 7.5)
+                        pdf.set_text_color(*_TEXT_DARK)
+                        
+                    pdf.multi_cell(w - 2, h_unit - 1.5, str(t), align="L")
+                    row_x += w
+                pdf.set_y(row_y + row_h)
+        else:
+            pdf.set_font("helvetica", "I", 9)
+            pdf.set_text_color(*_TEXT_MUTED)
+            pdf.cell(0, 10, "No recommendations found.", ln=True, align="C")
+        
+        pdf.ln(10)
+
+        # Disclaimer
+        if pdf.get_y() > 215:
+            pdf.add_page()
+            
+        pdf.set_x(10)
+        pdf.set_font("helvetica", "B", 8)
+        pdf.set_text_color(*_RED_MUTED)
+        pdf.cell(0, 5, "DISCLAIMER & RECORD RETENTION", ln=True)
+        pdf.set_font("helvetica", "I", 6.5)
+        pdf.set_text_color(*_TEXT_MUTED)
+        pdf.multi_cell(0, 4, "These logs represent client-reported execution actions taken on the recommendations provided in this Investment Advice Note. The adviser does not handle trade execution, client funds, or hold custody of securities. Both the client and the investment adviser must retain these logs for a mandatory compliance period of 5 years.", align="L")
+        pdf.ln(10)
+
+        # Signature Block
+        sig_y = pdf.get_y()
+        pdf.set_y(sig_y)
+
+        # Left: IA Signature
+        pdf.set_x(10)
+        pdf.set_font("helvetica", "B", 8)
+        pdf.set_text_color(*_NAVY)
+        entity = entity_name or advisor_name or "Investment Advisor"
+        pdf.cell(90, 5, f"For {entity}", ln=True)
+        pdf.set_y(sig_y + 12)
+        pdf.set_x(10)
+        pdf.set_font("helvetica", "", 7.5)
+        pdf.set_text_color(*_TEXT_DARK)
+        pdf.cell(90, 4, "________________________________", ln=True)
+        pdf.set_x(10)
+        po_name = note_data.get("principal_officer_name", "Principal Officer")
+        pdf.cell(90, 5, po_name, ln=True)
+        pdf.set_x(10)
+        pdf.set_font("helvetica", "I", 7)
+        pdf.set_text_color(*_TEXT_MUTED)
+        pdf.cell(90, 4, f"Principal Officer  |  Reg No: {ia_reg_no}", ln=True)
+        pdf.set_x(10)
+        pdf.cell(90, 4, f"Date: {datetime.now().strftime('%d %B %Y')}", ln=True)
+
+        # Right: Client Acknowledgement
+        pdf.set_xy(110, sig_y)
+        pdf.set_font("helvetica", "B", 8)
+        pdf.set_text_color(*_NAVY)
+        pdf.cell(90, 5, "Client Verification Signature", ln=True)
+        pdf.set_xy(110, sig_y + 12)
+        pdf.set_font("helvetica", "", 7.5)
+        pdf.set_text_color(*_TEXT_DARK)
+        pdf.cell(90, 4, "________________________________", ln=True)
+        pdf.set_xy(110, pdf.get_y())
+        pdf.set_font("helvetica", "B", 7.5)
+        pdf.cell(90, 5, client.get("client_name", "Client"), ln=True)
+        pdf.set_xy(110, pdf.get_y())
+        pdf.set_font("helvetica", "I", 7)
+        pdf.set_text_color(*_TEXT_MUTED)
+        pdf.cell(90, 4, f"Client ID: {client.get('client_code', 'N/A')}", ln=True)
+        pdf.set_xy(110, pdf.get_y())
+        pdf.cell(90, 4, "Date: ___________________", ln=True)
+
+        return bytes(pdf.output())
+
+    @staticmethod
+    def generate_pdf(
+        note_data: dict,
+        ia_data: Optional[dict] = None,
+        logo_path: Optional[str] = None,
+        export_type: str = "full",
+    ) -> bytes:
+        """
+        Generate a complete SEBI Investment Advice Note PDF.
+        """
+        if export_type == "execution_log":
+            return InvestmentAdviceNotePDF.generate_execution_log_pdf(note_data, ia_data, logo_path)
+
         advisor_name = ia_data.get("name_of_ia", "") if ia_data else ""
         entity_name = ia_data.get("name_of_entity", "") if ia_data else ""
         ia_reg_no = ia_data.get("ia_registration_number", "") if ia_data else ""
