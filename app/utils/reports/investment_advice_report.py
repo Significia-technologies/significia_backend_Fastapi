@@ -470,9 +470,14 @@ class InvestmentAdviceNotePDF:
                 
                 val_status = "Valid" if is_valid else "Expired"
                 
+                prod_name = rec.get("product_name", "N/A")
+                member_name = rec.get("member_name")
+                if member_name:
+                    prod_name = f"{prod_name}\n[Allotted to: {member_name}]"
+                
                 cell_texts = [
                     str(idx + 1),
-                    f"{rec.get('product_name', 'N/A')}\n{rec.get('isin_code_scheme_code_uin', '')}",
+                    f"{prod_name}\n{rec.get('isin_code_scheme_code_uin', '')}",
                     rec.get("action", "BUY"),
                     format_amount_units_python(rec),
                     rec.get("advice_validity_text") or f"{default_days} Days",
@@ -854,9 +859,14 @@ class InvestmentAdviceNotePDF:
             # Data rows
             h_unit = 4.5
             for idx, rec in enumerate(recommendations):
+                prod_name = rec.get("product_name", "N/A")
+                member_name = rec.get("member_name")
+                if member_name:
+                    prod_name = f"{prod_name}\n[Allotted to: {member_name}]"
+
                 cell_texts = [
                     str(idx + 1),
-                    rec.get("product_name", "N/A"),
+                    prod_name,
                     rec.get("isin_code_scheme_code_uin", ""),
                     rec.get("product_type", "").replace("_", " ").title(),
                     rec.get("action", "BUY"),
