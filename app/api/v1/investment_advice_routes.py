@@ -135,6 +135,7 @@ async def download_advice_note_pdf(
     note_id: str,
     validity_type: str = Query("all", description="Filter recommendations: all, valid, expired"),
     export_type: str = Query("full", description="Export type: full, execution_log"),
+    member_filter: str = Query("all", description="Filter recommendations by member name: all, or specific member name"),
     bridge: BridgeClient = Depends(get_bridge_client),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
@@ -181,7 +182,13 @@ async def download_advice_note_pdf(
             
             if (validity_type == "valid" and is_valid) or (validity_type == "expired" and not is_valid):
                 filtered_recs.append(rec)
-        note_data["recommendations"] = filtered_recs
+        recommendations = filtered_recs
+
+    # Filter recommendations by member
+    if member_filter and member_filter != "all":
+        recommendations = [r for r in recommendations if r.get("member_name") == member_filter]
+
+    note_data["recommendations"] = recommendations
 
     # 2. Fetch IA master data for header/footer branding
     ia_data = await bridge.get("/ia-master")
@@ -212,12 +219,15 @@ async def download_advice_note_pdf(
     advice_no = note_data.get("advice_note_no", note_id)
     safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in advice_no)
     
-    # Filename suffix depending on export_type and validity_type
+    # Filename suffix depending on export_type, validity_type, and member_filter
     suffix_parts = []
     if export_type == "execution_log":
         suffix_parts.append("actions_log")
     if validity_type in ("valid", "expired"):
         suffix_parts.append(validity_type)
+    if member_filter and member_filter != "all":
+        safe_member = "".join(c if c.isalnum() or c in "-_" else "_" for c in member_filter)
+        suffix_parts.append(safe_member)
         
     suffix = f"_{'_'.join(suffix_parts)}" if suffix_parts else ""
     filename = f"InvestmentAdviceNote_{safe_name}{suffix}.pdf"
