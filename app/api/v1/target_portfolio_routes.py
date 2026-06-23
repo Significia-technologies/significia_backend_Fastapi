@@ -27,16 +27,27 @@ async def get_aua_summary(
     return await bridge.get("/target-portfolio/aua-summary", params=params)
 
 
+@router.get("/target-portfolio/{client_id}/advice-entries")
+async def list_advice_entries(
+    client_id: str,
+    bridge: BridgeClient = Depends(get_bridge_client),
+    current_user=Depends(get_current_user),
+):
+    return await bridge.get(f"/target-portfolio/{client_id}/advice-entries")
+
+
 @router.get("/target-portfolio/{client_id}/{member_id}")
 async def list_target_portfolio(
     client_id: str,
     member_id: str,
-    asset_class: str = Query("shares"),
+    asset_class: Optional[str] = Query(None),
     portfolio_id: Optional[str] = Query(None),
     bridge: BridgeClient = Depends(get_bridge_client),
     current_user=Depends(get_current_user),
 ):
-    params: dict = {"asset_class": asset_class}
+    params: dict = {}
+    if asset_class:
+        params["asset_class"] = asset_class
     if portfolio_id:
         params["portfolio_id"] = portfolio_id
     return await bridge.get(
