@@ -106,6 +106,18 @@ async def delete_recommendation(
     return await bridge.delete(f"/investment-advice-note/{note_id}/recommendations/{rec_id}")
 
 
+# ── Update execution actions/taken status on recommendations ──────
+@router.patch("/investment-advice-note/{note_id}/recommendations/action-taken")
+async def update_recommendations_action_taken(
+    note_id: str,
+    data: list,
+    bridge: BridgeClient = Depends(get_bridge_client),
+    current_user=Depends(get_current_user),
+):
+    """Update action taken status on recommendations for an advice note."""
+    return await bridge.patch(f"/investment-advice-note/{note_id}/recommendations/action-taken", data)
+
+
 # ── Get next serial number (utility) ─────────────────────────────
 @router.get("/investment-advice-note/{note_id}/next-serial")
 async def get_next_serial(
