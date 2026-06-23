@@ -246,6 +246,15 @@ class InvestmentAdviceNotePDF:
         client_code = client.get("client_code", "N/A")
         pdf.cell(0, 6, f"CLIENT CODE: {client_code}", ln=True, align="C")
 
+        filtered_member = note_data.get("filtered_member")
+        if filtered_member:
+            pdf.ln(2)
+            pdf.set_font("helvetica", "B", 11)
+            pdf.set_text_color(*_ACCENT_BLUE)
+            m_name = filtered_member.get("full_name", "").upper()
+            m_relation = filtered_member.get("relation", "").upper()
+            pdf.cell(0, 6, f"INVESTOR: {m_name} ({m_relation})", ln=True, align="C")
+
         # Advice Note Number badge
         pdf.ln(8)
         pdf.set_font("helvetica", "B", 10)
@@ -403,6 +412,11 @@ class InvestmentAdviceNotePDF:
             ("Client ID", client.get("client_code", "N/A")),
             ("Date of Issue", note_data.get("date_of_issue", "N/A")),
         ]
+
+        filtered_member = note_data.get("filtered_member")
+        if filtered_member:
+            metadata.append(("Investor Name", filtered_member.get("full_name", "N/A")))
+            metadata.append(("Relation", filtered_member.get("relation", "N/A")))
         
         # Draw metadata fields inline
         pdf.set_font("helvetica", "B", 8)
@@ -671,22 +685,45 @@ class InvestmentAdviceNotePDF:
         else:
             liabilities_str = "N/A"
 
-        client_fields = [
-            ("Client Full Name", client.get("client_name", "N/A")),
-            ("Client ID", client.get("client_code", "N/A")),
-            ("PAN Number", client.get("pan_number", "N/A")),
-            ("Client DOB", client.get("date_of_birth", "N/A")),
-            ("Email", client.get("email", "N/A")),
-            ("Mobile", client.get("phone_number", "N/A")),
-            ("Risk Profile", risk_profile_str),
-            ("Risk Profile Date", client.get("risk_profile_date", "N/A")),
-            ("Investment Horizon", client.get("investment_horizon", "N/A")),
-            ("Annual Income Band", note_data.get("annual_income_band", "N/A")),
-            ("Existing Liabilities", liabilities_str),
-            ("Assets Under Advice", f"Rs. {float(note_data.get('assets_under_advice', 0)):,.0f}"),
-            ("Fee Mode", note_data.get("fee_mode", "N/A").replace("_", " ").title()),
-            ("Fee Amount", f"Rs. {float(note_data.get('fee_amount', 0)):,.0f}"),
-        ]
+        filtered_member = note_data.get("filtered_member")
+        if filtered_member:
+            client_fields = [
+                ("Client Full Name", client.get("client_name", "N/A")),
+                ("Client ID", client.get("client_code", "N/A")),
+                ("Investor Name", filtered_member.get("full_name", "N/A")),
+                ("Investor Code", filtered_member.get("investor_code", "N/A")),
+                ("Relation", filtered_member.get("relation", "N/A")),
+                ("Investor PAN", filtered_member.get("pan_number", "N/A")),
+                ("Investor CKYC", filtered_member.get("ckyc_number") or filtered_member.get("ckyc") or "N/A"),
+                ("Investor DOB", format_dob(filtered_member.get("date_of_birth"))),
+                ("Email", client.get("email", "N/A")),
+                ("Mobile", client.get("phone_number", "N/A")),
+                ("Risk Profile", risk_profile_str),
+                ("Risk Profile Date", client.get("risk_profile_date", "N/A")),
+                ("Investment Horizon", client.get("investment_horizon", "N/A")),
+                ("Annual Income Band", note_data.get("annual_income_band", "N/A")),
+                ("Existing Liabilities", liabilities_str),
+                ("Assets Under Advice", f"Rs. {float(note_data.get('assets_under_advice', 0)):,.0f}"),
+                ("Fee Mode", note_data.get("fee_mode", "N/A").replace("_", " ").title()),
+                ("Fee Amount", f"Rs. {float(note_data.get('fee_amount', 0)):,.0f}"),
+            ]
+        else:
+            client_fields = [
+                ("Client Full Name", client.get("client_name", "N/A")),
+                ("Client ID", client.get("client_code", "N/A")),
+                ("PAN Number", client.get("pan_number", "N/A")),
+                ("Client DOB", client.get("date_of_birth", "N/A")),
+                ("Email", client.get("email", "N/A")),
+                ("Mobile", client.get("phone_number", "N/A")),
+                ("Risk Profile", risk_profile_str),
+                ("Risk Profile Date", client.get("risk_profile_date", "N/A")),
+                ("Investment Horizon", client.get("investment_horizon", "N/A")),
+                ("Annual Income Band", note_data.get("annual_income_band", "N/A")),
+                ("Existing Liabilities", liabilities_str),
+                ("Assets Under Advice", f"Rs. {float(note_data.get('assets_under_advice', 0)):,.0f}"),
+                ("Fee Mode", note_data.get("fee_mode", "N/A").replace("_", " ").title()),
+                ("Fee Amount", f"Rs. {float(note_data.get('fee_amount', 0)):,.0f}"),
+            ]
         InvestmentAdviceNotePDF._kv_grid(pdf, client_fields)
         
         # Address & Primary Financial Goal as full-width multi-line text boxes to prevent grid collision
