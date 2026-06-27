@@ -4,9 +4,9 @@ Communication Routes — IA–Investor Thread-Based Messaging
 Thin proxy layer. All business logic and data storage lives in the Bridge.
 """
 import logging
-from typing import Any
+from typing import Any, List, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, UploadFile, File, Form
 from app.api.deps import get_bridge_client, get_current_user
 from app.services.bridge_client import BridgeClient
 
@@ -71,12 +71,32 @@ async def get_thread(
 @router.post("/threads/{thread_id}/messages")
 async def add_message(
     thread_id: str,
-    payload: dict,
+    body: str = Form(...),
+    sender_type: str = Form("IA"),
+    source: str = Form("COMPOSED"),
+    is_internal_note: str = Form("false"),
+    files: Optional[List[UploadFile]] = File(None),
     bridge: BridgeClient = Depends(get_bridge_client),
     current_user: Any = Depends(get_current_user),
 ):
     """Add a message to a thread (IA compose or log a client reply)."""
-    return await bridge.post(f"/communication/threads/{thread_id}/messages", payload)
+    form_data = {
+        "body": body,
+        "sender_type": sender_type,
+        "source": source,
+        "is_internal_note": is_internal_note,
+    }
+    files_list = []
+    if files:
+        for f in files:
+            content = await f.read()
+            files_list.append(("files", (f.filename, content, f.content_type or "application/octet-stream")))
+
+    return await bridge.post(
+        f"/communication/threads/{thread_id}/messages",
+        data=form_data,
+        files=files_list if files_list else None,
+    )
 
 
 @router.patch("/threads/{thread_id}/status")
