@@ -11,6 +11,7 @@ API endpoints for IA Master email management:
 All endpoints proxy through the Bridge to the tenant's silo database.
 """
 import uuid
+import json
 import logging
 from typing import Any, Optional
 
@@ -147,11 +148,24 @@ async def send_email(
     bridge: BridgeClient = Depends(get_bridge_client),
     current_user: Any = Depends(get_current_user),
 ):
-    """
-    Send an email to a client (with optional report attachments).
-    Supports both synchronous and async (Celery) delivery.
-    """
-    return await bridge.post("/email/send", payload)
+    """Send an email to a client using a template or custom HTML body."""
+    # Bridge /email/send expects Form fields — map JSON payload to form data.
+    form_data: dict = {"recipient": payload.get("recipient_email", "")}
+    for src, dst in [
+        ("recipient_name", "recipient_name"),
+        ("template_id", "template_id"),
+        ("template_type", "template_type"),
+        ("subject", "subject"),
+        ("body_html", "body"),
+        ("context_type", "context_type"),
+        ("context_id", "context_id"),
+    ]:
+        val = payload.get(src)
+        if val is not None:
+            form_data[dst] = val
+    if payload.get("template_variables"):
+        form_data["template_variables"] = json.dumps(payload["template_variables"])
+    return await bridge.post_form("/email/send", form_data)
 
 
 @router.post("/send/report")

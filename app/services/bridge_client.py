@@ -203,6 +203,20 @@ class BridgeClient:
             except httpx.ConnectError:
                 raise HTTPException(503, "Bridge is offline. Cannot upload files.")
 
+    async def post_form(self, path: str, data: Dict[str, Any], headers: Optional[Dict] = None) -> Any:
+        """Send a POST request as application/x-www-form-urlencoded form data to the Bridge."""
+        url = f"{self.base_url}{path}"
+        logger.info(f"[Bridge FORM] tenant={self.tenant_name} path={path}")
+
+        async with httpx.AsyncClient(timeout=BRIDGE_TIMEOUT_SECONDS) as client:
+            try:
+                response = await client.post(url, headers=self._merge_headers(headers, skip_content_type=True), data=data)
+                return self._handle_response(response, path)
+            except httpx.ConnectTimeout:
+                raise HTTPException(503, "Bridge is not responding.")
+            except httpx.ConnectError:
+                raise HTTPException(503, "Bridge is offline.")
+
     async def post_multipart(self, path: str, data: Dict[str, Any], files: Dict[str, Any], headers: Optional[Dict] = None) -> Any:
         """Send a POST request with multiple files and form data to the Bridge."""
         url = f"{self.base_url}{path}"
