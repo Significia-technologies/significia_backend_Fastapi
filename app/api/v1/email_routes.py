@@ -13,9 +13,9 @@ All endpoints proxy through the Bridge to the tenant's silo database.
 import uuid
 import json
 import logging
-from typing import Any, Optional
+from typing import Any, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_bridge_client, get_current_user, get_current_ia_owner
@@ -144,28 +144,58 @@ async def get_placeholders(
 
 @router.post("/send")
 async def send_email(
-    payload: dict,
+    request: Request,
     bridge: BridgeClient = Depends(get_bridge_client),
     current_user: Any = Depends(get_current_user),
 ):
     """Send an email to a client using a template or custom HTML body."""
-    # Bridge /email/send expects Form fields — map JSON payload to form data.
-    form_data: dict = {"recipient": payload.get("recipient_email", "")}
-    for src, dst in [
-        ("recipient_name", "recipient_name"),
-        ("template_id", "template_id"),
-        ("template_type", "template_type"),
-        ("subject", "subject"),
-        ("body_html", "body"),
-        ("context_type", "context_type"),
-        ("context_id", "context_id"),
-    ]:
-        val = payload.get(src)
-        if val is not None:
-            form_data[dst] = val
-    if payload.get("template_variables"):
-        form_data["template_variables"] = json.dumps(payload["template_variables"])
-    return await bridge.post_form("/email/send", form_data)
+    content_type = request.headers.get("content-type", "")
+
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        files_raw = form.getlist("files")
+        form_data: dict = {"recipient": form.get("recipient_email", "")}
+        for src, dst in [
+            ("recipient_name", "recipient_name"),
+            ("template_id", "template_id"),
+            ("template_type", "template_type"),
+            ("subject", "subject"),
+            ("body_html", "body"),
+            ("context_type", "context_type"),
+            ("context_id", "context_id"),
+        ]:
+            val = form.get(src)
+            if val is not None:
+                form_data[dst] = val
+        tv = form.get("template_variables")
+        if tv:
+            form_data["template_variables"] = tv
+
+        files_list = []
+        for f in files_raw:
+            if hasattr(f, "read"):
+                content = await f.read()
+                files_list.append(("files", (f.filename, content, f.content_type or "application/octet-stream")))
+
+        return await bridge.post("/email/send", data=form_data, files=files_list if files_list else None)
+    else:
+        payload = await request.json()
+        form_data = {"recipient": payload.get("recipient_email", "")}
+        for src, dst in [
+            ("recipient_name", "recipient_name"),
+            ("template_id", "template_id"),
+            ("template_type", "template_type"),
+            ("subject", "subject"),
+            ("body_html", "body"),
+            ("context_type", "context_type"),
+            ("context_id", "context_id"),
+        ]:
+            val = payload.get(src)
+            if val is not None:
+                form_data[dst] = val
+        if payload.get("template_variables"):
+            form_data["template_variables"] = json.dumps(payload["template_variables"])
+        return await bridge.post_form("/email/send", form_data)
 
 
 @router.post("/send/report")
