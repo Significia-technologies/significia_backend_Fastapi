@@ -163,6 +163,24 @@ async def upload_client_document_bridge(
     return result
 
 
+@router.post("/clients/{client_id}/documents", response_model=dict)
+async def add_client_document_bridge(
+    client_id: uuid.UUID,
+    document_type: str = Form(...),
+    category: str = Form(...),
+    file: UploadFile = File(...),
+    bridge: BridgeClient = Depends(get_bridge_client),
+    current_user: Any = Depends(get_current_user),
+):
+    """Upload a free-form document to the client drawer vault."""
+    file_bytes = await file.read()
+    return await bridge.post_multipart(
+        f"/clients/{client_id}/documents",
+        data={"document_type": document_type, "category": category},
+        files={"file": (file.filename, file_bytes, file.content_type or "application/octet-stream")},
+    )
+
+
 # ════════════════════════════════════════════════════════════════════
 #  CLIENT VERSIONING (SEBI Temporal Audit — Bridge Proxy)
 # ════════════════════════════════════════════════════════════════════
