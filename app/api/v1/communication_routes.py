@@ -15,6 +15,26 @@ logger = logging.getLogger("significia.communication_routes")
 router = APIRouter()
 
 
+@router.get("/inbox")
+async def get_inbox(
+    client_id: str = Query(None),
+    status: str = Query(None),
+    thread_type: str = Query(None),
+    search: str = Query(None),
+    limit: int = Query(50),
+    offset: int = Query(0),
+    bridge: BridgeClient = Depends(get_bridge_client),
+    current_user: Any = Depends(get_current_user),
+):
+    """Stats + threads in one call — avoids two separate round-trips on page load."""
+    params = {"limit": limit, "offset": offset}
+    if client_id: params["client_id"] = client_id
+    if status: params["status"] = status
+    if thread_type: params["thread_type"] = thread_type
+    if search: params["search"] = search
+    return await bridge.get("/communication/inbox", params=params)
+
+
 @router.get("/stats")
 async def get_communication_stats(
     bridge: BridgeClient = Depends(get_bridge_client),
