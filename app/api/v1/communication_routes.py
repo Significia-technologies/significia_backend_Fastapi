@@ -68,6 +68,24 @@ async def get_thread(
     return await bridge.get(f"/communication/threads/{thread_id}")
 
 
+@router.post("/threads/{thread_id}/attachments")
+async def upload_attachments(
+    thread_id: str,
+    files: List[UploadFile] = File(...),
+    bridge: BridgeClient = Depends(get_bridge_client),
+    current_user: Any = Depends(get_current_user),
+):
+    """Upload files for a thread message. Returns storage keys."""
+    files_list = []
+    for f in files:
+        content = await f.read()
+        files_list.append(("files", (f.filename, content, f.content_type or "application/octet-stream")))
+    return await bridge.post(
+        f"/communication/threads/{thread_id}/attachments",
+        files=files_list,
+    )
+
+
 @router.post("/threads/{thread_id}/messages")
 async def add_message(
     thread_id: str,
