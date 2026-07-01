@@ -169,14 +169,18 @@ async def add_client_document_bridge(
     document_type: str = Form(...),
     category: str = Form(...),
     file: UploadFile = File(...),
+    source_id: Optional[str] = Form(None),
     bridge: BridgeClient = Depends(get_bridge_client),
     current_user: Any = Depends(get_current_user),
 ):
     """Upload a free-form document to the client drawer vault."""
     file_bytes = await file.read()
+    data = {"document_type": document_type, "category": category}
+    if source_id:
+        data["source_id"] = source_id
     return await bridge.post_multipart(
         f"/clients/{client_id}/documents",
-        data={"document_type": document_type, "category": category},
+        data=data,
         files={"file": (file.filename, file_bytes, file.content_type or "application/octet-stream")},
     )
 
