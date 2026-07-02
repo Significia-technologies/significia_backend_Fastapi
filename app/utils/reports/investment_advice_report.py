@@ -220,13 +220,13 @@ class InvestmentAdviceNotePDF:
         pdf.ln(20)
         pdf.set_font("helvetica", "B", 24)
         pdf.set_text_color(*_ACCENT_BLUE)
-        pdf.cell(0, 14, "INVESTMENT ADVICE NOTE", ln=True, align="C")
+        pdf.cell(0, 14, "TARGET INVESTMENT ADVICE NOTE", ln=True, align="C")
 
         # Subtitle
         pdf.set_font("helvetica", "", 9)
         pdf.set_text_color(*_TEXT_MUTED)
         pdf.cell(0, 6, "Issued under SEBI (Investment Advisers) Regulations, 2013", ln=True, align="C")
-        pdf.cell(0, 5, "Regulation 16 & 17  |  Master Circular dated 21 May 2024", ln=True, align="C")
+        pdf.cell(0, 5, "Master Circular dated 21 May 2024", ln=True, align="C")
 
         # Decorative bar
         pdf.ln(4)
@@ -273,7 +273,7 @@ class InvestmentAdviceNotePDF:
             reg_no = ia_data.get("ia_registration_number", "")
             if reg_no:
                 pdf.set_font("helvetica", "", 9)
-                pdf.cell(0, 6, f"SEBI Registration No: {reg_no}", ln=True, align="C")
+                pdf.cell(0, 6, f"Registration No: {reg_no}", ln=True, align="C")
 
         pdf.set_font("helvetica", "I", 8)
         pdf.set_text_color(*_RED_MUTED)
@@ -667,7 +667,7 @@ class InvestmentAdviceNotePDF:
         export_type: str = "full",
     ) -> bytes:
         """
-        Generate a complete SEBI Investment Advice Note PDF.
+        Generate a complete Target Investment Advice Note PDF.
         """
         if export_type == "execution_log":
             return InvestmentAdviceNotePDF.generate_execution_log_pdf(note_data, ia_data, logo_path)
