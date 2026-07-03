@@ -88,11 +88,11 @@ services:
     image: ghcr.io/significia-technologies/significia_backend_fastapi:latest
     container_name: significia-flower-prod
     restart: unless-stopped
-    command: celery -A app.tasks.celery_app flower --port=5555
+    command: celery -A app.tasks.celery_app flower --port=5555 --basic_auth=${FLOWER_USER}:${FLOWER_PASSWORD}
     env_file:
       - ../.env
     ports:
-      - "5555:5555"
+      - "127.0.0.1:5555:5555"
     deploy:
       resources:
         limits:
