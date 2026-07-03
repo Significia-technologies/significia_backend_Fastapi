@@ -6,24 +6,27 @@ from app.schemas.auth_schema import UserRegisterRequest, UserLoginRequest, Token
 from fastapi.security import OAuth2PasswordRequestForm
 from app.services.auth_service import AuthService
 from app.models.user import User
+from app.core.rate_limiter import limiter
 
 router = APIRouter()
 auth_service = AuthService()
 
 @router.post("/register", response_model=UserResponse, status_code=201)
-def register(request: UserRegisterRequest, db: Session = Depends(get_db)):
-    print(f"--- REACHED REGISTER ROUTE FOR: {request.email} ---")
-    user = auth_service.register_user(db, request)
+@limiter.limit("5/minute")
+def register(payload: UserRegisterRequest, request: Request, db: Session = Depends(get_db)):
+    print(f"--- REACHED REGISTER ROUTE FOR: {payload.email} ---")
+    user = auth_service.register_user(db, payload)
     print("--- REGISTER ROUTE COMPLETED ---")
     return user
 
 @router.post("/login", response_model=TokenResponse)
-def login(request: UserLoginRequest, http_request: Request, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def login(payload: UserLoginRequest, request: Request, db: Session = Depends(get_db)):
     """Standard JSON login for the Frontend."""
-    client_host = http_request.client.host if http_request.client else "127.0.0.1"
+    client_host = request.client.host if request.client else "127.0.0.1"
     ip_address = "127.0.0.1" if client_host == "testclient" else client_host
-    user_agent = http_request.headers.get("user-agent", "")
-    return auth_service.authenticate_user(db, request, request_ip=ip_address, user_agent=user_agent)
+    user_agent = request.headers.get("user-agent", "")
+    return auth_service.authenticate_user(db, payload, request_ip=ip_address, user_agent=user_agent)
 
 @router.post("/swagger-login", response_model=TokenResponse, include_in_schema=False)
 def swagger_login(
@@ -39,8 +42,9 @@ def swagger_login(
     return auth_service.authenticate_user(db, request, request_ip=ip_address, user_agent=user_agent)
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh_token(request: RefreshTokenRequest, db: Session = Depends(get_db)):
-    return await auth_service.refresh_access_token(db, request.refresh_token)
+@limiter.limit("20/minute")
+async def refresh_token(payload: RefreshTokenRequest, request: Request, db: Session = Depends(get_db)):
+    return await auth_service.refresh_access_token(db, payload.refresh_token)
 
 @router.get("/me", response_model=UserResponse)
 def get_user_me(current_user: User = Depends(get_current_user)):

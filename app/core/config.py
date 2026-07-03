@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     def CELERY_BROKER_URL(self) -> str:
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/0"
 
+    @property
+    def RATE_LIMIT_REDIS_URL(self) -> str:
+        return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/3"
+
     model_config = SettingsConfigDict(
         case_sensitive=True,
         env_file=".env",

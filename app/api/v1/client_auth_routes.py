@@ -17,6 +17,7 @@ from app.schemas.client_schema import ClientLoginRequest, ClientTokenResponse, C
 from app.services.client_auth_service import ClientAuthService
 from app.models.client import ClientProfile
 from app.models.user import User
+from app.core.rate_limiter import limiter
 
 router = APIRouter()
 client_auth_service = ClientAuthService()
@@ -27,6 +28,7 @@ client_auth_service = ClientAuthService()
 # ════════════════════════════════════════════════════════════════════
 
 @router.post("/bridge/login", response_model=dict)
+@limiter.limit("10/minute")
 async def login_bridge(
     request: Request,
     login_data: ClientLoginRequest,

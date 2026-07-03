@@ -20,6 +20,7 @@ from app.api.deps import get_db, get_bridge_client, get_current_tenant
 from app.services.bridge_client import BridgeClient
 from app.models.tenant import Tenant
 from app.core.jwt import create_access_token, create_refresh_token
+from app.core.rate_limiter import limiter
 # from app.core.security import verify_password  # No longer needed for IA staff
 
 router = APIRouter()
@@ -43,6 +44,7 @@ class IAStaffLoginResponse(BaseModel):
 
 
 @router.post("/login", response_model=IAStaffLoginResponse)
+@limiter.limit("10/minute")
 async def ia_staff_login(
     request: Request,
     login_data: IAStaffLoginRequest,

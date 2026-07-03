@@ -17,6 +17,9 @@ celery>=5.3.6
 # Redis client
 redis>=5.0.4
 
+# Rate limiting
+slowapi>=0.1.9
+
 # Data validation
 pydantic>=2.7.1
 
