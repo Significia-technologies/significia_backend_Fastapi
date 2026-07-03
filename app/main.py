@@ -1,17 +1,25 @@
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 import os
 
 from app.core.config import settings
 from app.api.router import api_router
 from app.core.domain_guard import DomainGuardMiddleware
+from app.core.cors import TenantCORSMiddleware
+from app.core.rate_limiter import limiter
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     openapi_url=f"{settings.API_V1_STR}/openapi.json"
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 # Trust proxy headers (X-Forwarded-Proto, etc.) to correctly handle HTTPS redirects
 app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
@@ -19,25 +27,10 @@ app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 # Create uploads directory if it doesn't exist
 os.makedirs("uploads/ia_documents", exist_ok=True)
 
-# Define allowed origins for CORS (no wildcard when credentials=True)
-origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "https://significia.com",
-    "https://www.significia.com",
-    "https://app.significia.com",
-]
-
-# Set all CORS enabled origins
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    # Allow any IA custom domain + Vercel preview deployments
-    allow_origin_regex=r"https://.*\.vercel\.app|http://localhost:3000|https?://.*",
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# CORS: validated dynamically against registered tenant domains
+# (fixed Significia domains + *.vercel.app + any tenant subdomain/custom_domain
+# in the DB) — see app/core/cors.py for why a static allow-list can't work here.
+app.add_middleware(TenantCORSMiddleware)
 
 # Domain-based access guard (restricts Super Admin routes to Significia domains)
 app.add_middleware(DomainGuardMiddleware)
