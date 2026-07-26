@@ -273,7 +273,7 @@ class ReportService:
             ["Client Name:", client.client_name],
             ["Client Code:", client.client_code],
             ["Date of Assessment:", assessment.assessment_timestamp.strftime("%Y-%m-%d %H:%M")],
-            ["Total Score:", str(assessment.calculated_score)],
+            ["Total Score:", f"{assessment.calculated_score} / 100"],
             ["Risk Category:", assessment.assigned_risk_tier]
         ]
         summary_table = Table(summary_data, colWidths=[2*inch, 4*inch])
@@ -558,7 +558,7 @@ class ReportService:
             ("Client Name:", client.client_name),
             ("Client Code:", client.client_code),
             ("Date of Assessment:", assessment.assessment_timestamp.strftime("%Y-%m-%d %H:%M")),
-            ("Total Score:", str(assessment.calculated_score)),
+            ("Total Score:", f"{assessment.calculated_score} / 100"),
             ("Risk Category:", assessment.assigned_risk_tier)
         ]
         
@@ -1590,7 +1590,7 @@ class ReportService:
         except:
             pass
 
-        max_score = questionnaire_data.get('max_possible_score') if questionnaire_data else None
+        max_score = questionnaire_data.get('max_possible_score') if questionnaire_data else 100
         if max_score is not None:
             try:
                 f_max = float(max_score)
@@ -1599,7 +1599,7 @@ class ReportService:
             except:
                 score_str = f"{score_val} / {max_score}"
         else:
-            score_str = str(score_val)
+            score_str = f"{score_val} / 100"
 
         category_str = assessment_data.get('assigned_risk_tier') or assessment_data.get('category_name') or 'N/A'
 
@@ -2000,7 +2000,7 @@ class ReportService:
         except:
             pass
 
-        max_score = questionnaire_data.get('max_possible_score') if questionnaire_data else None
+        max_score = questionnaire_data.get('max_possible_score') if questionnaire_data else 100
         if max_score is not None:
             try:
                 f_max = float(max_score)
@@ -2009,7 +2009,7 @@ class ReportService:
             except:
                 score_str = f"{score_val} / {max_score}"
         else:
-            score_str = str(score_val)
+            score_str = f"{score_val} / 100"
 
         category_str = assessment_data.get('assigned_risk_tier') or assessment_data.get('category_name') or 'N/A'
         
