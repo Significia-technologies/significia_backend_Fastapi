@@ -17,13 +17,16 @@ class NomineeSchema(BaseModel):
     relationship: str
     dob: date
     percentage: float
+    guardian_name: Optional[str] = None
 
-    @field_validator("name", "relationship")
+    @field_validator("name", "relationship", "guardian_name")
     @classmethod
-    def validate_nominee_text(cls, v: str) -> str:
+    def validate_nominee_text(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return v
         import re
         if not re.match(r"^[a-zA-Z\s]+$", v):
-            raise ValueError("Nominee name and relationship must contain only alphabetic characters and spaces")
+            raise ValueError("Nominee text fields must contain only alphabetic characters and spaces")
         return v
 
     @field_validator("dob")
@@ -144,9 +147,16 @@ class ClientBase(BaseModel):
     def validate_nominees_list(cls, v: list[NomineeSchema]) -> list[NomineeSchema]:
         if not v or len(v) < 1:
             raise ValueError("At least 1 nominee is required")
-        total_pct = sum(nom.percentage for nom in v)
+        if len(v) > 3:
+            raise ValueError("Maximum 3 nominees are allowed")
+        total_pct = round(sum(nom.percentage for nom in v), 2)
         if total_pct != 100.0:
             raise ValueError(f"Total nominee percentage must sum up to exactly 100% (currently {total_pct}%)")
+        for idx, nom in enumerate(v, 1):
+            today = date.today()
+            age = today.year - nom.dob.year - ((today.month, today.day) < (nom.dob.month, nom.dob.day))
+            if age < 18 and not (nom.guardian_name and nom.guardian_name.strip()):
+                raise ValueError(f"Guardian Name is required for Nominee #{idx} as they are a minor under 18 years old")
         return v
 
     @model_validator(mode='after')
@@ -247,9 +257,16 @@ class ClientUpdate(BaseModel):
         if v is not None:
             if len(v) < 1:
                 raise ValueError("At least 1 nominee is required")
-            total_pct = sum(nom.percentage for nom in v)
+            if len(v) > 3:
+                raise ValueError("Maximum 3 nominees are allowed")
+            total_pct = round(sum(nom.percentage for nom in v), 2)
             if total_pct != 100.0:
                 raise ValueError(f"Total nominee percentage must sum up to exactly 100% (currently {total_pct}%)")
+            for idx, nom in enumerate(v, 1):
+                today = date.today()
+                age = today.year - nom.dob.year - ((today.month, today.day) < (nom.dob.month, nom.dob.day))
+                if age < 18 and not (nom.guardian_name and nom.guardian_name.strip()):
+                    raise ValueError(f"Guardian Name is required for Nominee #{idx} as they are a minor under 18 years old")
         return v
 
 class ClientDocumentResponse(BaseModel):

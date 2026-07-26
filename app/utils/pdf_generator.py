@@ -692,7 +692,9 @@ class ClientPDFGenerator:
                         dob_str = f", DOB: {dob_dt.strftime('%d-%m-%Y')}"
                     except Exception:
                         dob_str = f", DOB: {dob}"
-                strategy_fields.append((f"Nominee {i}", f"{name} ({rel}{dob_str}) - {pct}%"))
+                guardian = nom.get("guardian_name")
+                guardian_str = f" [Guardian: {guardian}]" if guardian else ""
+                strategy_fields.append((f"Nominee {i}", f"{name} ({rel}{dob_str}){guardian_str} - {pct}%"))
         else:
             nom_name = client_data.get("nominee_name")
             nom_rel = client_data.get("nominee_relationship")
